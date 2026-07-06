@@ -25,7 +25,6 @@ export default function App() {
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
   const turnStateRef = useRef<TurnState>("idle");
-  const mutedRef = useRef(false); // half-duplex: mute mic while the reply plays
 
   useEffect(() => {
     listMicrophones().then(setDevices).catch(() => {});
@@ -77,8 +76,7 @@ export default function App() {
         if (turnStateRef.current === "speaking") setLevel(l);
       },
       () => {
-        // Reply finished playing → un-mute the mic and go back to listening.
-        mutedRef.current = false;
+        // Reply finished playing → back to listening.
         setLevel(0);
         setTurn("idle");
       },
@@ -89,7 +87,6 @@ export default function App() {
     ws.onerror = () => setConn("error");
     ws.onmessage = async (ev) => {
       if (ev.data instanceof ArrayBuffer) {
-        mutedRef.current = true; // companion is speaking — don't capture the echo
         playerRef.current?.enqueue(ev.data);
         const turn = audioTurnRef.current;
         upsertTurn(turn, (t) => (t.audio = [...t.audio, ev.data]));
@@ -109,6 +106,8 @@ export default function App() {
           setConn("error");
           break;
         case "trace":
+          // Server detected a barge-in → stop playing the reply immediately.
+          if ((msg as TraceEvent).stage === "barge_in") playerRef.current?.stop();
           handleTrace(msg as TraceEvent);
           break;
         case "conversation_ended":
@@ -123,13 +122,14 @@ export default function App() {
     micRef.current = new MicCapture();
     await micRef.current.start(
       micId,
+      // Full-duplex: keep streaming mic audio while the reply plays so the user
+      // CAN barge in (§24). Browser echoCancellation cancels the companion's own
+      // voice; the server needs sustained speech (START_FRAMES) to treat it as
+      // an interrupt, so residual echo won't self-trigger.
       (pcm) => {
-        // Half-duplex: stop sending mic audio while the reply is playing so the
-        // companion never hears (and answers) its own voice (§19/§24 need AEC).
-        if (mutedRef.current) return;
         if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(pcm);
       },
-      (l) => !mutedRef.current && setLevel(l),
+      (l) => turnStateRef.current !== "speaking" && setLevel(l),
     );
     if (devices.length === 0) listMicrophones().then(setDevices).catch(() => {});
   };
