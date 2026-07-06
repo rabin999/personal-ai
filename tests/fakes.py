@@ -163,7 +163,7 @@ class FakeGraphStore:
 class FakeLLM:
     """Scriptable LLM: pops queued response texts; records every call."""
 
-    def __init__(self, responses: list[str | Exception] | None = None) -> None:
+    def __init__(self, responses: "Sequence[str | Exception] | None" = None) -> None:
         self.responses: list[str | Exception] = list(responses or [])
         self.calls: list[dict[str, Any]] = []
         self.default_text = "okay!"

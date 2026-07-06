@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(Phase 4 ✅ — next: Phase 5 §17 Psych User-Model)_
+**Current module:** _(Phase 5 ✅ — next: Phase 6 Voice)_
 
 ---
 
@@ -63,8 +63,8 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 ## Phase 5 — Learning
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
-| ⬜ | §17 Psychological User-Model | spec §17 | §1 | ⬜ | ⚠️ behavioral — OCEAN/mood/stage; confidence-scored; never diagnose |
-| ⬜ | §18 Learning & Adaptation | spec §18 | §6,§7,§17,§9,§14 | ⬜ | ⚠️ behavioral — two-loop; confidence update; confirmation gate |
+| ✅ | §17 Psychological User-Model | spec §17 | §1 | U✅ I✅ E✅ | ⚠️ mechanism complete, inference quality human-validated: confidence-gated OCEAN nudges, rolling mood baseline + deviation detect, stage-of-change; prompt rendering tested against clinical language |
+| ✅ | §18 Learning & Adaptation | spec §18 | §6,§7,§17,§9,§14 | U✅ I✅ E✅ | ⚠️ mechanism complete, human validates learning: LLM session analysis → rule reinforce/contradict/add, mood roll-in, correlation candidates gated at 3 sightings; runs as queued §14 task (live path <0.5s) |
 
 ## Phase 6 — Voice
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
