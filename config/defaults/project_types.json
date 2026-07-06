@@ -1,1 +1,27 @@
-[]
+[
+  {
+    "_id": "finance_portfolio",
+    "version": 1,
+    "name": "Finance portfolio",
+    "description": "stock trades, positions, and portfolio tracking",
+    "ledger_fields": ["ticker", "side", "qty", "price"],
+    "derived_metrics": ["net_invested", "realized_pnl", "positions"],
+    "actions": [
+      {
+        "id": "log_entry",
+        "type": "action",
+        "latency_class": "fast",
+        "requires_confirmation": true,
+        "schema": {
+          "ticker": "string",
+          "side": "buy | sell",
+          "qty": "number",
+          "price": "number"
+        }
+      }
+    ],
+    "insight_triggers": ["new_entry"],
+    "consent_required": true,
+    "caveat": "Just so you know, I'm not a financial advisor."
+  }
+]

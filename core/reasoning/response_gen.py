@@ -62,6 +62,9 @@ Respond ONLY with a JSON object of this exact shape:
               "complexity_tier": "simple|moderate|complex",
               "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"}}
 Set capability_boundary_flag if your draft claims felt emotion or consciousness.
+Ground every factual claim about the user in the conversation and the provided
+memories/facts. If the answer is not in your context, say you don't remember —
+NEVER invent details about the user's life.
 """.strip()
 
 

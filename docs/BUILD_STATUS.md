@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(§13 ✅ — next: §16 Projects)_
+**Current module:** _(Phase 4 ✅ — next: Phase 5 §17 Psych User-Model)_
 
 ---
 
@@ -55,10 +55,10 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 ## Phase 4 — Tools & Projects
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
-| ✅ | §13 Tool Dispatcher | spec §13 | §14,§3,§11 | U✅ I✅ E— | MCP-shaped registry (id/desc/schema/handler); shielded action writes (barge-in safe); 800ms variable budget → queue promotion; ReAct loop w/ validated JSON steps; e2e via §16 project action |
+| ✅ | §13 Tool Dispatcher | spec §13 | §14,§3,§11 | U✅ I✅ E✅ | MCP-shaped registry (id/desc/schema/handler); shielded action writes (barge-in safe); 800ms variable budget → queue promotion; ReAct loop w/ validated JSON steps; e2e green via project-flow test |
 | ✅ | §14 Background Task Queue | spec §14 | Redis | U✅ I✅ E✅ | Built before §13 (its dependency). Redis lists+JSON records; TaskWorker handler registry; DeliveryComposer: LLM judges relevance → interject or suppress (never templated) |
 | ✅ | §15 Web Search | spec §15 | §11,§14,§3 | U✅ I✅ E✅ | Cache in Mongo w/ per-query-type TTL (15m time-sensitive / 24h stable); Serper live-verified, Brave adapter key-gated; summarize via simple tier; runs as §14 task (e2e = §14 delivery flow) |
-| ⬜ | §16 Projects | spec §16 | §1,§8,§3,§13 | ⬜ | Types vs instances; ledger; consent-gated insight |
+| ✅ | §16 Projects | spec §16 | §1,§8,§3,§13 | U✅ I✅ E✅ | finance_portfolio blueprint seeded; avg-cost P&L from append-only ledger; type actions registered only when an instance exists; consent-gated insight w/ caveat; implements §10 ProjectContextProvider |
 
 ## Phase 5 — Learning
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |

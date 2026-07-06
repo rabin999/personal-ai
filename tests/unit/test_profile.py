@@ -152,6 +152,9 @@ async def test_seed_defaults_updates_only_on_version_bump(
     assert after is not None and after["description"] == "v99"
 
 
-async def test_project_types_empty_by_default(registry: TraitRegistry) -> None:
+async def test_project_types_seed_contains_finance_blueprint(
+    registry: TraitRegistry,
+) -> None:
     await registry.seed_defaults(DEFAULTS_DIR)
-    assert await registry.project_types() == []
+    types = await registry.project_types()
+    assert [t.id for t in types] == ["finance_portfolio"]
