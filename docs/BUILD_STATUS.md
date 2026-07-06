@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(§9 ✅ — next: §10 Prompt Assembly)_
+**Current module:** _(§10 ✅ — next: §12 Response Generation)_
 
 ---
 
@@ -48,7 +48,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
 | ✅ | §9 Self-Model (metacognition) | spec §9 | §1, §11 | U✅ I✅ E— | `self_statements` Qdrant collection (§9's namespace); heuristic overclaim patterns + judgment flag → LLM rewrite (retry once → safe fallback); patterns/wording flagged for human tuning; per-turn-log e2e lands with §12 |
-| ⬜ | §10 Prompt Assembly | spec §10 | §2,4,5,6,7,8,9,16 | ⬜ | 12-step pipeline; user-scoped; budgeting |
+| ✅ | §10 Prompt Assembly | spec §10 | §2,4,5,6,7,8,9,16 | U✅ I✅ E— | Ordered pipeline + char-budget trimming (episodic→facts→self→project→rules; utterance/WM/entities untouchable); §16 injects via ProjectContextProvider protocol (stubbed); heuristic complexity hint; e2e via §12 turn |
 | ✅ | §11 LLM Router (OpenRouter) | spec §11 | §3, §2 | U✅ I✅ E— | Built before §9/§10 (their dependency). Tier chains in provider_config `llm_router`; exact cost via OpenRouter usage accounting; embed() is local fastembed; e2e via §12 turn |
 | ⬜ | §12 Response Gen + behavior gates | spec §12 | §10,§11,§9 | ⬜ | ⚠️ behavioral — mechanism only, human-tuned |
 

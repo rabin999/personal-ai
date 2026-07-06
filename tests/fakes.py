@@ -90,3 +90,109 @@ def _group(docs: list[dict[str, Any]], spec: Mapping[str, Any]) -> list[dict[str
             increment = _lookup(doc, operand[1:]) if isinstance(operand, str) else operand
             row[field] = row.get(field, 0) + (increment or 0)
     return list(groups.values())
+
+
+class FakeVectorStore:
+    """Functional in-memory VectorStore: token-overlap scoring, user-filtered."""
+
+    def __init__(self) -> None:
+        self.docs: dict[str, dict[str, Any]] = {}
+
+    async def upsert_texts(self, collection: str, docs: list[Any]) -> None:
+        for doc in docs:
+            self.docs[f"{collection}:{doc.id}"] = {
+                "collection": collection,
+                "id": doc.id,
+                "text": doc.text,
+                "payload": {**doc.payload, "text": doc.text},
+            }
+
+    async def hybrid_search(
+        self, collection: str, query_text: str, *, user_id: str, k: int = 6
+    ) -> list[Any]:
+        from ports.vector_store import VectorHit
+
+        query_words = _tokens(query_text)
+        scored = []
+        for doc in self.docs.values():
+            if doc["collection"] != collection:
+                continue
+            if doc["payload"].get("user_id") != user_id:
+                continue
+            overlap = len(query_words & _tokens(doc["text"]))
+            if overlap:
+                scored.append((overlap, doc))
+        scored.sort(key=lambda pair: pair[0], reverse=True)
+        return [
+            VectorHit(id=doc["id"], score=float(score), payload=dict(doc["payload"]))
+            for score, doc in scored[:k]
+        ]
+
+
+def _tokens(text: str) -> set[str]:
+    return {w.strip(".,!?:;'\"()").lower() for w in text.split() if len(w) > 2}
+
+
+class FakeGraphStore:
+    """In-memory GraphStore: facts added directly, token-overlap retrieval."""
+
+    def __init__(self) -> None:
+        self.facts_by_user: dict[str, list[Any]] = {}
+        self.episodes: list[dict[str, Any]] = []
+
+    def seed_fact(self, user_id: str, fact: Any) -> None:
+        self.facts_by_user.setdefault(user_id, []).append(fact)
+
+    async def setup(self) -> None: ...
+
+    async def add_episode(
+        self, user_id: str, text: str, timestamp: str | None = None
+    ) -> None:
+        self.episodes.append({"user_id": user_id, "text": text, "timestamp": timestamp})
+
+    async def search_facts(self, user_id: str, query: str, limit: int = 10) -> list[Any]:
+        query_words = _tokens(query)
+        matches = [
+            fact
+            for fact in self.facts_by_user.get(user_id, [])
+            if _tokens(fact.fact) & query_words
+        ]
+        return matches[:limit]
+
+
+class FakeLLM:
+    """Scriptable LLM: pops queued response texts; records every call."""
+
+    def __init__(self, responses: list[str] | None = None) -> None:
+        self.responses = list(responses or [])
+        self.calls: list[dict[str, Any]] = []
+        self.default_text = "okay!"
+
+    async def complete(
+        self,
+        user_id: str,
+        messages: Any,
+        tier: str = "moderate",
+        *,
+        response_format: Mapping[str, Any] | None = None,
+        session_id: str | None = None,
+        max_tokens: int | None = None,
+    ) -> Any:
+        from ports.llm import CompletionResult
+
+        self.calls.append(
+            {"user_id": user_id, "messages": list(messages), "tier": tier,
+             "response_format": response_format, "session_id": session_id}
+        )
+        text = self.responses.pop(0) if self.responses else self.default_text
+        if isinstance(text, Exception):
+            raise text
+        return CompletionResult(
+            text=text, model="fake/model", input_tokens=50, output_tokens=25, cost_usd=0.0002
+        )
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] for _ in texts]
+
+    def route(self, complexity: str) -> str:
+        return "fake/model"
