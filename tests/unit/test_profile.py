@@ -1,43 +1,16 @@
 """Unit tests for Config & User Profile (spec §2) — DocStore port faked in memory."""
 
 import json
-from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 import pytest
 from pydantic import ValidationError
 
 from core.profile import ProfileNotFound, ProfileService, TraitRegistry
 from core.profile.service import TRAIT_DEFS_COLLECTION
+from tests.fakes import FakeDocStore
 
 DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
-
-
-class FakeDocStore:
-    """In-memory DocStore implementing the port used by core/profile."""
-
-    def __init__(self) -> None:
-        self.collections: dict[str, dict[str, dict[str, Any]]] = {}
-
-    async def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
-        doc = self.collections.get(collection, {}).get(doc_id)
-        return dict(doc) if doc is not None else None
-
-    async def put(self, collection: str, doc_id: str, doc: Mapping[str, Any]) -> None:
-        stored = {k: v for k, v in doc.items() if k != "_id"} | {"_id": doc_id}
-        self.collections.setdefault(collection, {})[doc_id] = stored
-
-    async def find(
-        self,
-        collection: str,
-        query: Mapping[str, Any] | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        docs = list(self.collections.get(collection, {}).values())
-        if query:
-            docs = [d for d in docs if all(d.get(k) == v for k, v in query.items())]
-        return [dict(d) for d in docs[:limit]]
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(§1, §26, §2 ✅ — next: §3 Cost Ledger)_
+**Current module:** _(Phase 1 ✅ — next: Phase 2 §4 Working Memory)_
 
 ---
 
@@ -33,7 +33,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | ✅ | §1 Database Layer | spec §1 | — | U✅ I✅ E✅ | `adapters/db.py`; pooled clients, fail-loud startup, Qdrant collections (dense+sparse, user_id index); Graphiti lazily wired to OpenRouter (models finalized in §6) |
 | ✅ | §26 User Context (static auth) | spec §26 | §1, §2 | U✅ I✅ E✅ | Static map in `config/defaults/static_users.json` (2 users); resolve → first-run sync; e2e over HTTP via CurrentUser dep; app lifespan wires adapters |
 | ✅ | §2 Config & User Profile | spec §2 | §1 | U✅ I✅ E✅ | Built before §26 (its dependency). `traits_enabled` stores overrides only (?? default per rule 3). Seed trait descriptions are DRAFT — human tuning pending (§7 hand-off) |
-| ⬜ | §3 Cost Ledger | spec §3 | §1 | ⬜ | Append-only; per-user/project aggregation; cache-hit $0 |
+| ✅ | §3 Cost Ledger | spec §3 | §1 | U✅ I✅ E✅ | `core/cost`; fire-and-forget log (p95 latency test), $group aggregation + breakdown, project_spend w/ ISO range, user-scoped queries, failed writes swallowed |
 
 ## Phase 2 — Memory
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |

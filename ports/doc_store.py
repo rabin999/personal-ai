@@ -1,10 +1,11 @@
 """Port: document store (MongoDB adapter) — config, profiles, projects, ledger, cost (spec §1).
 
-Grows with the modules that use it; §2 (Config & User Profile) needs id-keyed
-get/put and simple queries. Documents are plain mappings keyed by ``_id``.
+Grows with the modules that use it: §2 (Config & User Profile) needs id-keyed
+get/put and simple queries; §3 (Cost Ledger) adds append + aggregation.
+Documents are plain mappings keyed by ``_id``.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
 
@@ -26,4 +27,14 @@ class DocStore(Protocol):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         """Return documents matching ``query`` (all when None), up to ``limit``."""
+        ...
+
+    async def insert(self, collection: str, doc: Mapping[str, Any]) -> str:
+        """Append ``doc`` with a generated ``_id``; return that id."""
+        ...
+
+    async def aggregate(
+        self, collection: str, pipeline: Sequence[Mapping[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Run a $match/$group-style aggregation pipeline."""
         ...

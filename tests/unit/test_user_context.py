@@ -7,7 +7,7 @@ import pytest
 from adapters.user_context.static import StaticUserContext
 from core.profile import ProfileService
 from ports.user_context import Unauthorized, UserContext, UserRecord
-from tests.unit.test_profile import FakeDocStore
+from tests.fakes import FakeDocStore
 
 DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
 
