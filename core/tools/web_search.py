@@ -62,6 +62,11 @@ class WebSearch:
         self._ledger = ledger
 
     async def run(self, query: str, user_id: str, session_id: str | None = None) -> SearchOutcome:
+        # An empty/blank query is a no-op — never spend a paid provider call
+        # (providers 400 on it anyway) or a cache slot on it.
+        if not query.strip():
+            return SearchOutcome(summary="", sources=[], provider="none")
+
         cache_key = _hash(query)
         cached = await self._read_cache(cache_key, query)
         if cached is not None:

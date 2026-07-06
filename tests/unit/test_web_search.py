@@ -58,6 +58,21 @@ async def test_miss_hits_serper_summarizes_and_logs_cost() -> None:
     assert llm.calls[0]["tier"] == "simple"  # summarizer is the cheap tier
 
 
+# An empty/blank query is a no-op: no provider call, no cost, no cache write
+# (providers 400 on an empty query — a queued task with no query must not spend).
+async def test_blank_query_is_a_noop() -> None:
+    search, docs, ledger, serper, brave, _ = _stack()
+
+    for blank in ("", "   ", "\n"):
+        outcome = await search.run(blank, "u_demo_001", "s1")
+        assert outcome.sources == [] and outcome.provider == "none"
+    await ledger.flush()
+
+    assert serper.calls == 0 and brave.calls == 0
+    assert await docs.find(COST_COLLECTION) == []
+    assert await docs.find(SEARCH_CACHE_COLLECTION) == []
+
+
 # Acceptance: repeat within TTL returns cache with a $0 ledger entry.
 async def test_repeat_query_within_ttl_serves_cache_at_zero_cost() -> None:
     search, docs, ledger, serper, _, _ = _stack()
