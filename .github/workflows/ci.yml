@@ -1,0 +1,32 @@
+# CI: the FULL CHECK from CLAUDE.md §4a — ruff, mypy, lint-imports, pytest.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  full-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: ruff
+        run: uv run ruff check
+
+      - name: mypy
+        run: uv run mypy .
+
+      - name: import-linter (core must not import adapters)
+        run: uv run lint-imports
+
+      - name: pytest
+        run: uv run pytest --cov

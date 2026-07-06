@@ -1,0 +1,87 @@
+[project]
+name = "companion"
+version = "0.1.0"
+description = "Multi-user, voice-first AI companion (see docs/ai-companion-mvp-build-spec.md)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.139.0",
+    "graphiti-core>=0.29.2",
+    "httpx>=0.28.1",
+    "neo4j>=6.2.0",
+    "pydantic>=2.13.4",
+    "pydantic-settings>=2.14.2",
+    "pymongo>=4.17.0",
+    "qdrant-client>=1.18.0",
+    "redis>=8.0.1",
+    "uvicorn[standard]>=0.50.2",
+]
+
+[project.optional-dependencies]
+voice = [
+    "pipecat-ai[silero]>=1.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.5.0",
+    "import-linter>=2.13",
+    "mypy>=2.1.0",
+    "pre-commit>=4.6.0",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.15.20",
+]
+
+# ── Tooling ──────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["docs"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+    "ASYNC", # flake8-async (async-first invariant, CLAUDE.md §2.10)
+]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["config", "core", "ports", "adapters", "voice", "workers", "api", "services", "tests"]
+
+[tool.importlinter]
+root_packages = ["core", "ports", "adapters", "api", "voice", "workers", "config", "services"]
+
+[[tool.importlinter.contracts]]
+name = "core/ must never import adapters/ (hexagonal boundary, CLAUDE.md §2.3)"
+type = "forbidden"
+source_modules = ["core"]
+forbidden_modules = ["adapters"]
+
+[[tool.importlinter.contracts]]
+name = "ports/ are pure interfaces — no core/adapters/api imports"
+type = "forbidden"
+source_modules = ["ports"]
+forbidden_modules = ["core", "adapters", "api", "voice", "workers"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q"
+markers = [
+    "integration: needs real datastores from docker-compose (Mongo/Qdrant/Neo4j/Redis)",
+    "acceptance: end-to-end acceptance-criteria tests",
+]
+
+[tool.coverage.run]
+source = ["config", "core", "ports", "adapters", "voice", "workers", "api", "services"]
