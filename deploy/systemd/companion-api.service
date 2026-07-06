@@ -1,0 +1,24 @@
+[Unit]
+Description=Personal AI Companion - FastAPI serving edge (api.app:app)
+Documentation=https://github.com/rabin999/personal-ai
+# Datastores run as docker containers; wait for docker + network first.
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/companion
+# WorkingDirectory makes config/settings.py find the repo-root .env.
+# Use the uv-managed venv directly (no resolver work at boot).
+ExecStart=/opt/companion/.venv/bin/uvicorn api.app:app --host 127.0.0.1 --port 8000
+# Datastore containers may still be coming up on a cold boot; the app fails
+# loud if one is down (spec §1) - Restart=always retries until they are ready.
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=companion-api
+
+[Install]
+WantedBy=multi-user.target

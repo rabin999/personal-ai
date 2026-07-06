@@ -1,0 +1,21 @@
+[Unit]
+Description=Personal AI Companion - background worker (consolidation, tools, web search)
+Documentation=https://github.com/rabin999/personal-ai
+After=network-online.target docker.service companion-api.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/companion
+# Same wired object graph as the edge (api.composition); runs off the
+# conversation-latency path (spec §3 architecture, §14 queue).
+ExecStart=/opt/companion/.venv/bin/python -m workers.consolidation_worker
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=companion-worker
+
+[Install]
+WantedBy=multi-user.target
