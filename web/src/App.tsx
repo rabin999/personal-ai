@@ -16,6 +16,24 @@ import type { ConnState, TraceEvent, TurnGroup, TurnState } from "./lib/types";
 
 type View = "auth" | "app";
 
+// Persist which screen the user is on so a refresh keeps them in the app
+// instead of bouncing back to the auth page.
+const VIEW_KEY = "companion.view";
+function readView(): View {
+  try {
+    return localStorage.getItem(VIEW_KEY) === "app" ? "app" : "auth";
+  } catch {
+    return "auth";
+  }
+}
+function storeView(v: View): void {
+  try {
+    localStorage.setItem(VIEW_KEY, v);
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
+
 const FIELD =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
 const FIELD_LABEL =
@@ -41,8 +59,9 @@ export default function App() {
   const [turns, setTurns] = useState<TurnGroup[]>([]);
   const [openTurn, setOpenTurn] = useState<number | null>(null);
   const [companion, setCompanion] = useState("Companion");
-  const [view, setView] = useState<View>("auth");
+  const [view, setView] = useState<View>(readView);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
   const { pref: themePref, setPref: setThemePref } = useTheme();
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -53,7 +72,15 @@ export default function App() {
   const turnStateRef = useRef<TurnState>("idle");
 
   useEffect(() => {
-    listMicrophones().then(setDevices).catch(() => {});
+    // On a restored "app" session (refresh), re-prompt for mic access so device
+    // labels populate; otherwise just enumerate what we can without a prompt.
+    if (readView() === "app") {
+      requestMicAccess().then((granted) => {
+        if (granted) listMicrophones().then(setDevices).catch(() => {});
+      });
+    } else {
+      listMicrophones().then(setDevices).catch(() => {});
+    }
   }, []);
 
   const setTurn = (s: TurnState) => {
@@ -186,6 +213,7 @@ export default function App() {
   // MicPicker still explains how to grant it.
   const enterApp = useCallback(() => {
     setView("app");
+    storeView("app");
     requestMicAccess().then((granted) => {
       if (granted) listMicrophones().then(setDevices).catch(() => {});
     });
@@ -193,9 +221,11 @@ export default function App() {
 
   const signOut = async () => {
     setProfileOpen(false);
+    setTraceOpen(false);
     if (conn === "active" || conn === "connecting") await stopConversation();
     setTurns([]);
     setView("auth");
+    storeView("auth");
   };
 
   if (view === "auth") {
@@ -209,6 +239,7 @@ export default function App() {
   }
 
   const active = conn === "active" || conn === "connecting";
+  const realTurns = turns.filter((t) => t.index > 0).length;
   const dotColor =
     conn === "active"
       ? "bg-emerald-500"
@@ -221,26 +252,42 @@ export default function App() {
   return (
     <div className="flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
-          <div className="flex items-center gap-3">
-            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm">
+        <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
                 <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
               </svg>
             </div>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight">{companion}</h1>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold leading-tight">{companion}</h1>
+              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
                 Voice-first companion · Grok voice
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:flex dark:border-slate-700 dark:bg-slate-800/70">
               <span className={`h-2 w-2 rounded-full ${dotColor}`} />
               <span className="text-slate-600 dark:text-slate-300">{CONN_LABEL[conn]}</span>
             </div>
+            {/* Trace drawer toggle — mobile only; the trace is a persistent sidebar on desktop. */}
+            <button
+              onClick={() => setTraceOpen(true)}
+              aria-label="Open conversation trace"
+              title="Conversation trace"
+              className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100 lg:hidden dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 6h16M4 12h10M4 18h7" />
+              </svg>
+              {realTurns > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold leading-none text-white">
+                  {realTurns}
+                </span>
+              )}
+            </button>
             <ThemeToggle pref={themePref} onChange={setThemePref} />
             <span className="hidden h-6 w-px bg-slate-200 sm:block dark:bg-slate-800" />
             <button
@@ -254,14 +301,14 @@ export default function App() {
           </div>
         </header>
 
-        <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-6">
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-4 py-8 sm:px-6">
           {/* Soft backdrop wash */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(99,102,241,0.08),transparent_70%)]" />
           <Orb state={turnState} level={level} />
         </div>
 
         {/* Bottom action bar */}
-        <div className="border-t border-slate-200 bg-white/80 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/50">
+        <div className="border-t border-slate-200 bg-white/80 px-4 py-4 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-900/50">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
             <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
               <label className="flex min-w-0 flex-col gap-1.5">
@@ -327,6 +374,8 @@ export default function App() {
         openTurn={openTurn}
         onToggle={(i) => setOpenTurn((cur) => (cur === i ? null : i))}
         onReplay={replay}
+        mobileOpen={traceOpen}
+        onCloseMobile={() => setTraceOpen(false)}
       />
 
       <ProfilePanel
