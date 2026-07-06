@@ -15,6 +15,7 @@ class Settings(BaseSettings):
 
     # OpenRouter — one key covers LLM, STT, and TTS (design doc §10.1)
     open_router_api_key: str = ""
+    open_router_base_url: str = "https://openrouter.ai/api/v1"
 
     # Web search (spec §15) — filled in when the module is built
     serper_api_key: str = ""
@@ -22,7 +23,12 @@ class Settings(BaseSettings):
 
     # Datastores — defaults match docker-compose.yml for local dev
     mongo_uri: str = "mongodb://localhost:27017"
+    mongo_db: str = "companion"
     qdrant_url: str = "http://localhost:6333"
+    # Dense vector size for Qdrant collections; must match the embedding
+    # model chosen in §5 (Episodic Memory). Changing it means recreating
+    # the collections.
+    embedding_dim: int = 1536
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"

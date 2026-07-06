@@ -1,4 +1,4 @@
-# Local datastores for development and integration tests (CLAUDE.md §6.2).
+# Local datastores for development and integration tests.
 # Start:  docker compose up -d
 # Reset:  docker compose down -v
 name: companion

@@ -3,7 +3,7 @@
 The token → user_id wiring point (spec §26 rule 1): every request carries a
 bearer token; this dependency resolves it through the UserContext port and
 the resulting ``user_id`` flows into the pipeline. Downstream modules must
-take ``user_id`` from here — never hard-code it (CLAUDE.md §2.2).
+take ``user_id`` from here — never hard-code it (spec §0.5).
 """
 
 from typing import Annotated

@@ -16,7 +16,7 @@ from ports.user_context import Unauthorized, UserRecord
 
 
 def test_health_endpoint_runs_without_auth() -> None:
-    with TestClient(create_app()) as client:
+    with TestClient(create_app(wire_adapters=False)) as client:
         response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

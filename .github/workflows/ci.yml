@@ -1,4 +1,4 @@
-# CI: the FULL CHECK from CLAUDE.md §4a — ruff, mypy, lint-imports, pytest.
+# CI: lint, type-check, import-boundary check, and test suite.
 name: CI
 
 on:
@@ -27,6 +27,9 @@ jobs:
 
       - name: import-linter (core must not import adapters)
         run: uv run lint-imports
+
+      - name: Start datastores (integration tests)
+        run: docker compose up -d --wait
 
       - name: pytest
         run: uv run pytest --cov

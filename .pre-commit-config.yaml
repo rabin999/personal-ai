@@ -1,4 +1,4 @@
-# Runs the FULL CHECK from CLAUDE.md §4a so bad code can't be committed.
+# Runs the full pre-merge check (lint, types, import boundary, tests) on every commit.
 # Install once:  uv run pre-commit install
 repos:
   - repo: local

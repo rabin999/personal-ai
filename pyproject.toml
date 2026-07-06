@@ -50,7 +50,7 @@ select = [
     "UP",    # pyupgrade
     "SIM",   # flake8-simplify
     "RUF",   # ruff-specific
-    "ASYNC", # flake8-async (async-first invariant, CLAUDE.md §2.10)
+    "ASYNC", # flake8-async (the codebase is async-first, spec §0.5)
 ]
 
 [tool.mypy]
@@ -63,7 +63,7 @@ files = ["config", "core", "ports", "adapters", "voice", "workers", "api", "serv
 root_packages = ["core", "ports", "adapters", "api", "voice", "workers", "config", "services"]
 
 [[tool.importlinter.contracts]]
-name = "core/ must never import adapters/ (hexagonal boundary, CLAUDE.md §2.3)"
+name = "core/ must never import adapters/ (hexagonal boundary, design doc §17.2)"
 type = "forbidden"
 source_modules = ["core"]
 forbidden_modules = ["adapters"]
