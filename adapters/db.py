@@ -13,16 +13,20 @@ top of this layer.
 import asyncio
 from typing import Any, TypedDict
 
+import httpx
 from graphiti_core import Graphiti
 from graphiti_core.cross_encoder.openai_reranker_client import OpenAIRerankerClient
 from graphiti_core.driver.neo4j_driver import Neo4jDriver
-from graphiti_core.embedder.openai import OpenAIEmbedder, OpenAIEmbedderConfig
-from graphiti_core.llm_client import LLMConfig, OpenAIClient
+from graphiti_core.llm_client import LLMConfig
+from graphiti_core.llm_client.openai_generic_client import OpenAIGenericClient
 from neo4j import AsyncDriver, AsyncGraphDatabase
+from openai import AsyncOpenAI
 from pymongo import AsyncMongoClient
 from pymongo.asynchronous.collection import AsyncCollection
 from qdrant_client import AsyncQdrantClient, models
 
+from adapters.graph.embedder import FastembedEmbedder
+from adapters.llm.usage import LLMUsageRecorder
 from config.settings import Settings
 
 # Collection names are fixed by spec §1 rule 3; the vector names are shared
@@ -64,6 +68,9 @@ class Database:
         # Built lazily: Graphiti spawns background index work and needs LLM
         # client config, which only §6 (Semantic Memory) actually uses.
         self._graphiti: Graphiti | None = None
+        # Token usage from Graphiti's internal LLM calls; the graph adapter
+        # drains this into the Cost Ledger after each operation (§0.5).
+        self.llm_usage = LLMUsageRecorder()
 
     # ── spec §1 interface ────────────────────────────────────────────────
 
@@ -76,21 +83,36 @@ class Database:
         return self._qdrant
 
     def graphiti(self) -> Graphiti:
-        """Configured Graphiti instance (LLM/embedder/reranker via OpenRouter).
+        """Configured Graphiti instance (spec §6 wiring).
 
-        Model selection is finalized in §6; here only the provider wiring is
-        set so nothing silently depends on an OPENAI_API_KEY env var.
+        LLM extraction goes through OpenRouter via the OpenAI-compatible
+        generic client in json_object mode (strict json_schema is rejected —
+        Graphiti's schemas lack additionalProperties:false);
+        embeddings are local fastembed (no OpenRouter embeddings endpoint);
+        token usage is recorded on the shared HTTP client for cost logging.
         """
         if self._graphiti is None:
             settings = self._settings
             if not settings.open_router_api_key:
                 raise RuntimeError(
                     "OPEN_ROUTER_API_KEY is not set — Graphiti needs it for "
-                    "LLM/embedding calls (see .env.example)"
+                    "LLM extraction calls (see .env.example)"
                 )
             llm_config = LLMConfig(
                 api_key=settings.open_router_api_key,
                 base_url=settings.open_router_base_url,
+                model=settings.graphiti_llm_model,
+                small_model=settings.graphiti_small_model,
+                # Extraction is a parsing task: keep it deterministic so the
+                # same conversation yields the same graph.
+                temperature=0,
+            )
+            openai_client = AsyncOpenAI(
+                api_key=settings.open_router_api_key,
+                base_url=settings.open_router_base_url,
+                http_client=httpx.AsyncClient(
+                    event_hooks={"response": [self.llm_usage.on_response]}
+                ),
             )
             self._graphiti = Graphiti(
                 graph_driver=Neo4jDriver(
@@ -98,14 +120,11 @@ class Database:
                     user=settings.neo4j_user,
                     password=settings.neo4j_password,
                 ),
-                llm_client=OpenAIClient(config=llm_config),
-                embedder=OpenAIEmbedder(
-                    config=OpenAIEmbedderConfig(
-                        api_key=settings.open_router_api_key,
-                        base_url=settings.open_router_base_url,
-                    )
+                llm_client=OpenAIGenericClient(
+                    config=llm_config, client=openai_client, structured_output_mode="json_object"
                 ),
-                cross_encoder=OpenAIRerankerClient(config=llm_config),
+                embedder=FastembedEmbedder(settings.embedding_model),
+                cross_encoder=OpenAIRerankerClient(config=llm_config, client=openai_client),
             )
         return self._graphiti
 

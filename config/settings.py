@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # the model; changing it means recreating the Qdrant collections.
     embedding_model: str = "BAAI/bge-small-en-v1.5"
     embedding_dim: int = 384
+
+    # LLM used by Graphiti for entity/fact extraction (§6); overridable per
+    # deployment. Routed through OpenRouter like all LLM traffic.
+    # gemini-2.5-flash extracts reliably where gpt-4.1-mini kept emitting
+    # edges to entities outside its node list (all dropped by Graphiti).
+    graphiti_llm_model: str = "google/gemini-2.5-flash"
+    graphiti_small_model: str = "google/gemini-2.5-flash"
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"

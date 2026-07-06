@@ -18,6 +18,7 @@ from ports.doc_store import DocStore
 PROFILE_COLLECTION = "user_profile"
 TRAIT_DEFS_COLLECTION = "trait_defs"
 PROJECT_TYPES_COLLECTION = "project_types"
+PROVIDER_CONFIG_COLLECTION = "provider_config"
 
 # Never patchable through profile.update: identity is owned by User Context
 # (§26) and creation time is immutable.
@@ -103,6 +104,7 @@ class TraitRegistry:
         for filename, collection in (
             ("trait_defs.json", TRAIT_DEFS_COLLECTION),
             ("project_types.json", PROJECT_TYPES_COLLECTION),
+            ("provider_config.json", PROVIDER_CONFIG_COLLECTION),
         ):
             path = defaults_dir / filename
             if not path.exists():

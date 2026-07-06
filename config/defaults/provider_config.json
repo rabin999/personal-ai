@@ -1,0 +1,24 @@
+[
+  {
+    "_id": "llm_pricing",
+    "version": 2,
+    "models": {
+      "openai/gpt-4.1-mini": {
+        "input_per_mtok": 0.4,
+        "output_per_mtok": 1.6
+      },
+      "openai/gpt-4.1-nano": {
+        "input_per_mtok": 0.1,
+        "output_per_mtok": 0.4
+      },
+      "openai/gpt-4.1": {
+        "input_per_mtok": 2.0,
+        "output_per_mtok": 8.0
+      },
+      "google/gemini-2.5-flash": {
+        "input_per_mtok": 0.3,
+        "output_per_mtok": 2.5
+      }
+    }
+  }
+]
