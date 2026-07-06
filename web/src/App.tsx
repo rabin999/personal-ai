@@ -2,8 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Orb } from "./components/Orb";
 import { MicPicker } from "./components/MicPicker";
 import { TraceLog } from "./components/TraceLog";
+import { ThemeToggle } from "./components/ThemeToggle";
 import { AudioPlayer, MicCapture, listMicrophones } from "./lib/audio";
+import { useTheme } from "./lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "./lib/types";
+
+const FIELD =
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
+const FIELD_LABEL =
+  "text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400";
+
+const CONN_LABEL: Record<ConnState, string> = {
+  idle: "Offline",
+  connecting: "Connecting…",
+  active: "Connected",
+  error: "Error",
+};
 
 const VOICES = ["eve", "ara", "leo", "rex", "sal"]; // xAI Grok voices
 
@@ -18,6 +32,7 @@ export default function App() {
   const [turns, setTurns] = useState<TurnGroup[]>([]);
   const [openTurn, setOpenTurn] = useState<number | null>(null);
   const [companion, setCompanion] = useState("Companion");
+  const { pref: themePref, setPref: setThemePref } = useTheme();
 
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicCapture | null>(null);
@@ -25,6 +40,7 @@ export default function App() {
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
   const turnStateRef = useRef<TurnState>("idle");
+  const mutedRef = useRef(false); // half-duplex: mute mic while the reply plays
 
   useEffect(() => {
     listMicrophones().then(setDevices).catch(() => {});
@@ -76,7 +92,8 @@ export default function App() {
         if (turnStateRef.current === "speaking") setLevel(l);
       },
       () => {
-        // Reply finished playing → back to listening.
+        // Reply finished playing → un-mute the mic and go back to listening.
+        mutedRef.current = false;
         setLevel(0);
         setTurn("idle");
       },
@@ -87,6 +104,7 @@ export default function App() {
     ws.onerror = () => setConn("error");
     ws.onmessage = async (ev) => {
       if (ev.data instanceof ArrayBuffer) {
+        mutedRef.current = true; // companion is speaking — don't capture the echo
         playerRef.current?.enqueue(ev.data);
         const turn = audioTurnRef.current;
         upsertTurn(turn, (t) => (t.audio = [...t.audio, ev.data]));
@@ -106,8 +124,6 @@ export default function App() {
           setConn("error");
           break;
         case "trace":
-          // Server detected a barge-in → stop playing the reply immediately.
-          if ((msg as TraceEvent).stage === "barge_in") playerRef.current?.stop();
           handleTrace(msg as TraceEvent);
           break;
         case "conversation_ended":
@@ -122,14 +138,13 @@ export default function App() {
     micRef.current = new MicCapture();
     await micRef.current.start(
       micId,
-      // Full-duplex: keep streaming mic audio while the reply plays so the user
-      // CAN barge in (§24). Browser echoCancellation cancels the companion's own
-      // voice; the server needs sustained speech (START_FRAMES) to treat it as
-      // an interrupt, so residual echo won't self-trigger.
       (pcm) => {
+        // Half-duplex: stop sending mic audio while the reply is playing so the
+        // companion never hears (and answers) its own voice (§19/§24 need AEC).
+        if (mutedRef.current) return;
         if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(pcm);
       },
-      (l) => turnStateRef.current !== "speaking" && setLevel(l),
+      (l) => !mutedRef.current && setLevel(l),
     );
     if (devices.length === 0) listMicrophones().then(setDevices).catch(() => {});
   };
@@ -153,70 +168,108 @@ export default function App() {
     playerRef.current?.replay(turn.audio, sampleRateRef.current);
 
   const active = conn === "active" || conn === "connecting";
+  const dotColor =
+    conn === "active"
+      ? "bg-emerald-500"
+      : conn === "error"
+        ? "bg-red-500"
+        : conn === "connecting"
+          ? "bg-amber-500"
+          : "bg-slate-400 dark:bg-slate-600";
 
   return (
-    <div className="flex h-full bg-slate-950 text-slate-100">
-      <main className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-slate-800 px-6 py-4">
-          <div>
-            <h1 className="text-lg font-semibold">{companion}</h1>
-            <p className="text-xs text-slate-500">Voice-first companion · Grok voice</p>
+    <div className="flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="flex items-center justify-between gap-4 border-b border-slate-200 px-6 py-4 dark:border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm">
+              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+                <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold leading-tight">{companion}</h1>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Voice-first companion · Grok voice
+              </p>
+            </div>
           </div>
-          <div className="flex items-center gap-2 text-xs">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                conn === "active" ? "bg-emerald-400" : conn === "error" ? "bg-red-400" : "bg-slate-600"
-              }`}
-            />
-            <span className="text-slate-400">{conn}</span>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800/70">
+              <span className={`h-2 w-2 rounded-full ${dotColor}`} />
+              <span className="text-slate-600 dark:text-slate-300">{CONN_LABEL[conn]}</span>
+            </div>
+            <ThemeToggle pref={themePref} onChange={setThemePref} />
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col items-center justify-center gap-10 px-6">
+        <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-6">
+          {/* Soft backdrop wash */}
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(99,102,241,0.08),transparent_70%)]" />
           <Orb state={turnState} level={level} />
-
-          <button
-            onClick={active ? stopConversation : connect}
-            className={`rounded-full px-10 py-5 text-base font-medium shadow-lg transition-all ${
-              active
-                ? "bg-rose-600 text-white hover:bg-rose-500"
-                : "bg-emerald-600 text-white hover:bg-emerald-500"
-            }`}
-          >
-            {active ? "Stop conversation" : "Start conversation"}
-          </button>
-          <p className="-mt-4 text-xs text-slate-500">
-            {active ? "Just talk — I take turns on my own. Talk over me to interrupt." : "Press start and speak naturally."}
-          </p>
         </div>
 
-        <footer className="flex flex-wrap items-end gap-4 border-t border-slate-800 px-6 py-4">
-          <label className="flex flex-col gap-1.5 text-xs text-slate-400">
-            <span className="uppercase tracking-wider">Token</span>
-            <input
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              disabled={active}
-              className="w-52 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-indigo-500 disabled:opacity-50"
-            />
-          </label>
-          <MicPicker devices={devices} value={micId} onChange={setMicId} disabled={active} />
-          <label className="flex flex-col gap-1.5 text-xs text-slate-400">
-            <span className="uppercase tracking-wider">Voice</span>
-            <select
-              value={voice}
-              onChange={(e) => setVoice(e.target.value)}
-              disabled={active}
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm capitalize outline-none focus:border-indigo-500 disabled:opacity-50"
+        {/* Bottom action bar */}
+        <div className="border-t border-slate-200 bg-white/80 px-6 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/50">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
+            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
+              <label className="flex min-w-0 flex-col gap-1.5">
+                <span className={FIELD_LABEL}>Token</span>
+                <input
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  disabled={active}
+                  className={FIELD}
+                />
+              </label>
+              <MicPicker devices={devices} value={micId} onChange={setMicId} disabled={active} />
+              <label className="flex min-w-0 flex-col gap-1.5">
+                <span className={FIELD_LABEL}>Voice</span>
+                <select
+                  value={voice}
+                  onChange={(e) => setVoice(e.target.value)}
+                  disabled={active}
+                  className={`${FIELD} capitalize`}
+                >
+                  {VOICES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <button
+              onClick={active ? stopConversation : connect}
+              className={`group flex shrink-0 items-center justify-center gap-2.5 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] lg:min-w-[13rem] ${
+                active
+                  ? "bg-rose-600 shadow-rose-600/25 hover:bg-rose-500"
+                  : "bg-indigo-600 shadow-indigo-600/25 hover:bg-indigo-500"
+              }`}
             >
-              {VOICES.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-          </label>
-        </footer>
+              {active ? (
+                <>
+                  <span className="h-3 w-3 rounded-[3px] bg-white" />
+                  Stop conversation
+                </>
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                    <path d="M8 5v14l11-7z" />
+                  </svg>
+                  Start conversation
+                </>
+              )}
+            </button>
+          </div>
+          <p className="mt-3 text-center text-xs text-slate-500 lg:text-left dark:text-slate-400">
+            {active
+              ? "Just talk — I take turns on my own. Talk over me to interrupt."
+              : "Press start and speak naturally."}
+          </p>
+        </div>
       </main>
 
       <TraceLog
