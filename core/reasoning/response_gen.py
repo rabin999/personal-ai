@@ -17,9 +17,9 @@ defaults — final feel is tuned by a human (contract §7).
 import json
 import logging
 import re
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, BeforeValidator, ValidationError
 
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
@@ -65,13 +65,35 @@ Set capability_boundary_flag if your draft claims felt emotion or consciousness.
 """.strip()
 
 
+def _clamp_unit(value: Any) -> float:
+    """Models sometimes emit 1.2 or "0.8"; clamp instead of rejecting the turn."""
+    try:
+        return min(1.0, max(0.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.5
+
+
+def _coerce_flag(value: Any) -> Any:
+    if isinstance(value, str) and value.strip().lower() in ("null", "none", ""):
+        return None
+    return value
+
+
+def _coerce_tier(value: Any) -> Any:
+    lowered = str(value).strip().lower()
+    return lowered if lowered in ("simple", "moderate", "complex") else "moderate"
+
+
+UnitScore = Annotated[float, BeforeValidator(_clamp_unit)]
+
+
 class Judgment(BaseModel):
-    intent_confidence: float = Field(ge=0.0, le=1.0)
-    novelty_score: float = Field(ge=0.0, le=1.0)
-    emotional_salience: float = Field(ge=0.0, le=1.0)
-    ambiguity: float = Field(ge=0.0, le=1.0)
-    complexity_tier: Tier = "moderate"
-    capability_boundary_flag: BoundaryFlag = None
+    intent_confidence: UnitScore = 0.5
+    novelty_score: UnitScore = 0.5
+    emotional_salience: UnitScore = 0.5
+    ambiguity: UnitScore = 0.5
+    complexity_tier: Annotated[Tier, BeforeValidator(_coerce_tier)] = "moderate"
+    capability_boundary_flag: Annotated[BoundaryFlag, BeforeValidator(_coerce_flag)] = None
 
 
 class LLMTurn(BaseModel):
@@ -149,7 +171,11 @@ class ResponseGenerator:
             try:
                 return LLMTurn.model_validate(json.loads(_strip_fences(result.text)))
             except (json.JSONDecodeError, ValidationError):
-                logger.warning("judgment block failed validation (attempt %d)", attempt + 1)
+                logger.warning(
+                    "judgment block failed validation (attempt %d): %.300s",
+                    attempt + 1,
+                    result.text,
+                )
         return None
 
     async def _curiosity_gate(self, prompt: AssembledPrompt, judgment: Judgment) -> Action:

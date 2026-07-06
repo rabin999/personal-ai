@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(Phase 3 ✅ — next: Phase 4 §14 Background Queue)_
+**Current module:** _(§14 ✅ — next: §15 Web Search)_
 
 ---
 
@@ -56,7 +56,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
 | ⬜ | §13 Tool Dispatcher | spec §13 | §14,§3,§11 | ⬜ | inline/background/action; MCP-shaped; context-scoped |
-| ⬜ | §14 Background Task Queue | spec §14 | Redis | ⬜ | Pull-at-pause delivery |
+| ✅ | §14 Background Task Queue | spec §14 | Redis | U✅ I✅ E✅ | Built before §13 (its dependency). Redis lists+JSON records; TaskWorker handler registry; DeliveryComposer: LLM judges relevance → interject or suppress (never templated) |
 | ⬜ | §15 Web Search | spec §15 | §11,§14,§3 | ⬜ | Serper→Brave; cache; summarize; detached call |
 | ⬜ | §16 Projects | spec §16 | §1,§8,§3,§13 | ⬜ | Types vs instances; ledger; consent-gated insight |
 
