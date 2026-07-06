@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(Phase 1 ✅ — next: Phase 2 §4 Working Memory)_
+**Current module:** _(§4, §5 ✅ — next: §6 Semantic Memory)_
 
 ---
 
@@ -38,8 +38,8 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 ## Phase 2 — Memory
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
-| ⬜ | §4 Working Memory | spec §4 | — | ⬜ | In-session buffer |
-| ⬜ | §5 Episodic Memory | spec §5 | §1 | ⬜ | Qdrant hybrid dense+BM25+RRF, user-filtered, chunking |
+| ✅ | §4 Working Memory | spec §4 | — | U✅ I– E✅ | `core/memory/working.py`; pure in-memory so integration n/a; e2e via §5 memory-flow test |
+| ✅ | §5 Episodic Memory | spec §5 | §1 | U✅ I✅ E✅ | fastembed local embedder (bge-small, 384d) + Qdrant/bm25 sparse; RRF via query_points; turn-based chunking; gentle recency half-life; isolation verified |
 | ⬜ | §6 Semantic Memory | spec §6 | §1 | ⬜ | Graphiti; temporal validity (supersede, don't delete) |
 | ⬜ | §7 Procedural Memory | spec §7 | §1 | ⬜ | Confidence-scored rules |
 | ⬜ | §8 Entity Resolution | spec §8 | §1, §5 | ⬜ | Qdrant entity pointers; disambiguation path |

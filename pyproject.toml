@@ -5,6 +5,7 @@ description = "Multi-user, voice-first AI companion (see docs/ai-companion-mvp-b
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.139.0",
+    "fastembed>=0.8.0",
     "graphiti-core>=0.29.2",
     "httpx>=0.28.1",
     "neo4j>=6.2.0",

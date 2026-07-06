@@ -25,10 +25,11 @@ class Settings(BaseSettings):
     mongo_uri: str = "mongodb://localhost:27017"
     mongo_db: str = "companion"
     qdrant_url: str = "http://localhost:6333"
-    # Dense vector size for Qdrant collections; must match the embedding
-    # model chosen in §5 (Episodic Memory). Changing it means recreating
-    # the collections.
-    embedding_dim: int = 1536
+    # Embedding model for episodic/entity vectors (§5): local fastembed
+    # (OpenRouter exposes no embeddings endpoint). embedding_dim must match
+    # the model; changing it means recreating the Qdrant collections.
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_dim: int = 384
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"
