@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(§10 ✅ — next: §12 Response Generation)_
+**Current module:** _(Phase 3 ✅ — next: Phase 4 §14 Background Queue)_
 
 ---
 
@@ -41,16 +41,16 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | ✅ | §4 Working Memory | spec §4 | — | U✅ I– E✅ | `core/memory/working.py`; pure in-memory so integration n/a; e2e via §5 memory-flow test |
 | ✅ | §5 Episodic Memory | spec §5 | §1 | U✅ I✅ E✅ | fastembed local embedder (bge-small, 384d) + Qdrant/bm25 sparse; RRF via query_points; turn-based chunking; gentle recency half-life; isolation verified |
 | ✅ | §6 Semantic Memory | spec §6 | §1 | U✅ I✅ E✅ | Graphiti group_id=user_id; gemini-2.5-flash extraction (gpt-4.1-mini dropped edges), temp 0, json_object mode; fastembed embedder; LLM usage → Cost Ledger via httpx hook; paid tests skip loudly without OPEN_ROUTER_API_KEY |
-| ✅ | §7 Procedural Memory | spec §7 | §1 | U✅ I✅ E— | Confidence 0.3 start / 0.6 injection threshold / ±delta clamp [0,1]; context filter by trigger words; e2e arrives with §10/§18 (integration covers today's full path — stated per contract §6) |
+| ✅ | §7 Procedural Memory | spec §7 | §1 | U✅ I✅ E✅ | Confidence 0.3 start / 0.6 injection threshold / ±delta clamp [0,1]; context filter by trigger words; e2e arrives with §10/§18 (integration covers today's full path — stated per contract §6) |
 | ✅ | §8 Entity Resolution | spec §8 | §1, §5 | U✅ I✅ E— | Deterministic point ids (rename = in-place update); is_ambiguous helper (runner-up ≥0.8×top) for §12's disambiguation; e2e arrives with §10 step 2 (integration covers today's full path) |
 
 ## Phase 3 — Reasoning Core (text-only first)
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
-| ✅ | §9 Self-Model (metacognition) | spec §9 | §1, §11 | U✅ I✅ E— | `self_statements` Qdrant collection (§9's namespace); heuristic overclaim patterns + judgment flag → LLM rewrite (retry once → safe fallback); patterns/wording flagged for human tuning; per-turn-log e2e lands with §12 |
-| ✅ | §10 Prompt Assembly | spec §10 | §2,4,5,6,7,8,9,16 | U✅ I✅ E— | Ordered pipeline + char-budget trimming (episodic→facts→self→project→rules; utterance/WM/entities untouchable); §16 injects via ProjectContextProvider protocol (stubbed); heuristic complexity hint; e2e via §12 turn |
-| ✅ | §11 LLM Router (OpenRouter) | spec §11 | §3, §2 | U✅ I✅ E— | Built before §9/§10 (their dependency). Tier chains in provider_config `llm_router`; exact cost via OpenRouter usage accounting; embed() is local fastembed; e2e via §12 turn |
-| ⬜ | §12 Response Gen + behavior gates | spec §12 | §10,§11,§9 | ⬜ | ⚠️ behavioral — mechanism only, human-tuned |
+| ✅ | §9 Self-Model (metacognition) | spec §9 | §1, §11 | U✅ I✅ E✅ | `self_statements` Qdrant collection (§9's namespace); heuristic overclaim patterns + judgment flag → LLM rewrite (retry once → safe fallback); patterns/wording flagged for human tuning; per-turn-log e2e green via §12 turn |
+| ✅ | §10 Prompt Assembly | spec §10 | §2,4,5,6,7,8,9,16 | U✅ I✅ E✅ | Ordered pipeline + char-budget trimming (episodic→facts→self→project→rules; utterance/WM/entities untouchable); §16 injects via ProjectContextProvider protocol (stubbed); heuristic complexity hint; e2e green via §12 turn |
+| ✅ | §11 LLM Router (OpenRouter) | spec §11 | §3, §2 | U✅ I✅ E✅ | Built before §9/§10 (their dependency). Tier chains in provider_config `llm_router`; exact cost via OpenRouter usage accounting; embed() is local fastembed; e2e via §12 turn |
+| ✅ | §12 Response Gen + behavior gates | spec §12 | §10,§11,§9 | U✅ I✅ E✅ | ⚠️ mechanism complete, thresholds/wording await human tuning: curiosity gate (trait params), overclaim rewrite, pull-based disclosure, Pydantic retry→safe fallback; full-turn e2e green (memory recall via real LLM) |
 
 ## Phase 4 — Tools & Projects
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
