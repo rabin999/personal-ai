@@ -3,9 +3,18 @@ import { Orb } from "./components/Orb";
 import { MicPicker } from "./components/MicPicker";
 import { TraceLog } from "./components/TraceLog";
 import { ThemeToggle } from "./components/ThemeToggle";
-import { AudioPlayer, MicCapture, listMicrophones } from "./lib/audio";
+import { ProfilePanel } from "./components/ProfilePanel";
+import { AuthPage } from "./components/AuthPage";
+import {
+  AudioPlayer,
+  MicCapture,
+  listMicrophones,
+  requestMicAccess,
+} from "./lib/audio";
 import { useTheme } from "./lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "./lib/types";
+
+type View = "auth" | "app";
 
 const FIELD =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
@@ -32,6 +41,8 @@ export default function App() {
   const [turns, setTurns] = useState<TurnGroup[]>([]);
   const [openTurn, setOpenTurn] = useState<number | null>(null);
   const [companion, setCompanion] = useState("Companion");
+  const [view, setView] = useState<View>("auth");
+  const [profileOpen, setProfileOpen] = useState(false);
   const { pref: themePref, setPref: setThemePref } = useTheme();
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -40,7 +51,6 @@ export default function App() {
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
   const turnStateRef = useRef<TurnState>("idle");
-  const mutedRef = useRef(false); // half-duplex: mute mic while the reply plays
 
   useEffect(() => {
     listMicrophones().then(setDevices).catch(() => {});
@@ -92,8 +102,8 @@ export default function App() {
         if (turnStateRef.current === "speaking") setLevel(l);
       },
       () => {
-        // Reply finished playing → un-mute the mic and go back to listening.
-        mutedRef.current = false;
+        // Reply finished playing → back to listening. Full-duplex: the mic never
+        // stopped streaming, so barge-in stays available throughout.
         setLevel(0);
         setTurn("idle");
       },
@@ -104,7 +114,8 @@ export default function App() {
     ws.onerror = () => setConn("error");
     ws.onmessage = async (ev) => {
       if (ev.data instanceof ArrayBuffer) {
-        mutedRef.current = true; // companion is speaking — don't capture the echo
+        // Full-duplex: enqueue the reply audio but keep the mic streaming so the
+        // user can talk over it. Browser echoCancellation handles the echo.
         playerRef.current?.enqueue(ev.data);
         const turn = audioTurnRef.current;
         upsertTurn(turn, (t) => (t.audio = [...t.audio, ev.data]));
@@ -124,6 +135,9 @@ export default function App() {
           setConn("error");
           break;
         case "trace":
+          // Server detected an interruption → flush the companion's buffered
+          // playback immediately so barge-in feels instant (§24).
+          if ((msg as TraceEvent).stage === "barge_in") playerRef.current?.stop();
           handleTrace(msg as TraceEvent);
           break;
         case "conversation_ended":
@@ -139,12 +153,12 @@ export default function App() {
     await micRef.current.start(
       micId,
       (pcm) => {
-        // Half-duplex: stop sending mic audio while the reply is playing so the
-        // companion never hears (and answers) its own voice (§19/§24 need AEC).
-        if (mutedRef.current) return;
+        // Full-duplex: always stream mic audio, even while the reply plays, so
+        // the user can barge in (§24). Browser AEC suppresses the echo.
         if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(pcm);
       },
-      (l) => !mutedRef.current && setLevel(l),
+      // Don't let the mic level fight the companion's playback level on the orb.
+      (l) => turnStateRef.current !== "speaking" && setLevel(l),
     );
     if (devices.length === 0) listMicrophones().then(setDevices).catch(() => {});
   };
@@ -166,6 +180,33 @@ export default function App() {
 
   const replay = (turn: TurnGroup) =>
     playerRef.current?.replay(turn.audio, sampleRateRef.current);
+
+  // Entering the app: proactively prompt for microphone access so device labels
+  // populate and the pipeline works on first Start. Silent if denied — the
+  // MicPicker still explains how to grant it.
+  const enterApp = useCallback(() => {
+    setView("app");
+    requestMicAccess().then((granted) => {
+      if (granted) listMicrophones().then(setDevices).catch(() => {});
+    });
+  }, []);
+
+  const signOut = async () => {
+    setProfileOpen(false);
+    if (conn === "active" || conn === "connecting") await stopConversation();
+    setTurns([]);
+    setView("auth");
+  };
+
+  if (view === "auth") {
+    return (
+      <AuthPage
+        themePref={themePref}
+        onThemeChange={setThemePref}
+        onContinue={enterApp}
+      />
+    );
+  }
 
   const active = conn === "active" || conn === "connecting";
   const dotColor =
@@ -195,12 +236,21 @@ export default function App() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs dark:border-slate-700 dark:bg-slate-800/70">
+          <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:flex dark:border-slate-700 dark:bg-slate-800/70">
               <span className={`h-2 w-2 rounded-full ${dotColor}`} />
               <span className="text-slate-600 dark:text-slate-300">{CONN_LABEL[conn]}</span>
             </div>
             <ThemeToggle pref={themePref} onChange={setThemePref} />
+            <span className="hidden h-6 w-px bg-slate-200 sm:block dark:bg-slate-800" />
+            <button
+              onClick={() => setProfileOpen(true)}
+              aria-label="Open your profile"
+              title="Your profile"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-xs font-semibold text-white shadow-sm outline-none ring-offset-2 ring-offset-white transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-indigo-500 dark:ring-offset-slate-950"
+            >
+              {avatarInitials(token)}
+            </button>
           </div>
         </header>
 
@@ -243,10 +293,10 @@ export default function App() {
 
             <button
               onClick={active ? stopConversation : connect}
-              className={`group flex shrink-0 items-center justify-center gap-2.5 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-lg transition-all active:scale-[0.98] lg:min-w-[13rem] ${
+              className={`group flex shrink-0 items-center justify-center gap-2.5 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-md transition-all active:scale-[0.98] lg:min-w-[13rem] ${
                 active
-                  ? "bg-rose-600 shadow-rose-600/25 hover:bg-rose-500"
-                  : "bg-indigo-600 shadow-indigo-600/25 hover:bg-indigo-500"
+                  ? "bg-rose-600 shadow-rose-600/20 hover:bg-rose-500"
+                  : "bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-500"
               }`}
             >
               {active ? (
@@ -278,6 +328,21 @@ export default function App() {
         onToggle={(i) => setOpenTurn((cur) => (cur === i ? null : i))}
         onReplay={replay}
       />
+
+      <ProfilePanel
+        open={profileOpen}
+        token={token}
+        onClose={() => setProfileOpen(false)}
+        onSignOut={signOut}
+      />
     </div>
   );
+}
+
+// Two-letter avatar seed derived from the bearer token / demo user id.
+function avatarInitials(token: string): string {
+  const m = token.match(/[a-z0-9]+/gi);
+  if (!m) return "U";
+  const seed = m[m.length - 1];
+  return seed.slice(0, 2).toUpperCase();
 }

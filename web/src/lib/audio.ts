@@ -10,6 +10,34 @@ export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
   return devices.filter((d) => d.kind === "audioinput");
 }
 
+/**
+ * Proactively obtain microphone permission so device labels populate and the
+ * pipeline can capture on first Start. We open then immediately release a
+ * stream purely to trigger the browser's permission prompt (or resolve an
+ * already-granted permission). Returns whether access was granted.
+ */
+export async function requestMicAccess(): Promise<boolean> {
+  try {
+    // If the Permissions API reports a decision already, honour it without
+    // re-prompting on every app entry.
+    if (navigator.permissions?.query) {
+      try {
+        const status = await navigator.permissions.query({
+          name: "microphone" as PermissionName,
+        });
+        if (status.state === "denied") return false;
+      } catch {
+        /* Permissions API or the "microphone" name is unsupported — fall through. */
+      }
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch {
+    return false; // user dismissed/denied — MicPicker still explains how to grant.
+  }
+}
+
 export class MicCapture {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
