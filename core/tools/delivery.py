@@ -58,24 +58,22 @@ class DeliveryComposer:
             interjections.append(Interjection(task_id=task.task_id, line=line))
         return interjections
 
-    async def _compose(
-        self, user_id: str, task: QueuedTask, recent_context: str
-    ) -> str | None:
-        payload = json.dumps(
-            {"task_type": task.type, "params": task.params, "result": task.result}
-        )
+    async def _compose(self, user_id: str, task: QueuedTask, recent_context: str) -> str | None:
+        payload = json.dumps({"task_type": task.type, "params": task.params, "result": task.result})
         messages = [
             {"role": "system", "content": _COMPOSE_INSTRUCTIONS},
             {
                 "role": "user",
-                "content": f"Recent conversation:\n{recent_context}\n\n"
-                f"Finished task:\n{payload}",
+                "content": f"Recent conversation:\n{recent_context}\n\nFinished task:\n{payload}",
             },
         ]
         for _ in range(2):  # validate; retry once (§0.5)
             try:
                 result = await self._llm.complete(
-                    user_id, messages, "simple", response_format={"type": "json_object"},
+                    user_id,
+                    messages,
+                    "simple",
+                    response_format={"type": "json_object"},
                     session_id=task.session_id,
                 )
                 composed = _Composed.model_validate_json(result.text)

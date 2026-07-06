@@ -14,9 +14,28 @@ from pydantic import BaseModel
 
 # Words that signal an unfinished thought when they end the partial.
 _TRAILING_CONTINUATIONS = {
-    "and", "or", "but", "so", "because", "then", "also", "plus", "like",
-    "with", "about", "that", "which", "if", "when", "while", "to", "the",
-    "a", "an", "my", "i",
+    "and",
+    "or",
+    "but",
+    "so",
+    "because",
+    "then",
+    "also",
+    "plus",
+    "like",
+    "with",
+    "about",
+    "that",
+    "which",
+    "if",
+    "when",
+    "while",
+    "to",
+    "the",
+    "a",
+    "an",
+    "my",
+    "i",
 }
 _FILLERS = {"um", "uh", "er", "hmm", "uhh", "umm", "eh", "mmm"}
 

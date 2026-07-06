@@ -28,8 +28,17 @@ SEARCH_CACHE_COLLECTION = "search_cache"
 SHORT_TTL_S = 15 * 60
 LONG_TTL_S = 24 * 3600
 _TIME_SENSITIVE_MARKERS = (
-    "today", "now", "latest", "news", "price", "open", "score", "current",
-    "this week", "tonight", "live",
+    "today",
+    "now",
+    "latest",
+    "news",
+    "price",
+    "open",
+    "score",
+    "current",
+    "this week",
+    "tonight",
+    "live",
 )
 
 _SUMMARIZE_INSTRUCTIONS = (
@@ -88,8 +97,11 @@ class WebSearch:
             },
         )
         self._log_cost(
-            user_id, session_id, provider=provider.name,
-            cost=provider.cost_per_query_usd, hit=False,
+            user_id,
+            session_id,
+            provider=provider.name,
+            cost=provider.cost_per_query_usd,
+            hit=False,
         )
         return outcome
 
@@ -104,9 +116,7 @@ class WebSearch:
 
         return handle
 
-    async def _search_with_fallback(
-        self, query: str
-    ) -> tuple[list[SearchResult], SearchProvider]:
+    async def _search_with_fallback(self, query: str) -> tuple[list[SearchResult], SearchProvider]:
         try:
             return await self._primary.search(query), self._primary
         except SearchProviderError as exc:

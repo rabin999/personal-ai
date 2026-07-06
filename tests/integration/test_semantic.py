@@ -60,9 +60,7 @@ async def memory(real_db: Database, ledger: CostLedger) -> SemanticMemory:
 async def test_superseded_fact_keeps_history_with_validity_windows(
     memory: SemanticMemory, user_id: str
 ) -> None:
-    await memory.add_episode(
-        user_id, "user: my brother is called Tom", "2026-01-05T10:00:00+00:00"
-    )
+    await memory.add_episode(user_id, "user: my brother is called Tom", "2026-01-05T10:00:00+00:00")
     await memory.add_episode(
         user_id,
         "user: my brother legally changed his name — he is now called Max, not Tom",

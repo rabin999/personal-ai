@@ -124,8 +124,9 @@ async def test_action_tool_handler_logs_entry_and_triggers_insight(h: Harness) -
 
     output = await handler(
         _trade("SYPNL", "buy", 5, 40),
-        ToolContext(user_id=USER, session_id="s1", project_id=project.id,
-                    project_type="finance_portfolio"),
+        ToolContext(
+            user_id=USER, session_id="s1", project_id=project.id, project_type="finance_portfolio"
+        ),
     )
 
     assert output["logged"]["ticker"] == "SYPNL"

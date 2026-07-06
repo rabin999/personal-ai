@@ -36,7 +36,9 @@ async def test_enqueue_execute_and_pull_at_pause_lifecycle(
     queue: RedisTaskQueue, session_id: str, user_id: str
 ) -> None:
     task_id = await queue.enqueue(
-        session_id=session_id, user_id=user_id, type="web_search",
+        session_id=session_id,
+        user_id=user_id,
+        type="web_search",
         params={"query": "latest SYPNL news"},
     )
     assert (await queue.status(task_id)).status == "queued"
@@ -114,9 +116,7 @@ async def test_unknown_task_type_fails_loudly(
     queue: RedisTaskQueue, session_id: str, user_id: str
 ) -> None:
     worker = TaskWorker(queue)
-    task_id = await queue.enqueue(
-        session_id=session_id, user_id=user_id, type="mystery", params={}
-    )
+    task_id = await queue.enqueue(session_id=session_id, user_id=user_id, type="mystery", params={})
     await worker.run_once()
     task = await queue.status(task_id)
     assert task.status == "failed" and "no handler" in (task.error or "")

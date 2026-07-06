@@ -47,9 +47,7 @@ async def test_rule_lifecycle_promotion_and_demotion_in_mongo(
 
 async def test_two_user_isolation_in_mongo(memory: ProceduralMemory, user_id: str) -> None:
     other = f"it_{uuid.uuid4().hex[:12]}"
-    rule = await memory.add_candidate(
-        user_id, rule_text="r", trigger="need a win", action="a"
-    )
+    rule = await memory.add_candidate(user_id, rule_text="r", trigger="need a win", action="a")
     for _ in range(5):
         await memory.reinforce(user_id, rule.id)
 

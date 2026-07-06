@@ -85,9 +85,7 @@ class TraitRegistry:
         defs = await self._docs.find(TRAIT_DEFS_COLLECTION)
         traits = [_trait_from_doc(doc) for doc in defs]
         return [
-            trait
-            for trait in traits
-            if profile.traits_enabled.get(trait.id, trait.default_enabled)
+            trait for trait in traits if profile.traits_enabled.get(trait.id, trait.default_enabled)
         ]
 
     async def project_types(self) -> list[ProjectType]:

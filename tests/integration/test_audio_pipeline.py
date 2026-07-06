@@ -54,9 +54,12 @@ async def test_real_speech_opens_the_gate(vad) -> None:  # type: ignore[no-untyp
         resp = await client.post(
             f"{s.xai_base_url}/tts",
             headers={"Authorization": f"Bearer {s.xai_api_key}"},
-            json={"text": "Hello there, this is a test of voice detection.",
-                  "language": "en", "voice_id": "leo",
-                  "output_format": {"codec": "pcm", "sample_rate": 16000}},
+            json={
+                "text": "Hello there, this is a test of voice detection.",
+                "language": "en",
+                "voice_id": "leo",
+                "output_format": {"codec": "pcm", "sample_rate": 16000},
+            },
         )
         resp.raise_for_status()
     speech = resp.content + b"\x00" * (16000 * 2)  # + trailing silence to close the gate

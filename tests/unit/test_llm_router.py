@@ -132,12 +132,15 @@ async def test_verify_models_flags_missing_and_no_fallback() -> None:
 
     async def fake_list() -> SimpleNamespace:
         return SimpleNamespace(
-            data=[SimpleNamespace(id="cheap/model"), SimpleNamespace(id="cheap/backup"),
-                  SimpleNamespace(id="mid/model")]
+            data=[
+                SimpleNamespace(id="cheap/model"),
+                SimpleNamespace(id="cheap/backup"),
+                SimpleNamespace(id="mid/model"),
+            ]
         )
 
     router._client = SimpleNamespace(models=SimpleNamespace(list=fake_list))  # type: ignore[assignment]
     result = await router.verify_models()
     assert "strong/model" in result["missing"]  # in TIERS but not in catalog
-    assert "complex" in result["no_fallback"]   # single-model tier
+    assert "complex" in result["no_fallback"]  # single-model tier
     assert "simple" not in result["no_fallback"]

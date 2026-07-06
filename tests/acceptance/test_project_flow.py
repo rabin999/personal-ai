@@ -63,8 +63,10 @@ async def test_project_action_flow_end_to_end() -> None:
         # Create the project: pointer indexed, action tool registered.
         project = await projects.create(user_id, "finance_portfolio", "NEPSE Portfolio")
         context = ToolContext(
-            user_id=user_id, session_id=session,
-            project_id=project.id, project_type="finance_portfolio",
+            user_id=user_id,
+            session_id=session,
+            project_id=project.id,
+            project_type="finance_portfolio",
         )
 
         # The LLM-driven loop should reach for the log_entry action → confirm gate.
@@ -74,10 +76,15 @@ async def test_project_action_flow_end_to_end() -> None:
             utterance="log that I bought 20 shares of SYPNL at 42 dollars in my portfolio",
             system_prompt="You are Companion. Use the available tools for portfolio actions.",
             messages=[
-                {"role": "system", "content": "You are Companion. Use the available "
-                 "tools to perform portfolio actions the user asks for."},
-                {"role": "user", "content": "log that I bought 20 shares of SYPNL at "
-                 "42 dollars in my portfolio"},
+                {
+                    "role": "system",
+                    "content": "You are Companion. Use the available "
+                    "tools to perform portfolio actions the user asks for.",
+                },
+                {
+                    "role": "user",
+                    "content": "log that I bought 20 shares of SYPNL at 42 dollars in my portfolio",
+                },
             ],
             complexity_hint="moderate",
         )
@@ -114,8 +121,14 @@ async def test_project_action_flow_end_to_end() -> None:
         tool_costs = await ledger.get(user_id, component="tool", project_id=project.id)
         assert tool_costs.count >= 1
     finally:
-        for collection in ("projects", "ledger_entries", "pending_insights",
-                          "cost_ledger", "self_model_log", "user_profile"):
+        for collection in (
+            "projects",
+            "ledger_entries",
+            "pending_insights",
+            "cost_ledger",
+            "self_model_log",
+            "user_profile",
+        ):
             await database.mongo(collection).delete_many({"user_id": user_id})
             await database.mongo(collection).delete_many({"_id": user_id})
         await queue.aclose()

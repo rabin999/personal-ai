@@ -20,15 +20,11 @@ class SemanticMemory:
     def __init__(self, graph: GraphStore) -> None:
         self._graph = graph
 
-    async def add_episode(
-        self, user_id: str, text: str, timestamp: str | None = None
-    ) -> None:
+    async def add_episode(self, user_id: str, text: str, timestamp: str | None = None) -> None:
         """Feed one episode; entities/relations/facts are extracted by the store."""
         await self._graph.add_episode(user_id, text, timestamp)
 
-    async def facts_for(
-        self, user_id: str, entity_ids: list[str], limit: int = 10
-    ) -> list[Fact]:
+    async def facts_for(self, user_id: str, entity_ids: list[str], limit: int = 10) -> list[Fact]:
         """Facts + relationships for resolved entities, with validity windows."""
         if not entity_ids:
             return []

@@ -69,9 +69,7 @@ class EntityResolver:
         Candidates below ``min_score`` are dropped: an unrelated phrase resolves
         to nothing rather than to the nearest entity (V-ENTITY-1).
         """
-        hits = await self._vectors.hybrid_search(
-            ENTITIES_COLLECTION, phrase, user_id=user_id, k=k
-        )
+        hits = await self._vectors.hybrid_search(ENTITIES_COLLECTION, phrase, user_id=user_id, k=k)
         return [
             EntityCandidate(
                 entity_id=str(hit.payload.get("entity_id", "")),

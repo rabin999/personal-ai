@@ -160,9 +160,7 @@ class Consolidator:
 
     # ── internals ────────────────────────────────────────────────────────
 
-    async def _analyze(
-        self, user_id: str, session_id: str, text: str
-    ) -> SessionAnalysis | None:
+    async def _analyze(self, user_id: str, session_id: str, text: str) -> SessionAnalysis | None:
         messages = [
             {"role": "system", "content": _ANALYSIS_INSTRUCTIONS},
             {"role": "user", "content": text[:12_000]},
@@ -170,8 +168,11 @@ class Consolidator:
         for _ in range(2):  # validate; retry once (§0.5)
             try:
                 result = await self._llm.complete(
-                    user_id, messages, "moderate",
-                    response_format={"type": "json_object"}, session_id=session_id,
+                    user_id,
+                    messages,
+                    "moderate",
+                    response_format={"type": "json_object"},
+                    session_id=session_id,
                 )
                 return SessionAnalysis.model_validate(json.loads(result.text))
             except (LLMUnavailable, ValidationError, ValueError):
@@ -207,9 +208,7 @@ class Consolidator:
         return await self._docs.find("procedural", {"user_id": user_id}, limit=500)
 
     async def _record_correlation(self, user_id: str, key: str, description: str) -> None:
-        existing = await self._docs.find(
-            CORRELATIONS_COLLECTION, {"user_id": user_id, "key": key}
-        )
+        existing = await self._docs.find(CORRELATIONS_COLLECTION, {"user_id": user_id, "key": key})
         if existing:
             doc = existing[0]
             doc["evidence_count"] = int(doc.get("evidence_count", 1)) + 1
@@ -232,9 +231,7 @@ class Consolidator:
         )
 
 
-def _session_mood(
-    emotional_turns: list[Turn], analysis: SessionAnalysis
-) -> tuple[float, float]:
+def _session_mood(emotional_turns: list[Turn], analysis: SessionAnalysis) -> tuple[float, float]:
     """Prefer measured per-turn emotion (§22); fall back to the LLM's read."""
     if emotional_turns:
         valences = [float((t.emotion or {}).get("valence", 0.0)) for t in emotional_turns]

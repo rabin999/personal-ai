@@ -32,9 +32,7 @@ class GraphitiGraphStore:
         await self._db.graphiti().build_indices_and_constraints()
 
     async def add_episode(self, user_id: str, text: str, timestamp: str | None = None) -> None:
-        reference_time = (
-            datetime.fromisoformat(timestamp) if timestamp else datetime.now(UTC)
-        )
+        reference_time = datetime.fromisoformat(timestamp) if timestamp else datetime.now(UTC)
         try:
             await self._db.graphiti().add_episode(
                 name=f"episode-{reference_time.isoformat()}",

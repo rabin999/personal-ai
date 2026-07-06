@@ -25,9 +25,7 @@ class LaggingEmotionProvider:
         self._latest: EmotionRead | None = None
         self._task: asyncio.Task[EmotionRead | None] | None = None
 
-    def schedule(
-        self, audio_window: bytes, *, user_id: str, session_id: str | None = None
-    ) -> None:
+    def schedule(self, audio_window: bytes, *, user_id: str, session_id: str | None = None) -> None:
         """Start analysing this utterance in the background (never awaited here)."""
         self._absorb_if_done()
         self._task = asyncio.create_task(

@@ -98,8 +98,13 @@ class _Conversation:
 
 
 def _start(
-    ws: WebSocket, pipeline: Pipeline, user: UserRecord, session_id: str,
-    vad: VADModel, config: PipelineConfig, voice: str | None,
+    ws: WebSocket,
+    pipeline: Pipeline,
+    user: UserRecord,
+    session_id: str,
+    vad: VADModel,
+    config: PipelineConfig,
+    voice: str | None,
 ) -> _Conversation:
     trace = TraceEmitter(session_id)
     session = VoiceSession(
@@ -119,6 +124,7 @@ def _start(
         voice=voice,
         dispatcher=pipeline.dispatcher,
         delivery=pipeline.delivery,
+        vocab=pipeline.vocab,
     )
     return _Conversation(ws, session, trace)
 
@@ -151,8 +157,13 @@ async def voice_ws(ws: WebSocket) -> None:
     voice = auth.get("voice")
     config = _pipeline_config(user)
     await ws.send_json(
-        {"type": "ready", "session_id": session_id, "user_id": user.user_id,
-         "companion_name": user.companion_name, "sample_rate": TTS_SAMPLE_RATE}
+        {
+            "type": "ready",
+            "session_id": session_id,
+            "user_id": user.user_id,
+            "companion_name": user.companion_name,
+            "sample_rate": TTS_SAMPLE_RATE,
+        }
     )
 
     convo: _Conversation | None = None

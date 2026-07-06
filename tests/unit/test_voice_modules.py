@@ -115,10 +115,7 @@ async def _pcm_frames(count: int, frame_bytes: int = 640) -> AsyncIterator[bytes
 # Acceptance: partials before final; low word confidence surfaced.
 async def test_stt_emits_partials_then_final_with_word_confidence() -> None:
     stt = FakeDecodedSTT()
-    pieces = [
-        piece
-        async for piece in stt.transcribe_stream(_pcm_frames(20), user_id="u_demo_001")
-    ]
+    pieces = [piece async for piece in stt.transcribe_stream(_pcm_frames(20), user_id="u_demo_001")]
     assert len(pieces) >= 2
     assert all(not piece.is_final for piece in pieces[:-1])
     final = pieces[-1]

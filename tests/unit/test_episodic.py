@@ -103,9 +103,7 @@ async def test_recency_weighting_never_drowns_relevance() -> None:
     # A strongly relevant year-old memory must still beat a weak fresh one.
     vectors = FakeVectorStore(
         hits=[
-            VectorHit(
-                id="old-strong", score=0.9, payload={"text": "old", "timestamp": _iso(365)}
-            ),
+            VectorHit(id="old-strong", score=0.9, payload={"text": "old", "timestamp": _iso(365)}),
             VectorHit(id="new-weak", score=0.2, payload={"text": "new", "timestamp": _iso(0)}),
         ]
     )
@@ -118,8 +116,7 @@ async def test_recency_weighting_never_drowns_relevance() -> None:
 
 def _turns(*texts: str) -> list[Turn]:
     return [
-        Turn(role="user" if i % 2 == 0 else "assistant", text=text)
-        for i, text in enumerate(texts)
+        Turn(role="user" if i % 2 == 0 else "assistant", text=text) for i, text in enumerate(texts)
     ]
 
 

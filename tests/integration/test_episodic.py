@@ -36,11 +36,7 @@ async def memory(db: Database) -> AsyncIterator[EpisodicMemory]:
         EPISODIC_COLLECTION,
         points_selector=models.FilterSelector(
             filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key=USER_ID_FIELD, match=models.MatchText(text="it_")
-                    )
-                ]
+                must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchText(text="it_"))]
             )
         ),
     )
@@ -87,9 +83,7 @@ async def test_paraphrase_retrieves_via_dense_semantics(
 
 
 # Acceptance: RRF fusion — both signals contribute to one result set.
-async def test_rrf_fuses_keyword_and_semantic_signals(
-    memory: EpisodicMemory, user_id: str
-) -> None:
+async def test_rrf_fuses_keyword_and_semantic_signals(memory: EpisodicMemory, user_id: str) -> None:
     await memory.write(user_id, "s1", CHUNKS)
     hits = await memory.retrieve(user_id, "did I tell you about SYPNL and my family plans?")
     texts = " | ".join(h.text for h in hits)

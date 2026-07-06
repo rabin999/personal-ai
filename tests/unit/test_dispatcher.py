@@ -79,15 +79,20 @@ def _registry() -> tuple[ToolRegistry, dict[str, int]]:
     )
     registry.register(
         ToolSpec(
-            id="deep_research", description="slow research",
-            type="background", latency_class="slow",
+            id="deep_research",
+            description="slow research",
+            type="background",
+            latency_class="slow",
         ),
         deep_research,
     )
     registry.register(
         ToolSpec(
-            id="log_trade", description="record a trade", type="action",
-            requires_confirmation=True, interruptible=False,
+            id="log_trade",
+            description="record a trade",
+            type="action",
+            requires_confirmation=True,
+            interruptible=False,
             scope="project:finance_portfolio",
         ),
         log_trade,
@@ -97,9 +102,7 @@ def _registry() -> tuple[ToolRegistry, dict[str, int]]:
         variable_tool,
     )
     registry.register(
-        ToolSpec(
-            id="garden_notes", description="garden tool", scope="project:garden_planner"
-        ),
+        ToolSpec(id="garden_notes", description="garden tool", scope="project:garden_planner"),
         get_time,
     )
     return registry, calls
@@ -181,9 +184,7 @@ async def test_only_context_scoped_tools_are_offered_to_the_llm() -> None:
     registry, _ = _registry()
     dispatcher = ToolDispatcher(registry, FakeQueue())
     llm = FakeLLM([json.dumps({"action": "final", "text": "ok"})])
-    context = ToolContext(
-        user_id="u_demo_001", session_id="s1", project_type="finance_portfolio"
-    )
+    context = ToolContext(user_id="u_demo_001", session_id="s1", project_type="finance_portfolio")
 
     await dispatcher.loop(_prompt(), llm, context)
 
@@ -198,9 +199,7 @@ async def test_variable_tool_overrunning_budget_is_promoted() -> None:
     queue = FakeQueue()
     dispatcher = ToolDispatcher(registry, queue, variable_budget_s=0.05)
 
-    fast = await dispatcher.dispatch(
-        ToolCall(tool_id="variable_tool", args={"sleep": 0}), CONTEXT
-    )
+    fast = await dispatcher.dispatch(ToolCall(tool_id="variable_tool", args={"sleep": 0}), CONTEXT)
     assert isinstance(fast, ToolResult)
 
     slow = await dispatcher.dispatch(

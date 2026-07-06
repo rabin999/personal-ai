@@ -7,6 +7,7 @@ Non-negotiable content: current utterance + working memory + resolved
 entities. Episodic snippets and older facts trim first (rule 9).
 """
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any, Literal, Protocol
 
@@ -56,6 +57,7 @@ class AssembledPrompt(BaseModel):
     messages: list[dict[str, str]]
     complexity_hint: Tier
     emotion: dict[str, Any] | None = None
+    cold_start: bool = False  # first conversation with this user (§3.1)
     resolved_entities: list[EntityCandidate] = Field(default_factory=list)
     # Section name → rendered text, pre-trim; kept for tests and debugging.
     sections: dict[str, str] = Field(default_factory=dict)
@@ -123,23 +125,26 @@ class PromptAssembler:
         rules = await self._procedural.rules_for(user_id, context=utterance)
         profile = await self._profiles.first_run_sync(user_id)
         traits = await self._registry.enabled_traits(user_id)
-        prior_statements = await self._self_model.recall(
-            user_id, utterance, k=SELF_STATEMENTS_K
-        )
+        prior_statements = await self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K)
         project_section = ""
         if self._projects is not None:
             for candidate in candidates:
                 if candidate.entity_type == "project":
-                    context = await self._projects.project_context(
-                        user_id, candidate.entity_id
-                    )
+                    context = await self._projects.project_context(user_id, candidate.entity_id)
                     if context:
                         project_section = context
                         break
 
         # Step 9 — compose sections; trim order = reverse priority.
+        cold_start = not profile.onboarded  # §3.1: first conversation
         sections: dict[str, str] = {}
         sections["identity"] = _identity_section(profile.companion_name)
+        if cold_start:
+            sections["cold_start"] = _COLD_START_GUIDANCE
+            # Greet-once: mark onboarded so later turns aren't cold-start; the
+            # curiosity gate re-activates once there's real history (§3.1).
+            task = asyncio.create_task(self._profiles.update(user_id, {"onboarded": True}))
+            task.add_done_callback(lambda t: t.exception())
         sections["traits"] = "\n".join(f"- {t.description}" for t in traits)
         sections["comm_prefs"] = (
             f"directness={profile.comm_prefs.directness:.2f}, "
@@ -147,9 +152,7 @@ class PromptAssembler:
         )
         # §17 rule 3: soft psychological signals feed the prompt (empty until
         # the model has confident evidence; wording tuned by the user, §7).
-        sections["psych"] = (
-            await self._psych.render_for_prompt(user_id) if self._psych else ""
-        )
+        sections["psych"] = await self._psych.render_for_prompt(user_id) if self._psych else ""
         sections["rules"] = "\n".join(f"- {r.rule_text}" for r in rules)
         sections["entities"] = "\n".join(
             f"- {c.name} ({c.entity_type}, id={c.entity_id})" for c in candidates
@@ -159,9 +162,7 @@ class PromptAssembler:
             f"- {f.fact}{' [superseded ' + f.valid_to + ']' if f.valid_to else ''}"
             for f in [*entity_facts, *profile_facts]
         )
-        sections["self_statements"] = "\n".join(
-            f"- {s.text}" for s in prior_statements
-        )
+        sections["self_statements"] = "\n".join(f"- {s.text}" for s in prior_statements)
         sections["episodic"] = "\n\n".join(h.text for h in episodic_hits)
 
         system_prompt = _render_system_prompt(
@@ -181,6 +182,7 @@ class PromptAssembler:
             messages=messages,
             complexity_hint=_complexity_hint(utterance),
             emotion=dict(emotion) if emotion else None,
+            cold_start=cold_start,
             resolved_entities=candidates,
             sections=sections,
         )
@@ -190,6 +192,7 @@ class PromptAssembler:
 # first when over budget (rule 9: episodic snippets and older facts first).
 _SECTION_TITLES: dict[str, str] = {
     "identity": "",
+    "cold_start": "First contact",
     "traits": "Behavior traits",
     "comm_prefs": "Communication preferences",
     "psych": "",  # describe_for_prompt supplies its own caveat header (§17)
@@ -228,6 +231,17 @@ def _render_system_prompt(sections: Mapping[str, str], *, budget: int, reserved:
     return rendered
 
 
+# First-contact guidance (§3.1): warm, ask their name + what they'd like to call
+# you; passively seed profile, never interrogate. Wording is human-tunable (§7).
+_COLD_START_GUIDANCE = (
+    "This is your FIRST conversation with this person. Greet them warmly and be "
+    "genuinely curious about them — naturally ask their name and what's on their "
+    "mind, and ask what they'd like to call you (their name for you). Keep it to "
+    "a sentence or two; don't interrogate or run a questionnaire. If they tell "
+    "you a name to call you, use the set_companion_name tool to remember it."
+)
+
+
 def _identity_section(companion_name: str | None) -> str:
     name = companion_name or "Companion"
     return (
@@ -246,8 +260,16 @@ def _complexity_hint(utterance: str) -> Tier:
     """Cheap first-pass routing hint; §12's judgment refines it next turn."""
     words = utterance.split()
     heavy_markers = (
-        "why", "explain", "analyze", "compare", "plan", "strategy", "should i",
-        "help me decide", "walk me through", "tradeoff",
+        "why",
+        "explain",
+        "analyze",
+        "compare",
+        "plan",
+        "strategy",
+        "should i",
+        "help me decide",
+        "walk me through",
+        "tradeoff",
     )
     lowered = utterance.lower()
     if len(words) > 60 or sum(marker in lowered for marker in heavy_markers) >= 2:

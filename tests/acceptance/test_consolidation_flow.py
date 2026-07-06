@@ -61,11 +61,14 @@ async def test_session_close_learns_via_queued_consolidation() -> None:
 
         # A session happens and closes.
         wm = WorkingMemory()
-        wm.append(session, Turn(
-            role="user",
-            text="by the way, I adopted a cat last month — her name is Waffles",
-            emotion={"valence": 0.5, "arousal": 0.2},
-        ))
+        wm.append(
+            session,
+            Turn(
+                role="user",
+                text="by the way, I adopted a cat last month — her name is Waffles",
+                emotion={"valence": 0.5, "arousal": 0.2},
+            ),
+        )
         wm.append(session, Turn(role="assistant", text="Waffles! that's a great name"))
         transcript = wm.close(session)
 
@@ -100,8 +103,7 @@ async def test_session_close_learns_via_queued_consolidation() -> None:
         assert model.mood_baseline.samples == 1
         assert model.mood_baseline.valence == pytest.approx(0.5)
     finally:
-        for collection in ("procedural", "psych_model", "psych_correlations",
-                          "cost_ledger"):
+        for collection in ("procedural", "psych_model", "psych_correlations", "cost_ledger"):
             await database.mongo(collection).delete_many({"user_id": user_id})
             await database.mongo(collection).delete_many({"_id": user_id})
         await queue.aclose()

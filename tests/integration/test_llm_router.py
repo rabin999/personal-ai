@@ -56,9 +56,7 @@ async def test_simple_tier_resolves_and_answers(router: OpenRouterLLM, user_id: 
     assert result.input_tokens > 0 and result.output_tokens > 0
 
 
-async def test_fallback_recovers_from_a_dead_primary(
-    ledger: CostLedger, user_id: str
-) -> None:
+async def test_fallback_recovers_from_a_dead_primary(ledger: CostLedger, user_id: str) -> None:
     router = OpenRouterLLM(
         get_settings(),
         ledger=ledger,

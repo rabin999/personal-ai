@@ -35,8 +35,10 @@ async def test_promoted_tool_executes_on_the_worker_and_delivers(
 
     registry.register(
         ToolSpec(
-            id="deep_research", description="slow research",
-            type="background", latency_class="slow",
+            id="deep_research",
+            description="slow research",
+            type="background",
+            latency_class="slow",
         ),
         deep_research,
     )

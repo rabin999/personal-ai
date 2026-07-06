@@ -38,8 +38,12 @@ class FakeSTT:
         self.calls = 0
 
     async def transcribe_stream(
-        self, frames: AsyncIterator[bytes], vocab: list[str] | None = None,
-        *, user_id: str, session_id: str | None = None,
+        self,
+        frames: AsyncIterator[bytes],
+        vocab: list[str] | None = None,
+        *,
+        user_id: str,
+        session_id: str | None = None,
     ) -> AsyncIterator[TranscriptPiece]:
         self.calls += 1
         async for _ in frames:
@@ -56,8 +60,11 @@ class FakeAssembler:
         self, user_id: str, session_id: str, utterance: str, emotion: object = None
     ) -> AssembledPrompt:
         return AssembledPrompt(
-            user_id=user_id, session_id=session_id, utterance=utterance,
-            system_prompt="sys", messages=[{"role": "user", "content": utterance}],
+            user_id=user_id,
+            session_id=session_id,
+            utterance=utterance,
+            system_prompt="sys",
+            messages=[{"role": "user", "content": utterance}],
             complexity_hint="simple",
         )
 
@@ -66,15 +73,17 @@ class FakeGenerator:
     async def generate(
         self, prompt: object, dispatcher: object = None, context: object = None
     ) -> GenerationResult:
-        return GenerationResult(
-            final_text="Hey, good to hear you.", action="respond", turn_id="t1"
-        )
+        return GenerationResult(final_text="Hey, good to hear you.", action="respond", turn_id="t1")
 
 
 class FakeTTS:
     async def speak(
-        self, text_with_tags: str, voice: str | None = None,
-        *, user_id: str, session_id: str | None = None,
+        self,
+        text_with_tags: str,
+        voice: str | None = None,
+        *,
+        user_id: str,
+        session_id: str | None = None,
     ) -> AsyncIterator[bytes]:
         yield b"\x01\x02" * 100
         yield b"\x03\x04" * 100
@@ -88,10 +97,17 @@ async def _frames(confidences: list[float]) -> AsyncIterator[bytes]:
 def _session(vad: ScriptedVAD, stt: FakeSTT, working: WorkingMemory, trace: TraceEmitter):  # type: ignore[no-untyped-def]
     # Short pauses so the endpointer fires quickly in the test.
     return VoiceSession(
-        user_id=USER, session_id=SESSION, vad=vad, config=PipelineConfig(),
-        stt=stt, endpointer=SemanticEndpointer(short_pause_ms=48, long_pause_ms=160),
+        user_id=USER,
+        session_id=SESSION,
+        vad=vad,
+        config=PipelineConfig(),
+        stt=stt,
+        endpointer=SemanticEndpointer(short_pause_ms=48, long_pause_ms=160),
         assembler=FakeAssembler(),  # type: ignore[arg-type]
-        generator=FakeGenerator(), tts=FakeTTS(), working=working, trace=trace,  # type: ignore[arg-type]
+        generator=FakeGenerator(),  # type: ignore[arg-type]
+        tts=FakeTTS(),
+        working=working,
+        trace=trace,
     )
 
 

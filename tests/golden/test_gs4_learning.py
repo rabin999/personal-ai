@@ -31,12 +31,12 @@ def user() -> str:
     return f"gs4_{uuid.uuid4().hex[:10]}"
 
 
-async def test_repeated_preference_crosses_injection_threshold(
-    db: Database, user: str
-) -> None:
+async def test_repeated_preference_crosses_injection_threshold(db: Database, user: str) -> None:
     proc = ProceduralMemory(MongoDocStore(db))
     rule = await proc.add_candidate(
-        user, rule_text="user prefers blunt, direct feedback", trigger="feedback",
+        user,
+        rule_text="user prefers blunt, direct feedback",
+        trigger="feedback",
         action="be_direct",
     )
     # A fresh candidate is below the injection threshold → not yet retrievable.
@@ -65,7 +65,11 @@ async def test_contradicted_belief_is_lowered_not_deleted(db: Database, user: st
 async def test_single_correlation_is_candidate_not_confirmed(db: Database, user: str) -> None:
     docs = MongoDocStore(db)
     consolidator = Consolidator(
-        semantic=None, procedural=None, psych=None, docs=docs, llm=None,  # type: ignore[arg-type]
+        semantic=None,  # type: ignore[arg-type]
+        procedural=None,  # type: ignore[arg-type]
+        psych=None,  # type: ignore[arg-type]
+        docs=docs,
+        llm=None,  # type: ignore[arg-type]
     )
     await consolidator._record_correlation(
         user, "late_nights~low_mood", "stays up late then lower mood"
@@ -76,8 +80,8 @@ async def test_single_correlation_is_candidate_not_confirmed(db: Database, user:
     )
     for _ in range(CORRELATION_CONFIRM_THRESHOLD):
         await consolidator._record_correlation(
-        user, "late_nights~low_mood", "stays up late then lower mood"
-    )
+            user, "late_nights~low_mood", "stays up late then lower mood"
+        )
     assert await consolidator.confirmed_correlations(user), "correlation never confirmed after gate"
     await db.mongo("psych_correlations").delete_many({"user_id": user})
 

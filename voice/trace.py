@@ -15,8 +15,18 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 Stage = Literal[
-    "session", "vad", "stt", "endpoint", "emotion",
-    "assembly", "router", "generation", "response", "tts", "barge_in", "error",
+    "session",
+    "vad",
+    "stt",
+    "endpoint",
+    "emotion",
+    "assembly",
+    "router",
+    "generation",
+    "response",
+    "tts",
+    "barge_in",
+    "error",
 ]
 Level = Literal["info", "debug", "warn", "error"]
 

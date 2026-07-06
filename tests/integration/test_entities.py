@@ -32,11 +32,7 @@ async def resolver(db: Database) -> AsyncIterator[EntityResolver]:
         ENTITIES_COLLECTION,
         points_selector=models.FilterSelector(
             filter=models.Filter(
-                must=[
-                    models.FieldCondition(
-                        key=USER_ID_FIELD, match=models.MatchText(text="it_")
-                    )
-                ]
+                must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchText(text="it_"))]
             )
         ),
     )
@@ -113,9 +109,7 @@ async def test_exact_name_resolves_via_bm25_despite_semantic_noise(
     assert candidates and candidates[0].entity_id == "proj_nepse"
 
 
-async def test_rename_updates_the_pointer_in_place(
-    resolver: EntityResolver, user_id: str
-) -> None:
+async def test_rename_updates_the_pointer_in_place(resolver: EntityResolver, user_id: str) -> None:
     await _index_portfolio(resolver, user_id)
     await resolver.index(
         user_id,
@@ -133,14 +127,10 @@ async def test_rename_updates_the_pointer_in_place(
     assert len([c for c in all_for_user if c.entity_id == "proj_nepse"]) == 1
 
 
-async def test_two_user_isolation_in_resolution(
-    resolver: EntityResolver, user_id: str
-) -> None:
+async def test_two_user_isolation_in_resolution(resolver: EntityResolver, user_id: str) -> None:
     other = f"it_{uuid.uuid4().hex[:12]}"
     await _index_portfolio(resolver, user_id)
-    await resolver.index(
-        other, "project", "proj_secret", "Skunkworks X", "confidential prototype"
-    )
+    await resolver.index(other, "project", "proj_secret", "Skunkworks X", "confidential prototype")
 
     for phrase in ("Skunkworks X", "confidential prototype"):
         candidates = await resolver.resolve(user_id, phrase)

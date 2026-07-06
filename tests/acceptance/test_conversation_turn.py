@@ -68,17 +68,17 @@ async def test_full_text_conversation_turn() -> None:
             EntityResolver(vectors),
             self_model,
         )
-        generator = ResponseGenerator(
-            OpenRouterLLM(settings, ledger=ledger), self_model, registry
-        )
+        generator = ResponseGenerator(OpenRouterLLM(settings, ledger=ledger), self_model, registry)
 
         # A past session left episodic memory behind.
         episodic = EpisodicMemory(vectors)
         await episodic.write(
             user_id,
             "s_previous",
-            ["user: I finally bought 20 shares of SYPNL at 42 dollars\n"
-             "assistant: nice — that's the biotech ticker you'd been watching"],
+            [
+                "user: I finally bought 20 shares of SYPNL at 42 dollars\n"
+                "assistant: nice — that's the biotech ticker you'd been watching"
+            ],
         )
 
         # Current session: one real turn.

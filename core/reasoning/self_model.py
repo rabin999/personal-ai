@@ -33,8 +33,10 @@ BoundaryFlag = Literal["overclaim_empathy", "overclaim_consciousness"] | None
 _OVERCLAIM_PATTERNS: list[tuple[str, str]] = [
     (r"\bi (?:understand|know) exactly (?:how|what) you feel\b", "overclaim_empathy"),
     (r"\bi (?:truly |really )?feel your (?:pain|sadness|grief)\b", "overclaim_empathy"),
-    (r"\bi feel (?:so |really |truly )?(?:sad|happy|hurt|lonely|excited) (?:for|with) you\b",
-     "overclaim_empathy"),
+    (
+        r"\bi feel (?:so |really |truly )?(?:sad|happy|hurt|lonely|excited) (?:for|with) you\b",
+        "overclaim_empathy",
+    ),
     (r"\bas a conscious being\b", "overclaim_consciousness"),
     (r"\bi am (?:truly |really )?conscious\b", "overclaim_consciousness"),
     (r"\bi (?:have|possess) (?:real |genuine )?feelings\b", "overclaim_consciousness"),
@@ -83,9 +85,7 @@ class SelfModel:
         self._vectors = vectors
         self._llm = llm
 
-    async def log(
-        self, record: TurnRecord, statement_text: str | None = None
-    ) -> None:
+    async def log(self, record: TurnRecord, statement_text: str | None = None) -> None:
         """Persist the turn record; index the spoken statement for recall."""
         doc: dict[str, Any] = record.model_dump()
         doc["_id"] = doc.pop("turn_id")

@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from core.memory.episodic import EpisodicMemory
+from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
 from core.reasoning.response_gen import ResponseGenerator, ToolDispatch
@@ -44,6 +45,9 @@ class Delivery(Protocol):
 
 SAMPLE_RATE = 16_000
 _MS_PER_BYTE = 1000.0 / (SAMPLE_RATE * 2)  # PCM16 mono
+# Poll for a finished background result about this often while idle (~1.3s at
+# 32ms/frame). Cheap: only synthesizes when a task has actually completed (§8.2).
+_DELIVERY_POLL_FRAMES = 40
 
 
 class VoiceSession:
@@ -67,6 +71,7 @@ class VoiceSession:
         barge_in: bool = True,
         dispatcher: "ToolDispatch | None" = None,
         delivery: "Delivery | None" = None,
+        vocab: VocabProvider | None = None,
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -84,6 +89,8 @@ class VoiceSession:
         self._barge_in = barge_in
         self._dispatcher = dispatcher
         self._delivery = delivery
+        self._vocab = vocab
+        self._vocab_terms: list[str] | None = None  # resolved once per session
 
     async def converse(self, frames: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """Run a whole conversation over a continuous frame stream.
@@ -112,6 +119,7 @@ class VoiceSession:
         buffer: list[bytes] = []
         silence_ms = 0.0
         barge_frames = 0
+        idle_frames = 0
         decided_incomplete = False
         capturing = False
         turn: asyncio.Task[None] | None = None
@@ -142,7 +150,15 @@ class VoiceSession:
                     self._trace.emit("vad", "speech detected — capturing")
                     capturing, buffer, silence_ms, decided_incomplete = True, [], 0.0, False
                 if not capturing:
+                    # §8.2: while idle, proactively deliver a finished background
+                    # result at this pause (no user turn needed). Cheap poll —
+                    # only synthesizes when something has actually completed.
+                    idle_frames += 1
+                    if idle_frames >= _DELIVERY_POLL_FRAMES and self._delivery is not None:
+                        idle_frames = 0
+                        turn = asyncio.create_task(self._deliver_pending(out))
                     continue  # §19 idle gate: nothing paid runs during silence
+                idle_frames = 0
 
                 buffer.append(frame.pcm)
                 if frame.is_speech:  # raw per-frame verdict, not the gate hysteresis
@@ -169,8 +185,10 @@ class VoiceSession:
                     continue
 
                 self._trace.emit(
-                    "endpoint", f"complete_thought={decision.complete_thought}",
-                    complete=decision.complete_thought, threshold_ms=decision.threshold_ms,
+                    "endpoint",
+                    f"complete_thought={decision.complete_thought}",
+                    complete=decision.complete_thought,
+                    threshold_ms=decision.threshold_ms,
                 )
                 utterance = b"".join(buffer)
                 capturing, buffer, silence_ms = False, [], 0.0
@@ -216,12 +234,14 @@ class VoiceSession:
             context = self._tool_context(prompt)
             if isinstance(prompt, DisambiguationRequest):
                 self._trace.emit(
-                    "assembly", "ambiguous reference — asking to disambiguate",
+                    "assembly",
+                    "ambiguous reference — asking to disambiguate",
                     candidates=[c.name for c in prompt.candidates[:3]],
                 )
             else:
                 self._trace.emit(
-                    "assembly", f"prompt assembled (complexity={prompt.complexity_hint})",
+                    "assembly",
+                    f"prompt assembled (complexity={prompt.complexity_hint})",
                     complexity=prompt.complexity_hint,
                     entities=[c.name for c in prompt.resolved_entities],
                 )
@@ -229,13 +249,13 @@ class VoiceSession:
 
             result = await self._generator.generate(prompt, self._dispatcher, context)
             self._trace.emit(
-                "generation", f"action={result.action}", action=result.action,
+                "generation",
+                f"action={result.action}",
+                action=result.action,
                 turn_id=result.turn_id,
             )
             self._trace.emit("response", result.final_text, text=result.final_text)
-            self._working.append(
-                self._session_id, Turn(role="assistant", text=result.final_text)
-            )
+            self._working.append(self._session_id, Turn(role="assistant", text=result.final_text))
             self._remember(transcript, result.final_text)
             await self._synthesize(result.final_text, out)
         except asyncio.CancelledError:
@@ -250,13 +270,28 @@ class VoiceSession:
             for pcm in speech:
                 yield pcm
 
+        vocab = await self._vocab_for_user()
         final_text = ""
         async for piece in self._stt.transcribe_stream(
-            _frames(), user_id=self._user_id, session_id=self._session_id
+            _frames(), vocab, user_id=self._user_id, session_id=self._session_id
         ):
             if piece.is_final:
                 final_text = piece.text
         return final_text
+
+    async def _vocab_for_user(self) -> list[str] | None:
+        """The user's names/terms for STT boosting (§20 rule 2); fetched once, cached."""
+        if self._vocab is None:
+            return None
+        if self._vocab_terms is None:
+            self._vocab_terms = await self._vocab.terms_for(self._user_id)
+            if self._vocab_terms:
+                self._trace.emit(
+                    "stt",
+                    f"vocab boost: {len(self._vocab_terms)} user terms",
+                    terms=self._vocab_terms[:10],
+                )
+        return self._vocab_terms or None
 
     def _emotion_signal(self) -> dict[str, float | str] | None:
         if self._emotion is None:
@@ -312,7 +347,5 @@ class VoiceSession:
         if self._episodic is None:
             return
         chunk = f"user: {user_text}\nassistant: {assistant_text}"
-        task = asyncio.create_task(
-            self._episodic.write(self._user_id, self._session_id, [chunk])
-        )
+        task = asyncio.create_task(self._episodic.write(self._user_id, self._session_id, [chunk]))
         task.add_done_callback(lambda t: t.exception())  # swallow; write is best-effort

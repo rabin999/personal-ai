@@ -103,9 +103,7 @@ class ToolDispatcher:
         if spec.type == "action":
             # Rule 6: writes are never cancelled mid-execution; a barge-in
             # is handled after the write completes (§24).
-            output = await asyncio.shield(
-                asyncio.ensure_future(handler(call.args, context))
-            )
+            output = await asyncio.shield(asyncio.ensure_future(handler(call.args, context)))
         elif spec.latency_class == "variable":
             try:
                 output = await asyncio.wait_for(
@@ -260,7 +258,6 @@ class _LoopStep(BaseModel):
 
 def _render_tool_instructions(tools: list[ToolSpec]) -> str:
     lines = [
-        f"- {t.id}: {t.description} (input schema: {json.dumps(t.input_schema)})"
-        for t in tools
+        f"- {t.id}: {t.description} (input schema: {json.dumps(t.input_schema)})" for t in tools
     ]
     return _LOOP_INSTRUCTIONS + ("\n".join(lines) if lines else "(none available)")

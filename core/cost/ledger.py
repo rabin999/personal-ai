@@ -103,9 +103,7 @@ class CostLedger:
         until: str | None = None,
     ) -> float:
         """Total spend for one user's project over an optional ISO date range."""
-        summary = await self.get(
-            user_id, project_id=project_id, since=since, until=until
-        )
+        summary = await self.get(user_id, project_id=project_id, since=since, until=until)
         return summary.total_usd
 
     @staticmethod

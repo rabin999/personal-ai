@@ -76,11 +76,7 @@ async def assembler(db: Database) -> AsyncIterator[tuple[PromptAssembler, Workin
             qcol,
             points_selector=models.FilterSelector(
                 filter=models.Filter(
-                    must=[
-                        models.FieldCondition(
-                            key="user_id", match=models.MatchText(text="it_")
-                        )
-                    ]
+                    must=[models.FieldCondition(key="user_id", match=models.MatchText(text="it_"))]
                 )
             ),
         )
@@ -93,13 +89,14 @@ async def test_full_assembly_over_real_stores(
     session = f"s_{uuid.uuid4().hex[:8]}"
 
     await entities.index(
-        user_id, "project", "proj_nepse", "NEPSE Portfolio",
+        user_id,
+        "project",
+        "proj_nepse",
+        "NEPSE Portfolio",
         "stock trading and investments on the Nepal stock exchange",
     )
     episodic = built._episodic
-    await episodic.write(
-        user_id, "s_old", ["user: I bought 20 shares of SYPNL at 42 last week"]
-    )
+    await episodic.write(user_id, "s_old", ["user: I bought 20 shares of SYPNL at 42 last week"])
     working.append(session, Turn(role="user", text="markets were wild today"))
 
     result = await built.assemble(user_id, session, "how is my NEPSE Portfolio doing?")
@@ -117,11 +114,17 @@ async def test_ambiguity_halts_over_real_stores(
 ) -> None:
     built, _, entities = assembler
     await entities.index(
-        user_id, "project", "proj_a", "NEPSE Tracker",
+        user_id,
+        "project",
+        "proj_a",
+        "NEPSE Tracker",
         "tracking stock trades and investments on the Nepal exchange",
     )
     await entities.index(
-        user_id, "project", "proj_b", "US Stocks Tracker",
+        user_id,
+        "project",
+        "proj_b",
+        "US Stocks Tracker",
         "tracking stock trades and investments on the US market",
     )
 

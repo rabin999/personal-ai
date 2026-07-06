@@ -55,9 +55,7 @@ def test_qdrant_returns_same_client_every_call(db: Database) -> None:
 # ── healthcheck (spec §1 rule 2) ─────────────────────────────────────────
 
 
-async def test_healthcheck_aggregates_pings(
-    db: Database, monkeypatch: pytest.MonkeyPatch
-) -> None:
+async def test_healthcheck_aggregates_pings(db: Database, monkeypatch: pytest.MonkeyPatch) -> None:
     async def ok() -> bool:
         return True
 

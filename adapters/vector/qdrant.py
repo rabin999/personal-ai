@@ -58,11 +58,7 @@ class QdrantVectorStore:
     ) -> list[VectorHit]:
         dense_query, sparse_query = await asyncio.to_thread(self._embed_query, query_text)
         user_filter = models.Filter(
-            must=[
-                models.FieldCondition(
-                    key=USER_ID_FIELD, match=models.MatchValue(value=user_id)
-                )
-            ]
+            must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchValue(value=user_id))]
         )
         # Both legs fetch a wider candidate set, filtered per-leg; RRF fuses
         # ranks so each signal contributes regardless of score scales.
@@ -95,9 +91,7 @@ class QdrantVectorStore:
             for point in response.points
         ]
 
-    def _embed_documents(
-        self, texts: list[str]
-    ) -> tuple[list[list[float]], list[SparseEmbedding]]:
+    def _embed_documents(self, texts: list[str]) -> tuple[list[list[float]], list[SparseEmbedding]]:
         dense = [vector.tolist() for vector in self._dense.embed(texts)]
         sparse = list(self._sparse.embed(texts))
         return dense, sparse

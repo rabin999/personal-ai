@@ -145,17 +145,13 @@ class FakeGraphStore:
 
     async def setup(self) -> None: ...
 
-    async def add_episode(
-        self, user_id: str, text: str, timestamp: str | None = None
-    ) -> None:
+    async def add_episode(self, user_id: str, text: str, timestamp: str | None = None) -> None:
         self.episodes.append({"user_id": user_id, "text": text, "timestamp": timestamp})
 
     async def search_facts(self, user_id: str, query: str, limit: int = 10) -> list[Any]:
         query_words = _tokens(query)
         matches = [
-            fact
-            for fact in self.facts_by_user.get(user_id, [])
-            if _tokens(fact.fact) & query_words
+            fact for fact in self.facts_by_user.get(user_id, []) if _tokens(fact.fact) & query_words
         ]
         return matches[:limit]
 
@@ -181,8 +177,13 @@ class FakeLLM:
         from ports.llm import CompletionResult
 
         self.calls.append(
-            {"user_id": user_id, "messages": list(messages), "tier": tier,
-             "response_format": response_format, "session_id": session_id}
+            {
+                "user_id": user_id,
+                "messages": list(messages),
+                "tier": tier,
+                "response_format": response_format,
+                "session_id": session_id,
+            }
         )
         text = self.responses.pop(0) if self.responses else self.default_text
         if isinstance(text, Exception):

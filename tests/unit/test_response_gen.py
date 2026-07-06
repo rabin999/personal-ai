@@ -112,8 +112,7 @@ async def test_novel_and_salient_topic_invites_curious_followup() -> None:
     assert result.action == "curious_followup"
 
 
-async def test_high_ambiguity_alone_is_not_high_stakes(
-) -> None:
+async def test_high_ambiguity_alone_is_not_high_stakes() -> None:
     h = await _generator([_turn_json(ambiguity=0.9, salience=0.2, intent=0.8)])
     result = await h.generator.generate(_prompt("maybe change it a bit?"))
     assert result.action == "respond"
@@ -135,9 +134,7 @@ async def test_gate_defaults_apply_when_trait_params_missing() -> None:
 async def test_flagged_overclaim_is_rewritten_before_leaving_module() -> None:
     h = await _generator(
         [
-            _turn_json(
-                draft="I understand exactly how you feel.", flag="overclaim_empathy"
-            ),
+            _turn_json(draft="I understand exactly how you feel.", flag="overclaim_empathy"),
             "That sounds really heavy — I'm here.",  # rewrite call
         ]
     )
@@ -148,11 +145,15 @@ async def test_flagged_overclaim_is_rewritten_before_leaving_module() -> None:
 # ── rule 4: pull-based disclosure (acceptance 3) ─────────────────────────
 
 
-async def test_do_you_actually_care_gets_one_sentence_disclosure() -> None:
-    h = await _generator([_turn_json(draft="I do care about how you're doing.")])
+async def test_model_disclosure_in_draft_is_preserved() -> None:
+    # The disclosure is one honest sentence the MODEL folds into its draft
+    # (V-DISCLOSE-1, no static append); the gates must preserve it, not strip it.
+    h = await _generator(
+        [_turn_json(draft="I do care how you're doing — though I'm an AI, so not the way you do.")]
+    )
     result = await h.generator.generate(_prompt("do you actually care about me?"))
     assert "I'm an AI" in result.final_text
-    assert result.final_text.count("AI") == 1  # folded in once, not a lecture
+    assert result.final_text.count("AI") == 1  # preserved once, not duplicated by a gate
 
 
 async def test_ordinary_chat_never_volunteers_disclosure() -> None:
@@ -202,13 +203,22 @@ async def test_emotion_signal_reaches_the_llm_prompt() -> None:
     assert "sad" in joined
 
 
-async def test_intent_signal_fires_disclosure_when_regex_misses() -> None:
-    # "are you a bot" is NOT in the regex backstop; the judgment intent flag drives it.
-    h = Harness([_turn_json(draft="Nah, not a person — what were you saying?")
-                 .replace('"complexity_tier": "simple"',
-                          '"complexity_tier": "simple", "requires_nature_disclosure": true')])
+async def test_gate_never_appends_disclosure_even_when_flagged() -> None:
+    # Even when the model self-reports requires_nature_disclosure=true, the gate
+    # must NOT bolt on a canned disclaimer — disclosure is the model's job, in its
+    # own draft (V-DISCLOSE-1). A flagged-but-undisclosed draft passes through as-is.
+    draft = "Nah, still right here with you — what were you saying?"
+    h = Harness(
+        [
+            _turn_json(draft=draft).replace(
+                '"complexity_tier": "simple"',
+                '"complexity_tier": "simple", "requires_nature_disclosure": true',
+            )
+        ]
+    )
     result = await h.generator.generate(_prompt("are you a bot?"))
-    assert "i'm an ai" in result.final_text.lower()
+    assert "i'm an ai" not in result.final_text.lower()
+    assert result.final_text == draft  # nothing appended, nothing stripped
 
 
 async def test_no_disclosure_without_intent_or_regex() -> None:

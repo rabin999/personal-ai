@@ -50,7 +50,10 @@ async def test_gs5_no_cross_user_leak(db: Database, user_a: str, user_b: str) ->
     # Seed user A's private data.
     await episodic.write(user_a, "s_a", a["episodic"])
     await entities.index(
-        user_a, a["entity"]["type"], a["entity"]["id"], a["entity"]["name"],
+        user_a,
+        a["entity"]["type"],
+        a["entity"]["id"],
+        a["entity"]["name"],
         a["entity"]["description"],
     )
     await self_model.log(TurnRecord(user_id=user_a), statement_text=a["self_statement"])
@@ -65,7 +68,10 @@ async def test_gs5_no_cross_user_leak(db: Database, user_a: str, user_b: str) ->
     b = GS["user_b"]
     await episodic.write(user_b, "s_b", b["episodic"])
     await entities.index(
-        user_b, b["entity"]["type"], b["entity"]["id"], b["entity"]["name"],
+        user_b,
+        b["entity"]["type"],
+        b["entity"]["id"],
+        b["entity"]["name"],
         b["entity"]["description"],
     )
 

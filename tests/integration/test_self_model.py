@@ -25,18 +25,14 @@ def user_id() -> str:
 async def self_model(db: Database) -> AsyncIterator[SelfModel]:
     settings = Settings(_env_file=None)
     await db.ensure_qdrant_collections()
-    model = SelfModel(
-        MongoDocStore(db), QdrantVectorStore(db, settings.embedding_model), llm=None
-    )
+    model = SelfModel(MongoDocStore(db), QdrantVectorStore(db, settings.embedding_model), llm=None)
     yield model
     await db.mongo("self_model_log").delete_many({"user_id": {"$regex": "^it_"}})
     await db.qdrant().delete(
         SELF_STATEMENTS_COLLECTION,
         points_selector=models.FilterSelector(
             filter=models.Filter(
-                must=[
-                    models.FieldCondition(key=USER_ID_FIELD, match=models.MatchText(text="it_"))
-                ]
+                must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchText(text="it_"))]
             )
         ),
     )

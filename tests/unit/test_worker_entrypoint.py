@@ -54,8 +54,12 @@ def test_worker_registers_all_background_task_types() -> None:
 
 async def test_worker_dispatches_consolidation_to_its_handler() -> None:
     task = QueuedTask(
-        task_id="t1", session_id="s1", user_id="u_demo_001",
-        type=CONSOLIDATION_TASK_TYPE, params={}, created_at="2026-07-06T00:00:00Z",
+        task_id="t1",
+        session_id="s1",
+        user_id="u_demo_001",
+        type=CONSOLIDATION_TASK_TYPE,
+        params={},
+        created_at="2026-07-06T00:00:00Z",
     )
     queue = FakeQueue(task)
     worker = build_worker(_pipeline(queue))

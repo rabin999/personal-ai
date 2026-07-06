@@ -24,9 +24,7 @@ def _now() -> str:
 
 class RedisTaskQueue:
     def __init__(self, settings: Settings, namespace: str | None = None) -> None:
-        self._redis: aioredis.Redis = aioredis.from_url(
-            settings.redis_url, decode_responses=True
-        )
+        self._redis: aioredis.Redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         # All keys are namespaced so an isolated queue (e.g. per test run) can
         # never be drained by a live worker on the default "companion" queue.
         ns = namespace or settings.queue_namespace

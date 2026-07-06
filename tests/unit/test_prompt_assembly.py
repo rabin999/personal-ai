@@ -140,7 +140,9 @@ async def test_ambiguous_entities_halt_with_disambiguation_request(
 
 # Acceptance: over-budget trims episodic before utterance/working memory.
 async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns() -> None:
-    h = Harness(char_budget=2_500)
+    # Budget just above the (non-trimmable) persona+traits floor so the 6 big
+    # episodic chunks still overflow and must be trimmed first (rule 9).
+    h = Harness(char_budget=3_400)
     await h.seed()
     harness_turns = [
         Turn(role="user", text="yesterday was rough at work"),
@@ -149,8 +151,9 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     for turn in harness_turns:
         h.working.append(SESSION, turn)
     await h.episodic.write(
-        USER, "s_old", [f"user: memory chunk about work stress number {i} " + "x" * 400
-                        for i in range(6)]
+        USER,
+        "s_old",
+        [f"user: memory chunk about work stress number {i} " + "x" * 400 for i in range(6)],
     )
 
     result = await h.assembler.assemble(USER, SESSION, "work is stressful again today")
@@ -161,7 +164,7 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     transcript = [m["content"] for m in result.messages]
     assert "yesterday was rough at work" in transcript
     # Episodic gave way:
-    assert len(result.system_prompt) <= 2_500
+    assert len(result.system_prompt) <= 3_400
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

@@ -32,9 +32,7 @@ async def test_index_writes_pointer_with_payload_and_stable_id() -> None:
     await resolver.index(
         "u_demo_001", "project", "proj_1", "NEPSE Portfolio", "stock trading tracker"
     )
-    await resolver.index(
-        "u_demo_001", "project", "proj_1", "NEPSE Portfolio v2", "renamed tracker"
-    )
+    await resolver.index("u_demo_001", "project", "proj_1", "NEPSE Portfolio v2", "renamed tracker")
 
     (_, first), (_, second) = vectors.upserts
     assert first[0].payload["user_id"] == "u_demo_001"

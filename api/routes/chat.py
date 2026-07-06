@@ -44,9 +44,7 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     # Pull-at-pause (§14): results of prior background tasks (e.g. a web search)
     # get delivered now, in the companion's voice, dropped if no longer relevant.
     recent = " ".join(t.text for t in pipeline.working.recent(body.session_id, n=4))
-    deliveries = await pipeline.delivery.deliveries_for_pause(
-        body.session_id, user.user_id, recent
-    )
+    deliveries = await pipeline.delivery.deliveries_for_pause(body.session_id, user.user_id, recent)
     for d in deliveries:
         trace.emit("response", d.line, delivered=True)
 
@@ -55,12 +53,14 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     context = _tool_context(user.user_id, body.session_id, prompt)
     if isinstance(prompt, DisambiguationRequest):
         trace.emit(
-            "assembly", "ambiguous reference — disambiguating",
+            "assembly",
+            "ambiguous reference — disambiguating",
             candidates=[c.name for c in prompt.candidates[:3]],
         )
     else:
         trace.emit(
-            "assembly", f"prompt assembled (complexity={prompt.complexity_hint})",
+            "assembly",
+            f"prompt assembled (complexity={prompt.complexity_hint})",
             complexity=prompt.complexity_hint,
             entities=[c.name for c in prompt.resolved_entities],
         )

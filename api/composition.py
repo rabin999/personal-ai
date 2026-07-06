@@ -32,6 +32,7 @@ from core.memory.entities import EntityResolver
 from core.memory.episodic import EpisodicMemory
 from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
+from core.memory.vocab import VocabProvider
 from core.memory.working import WorkingMemory
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectService
@@ -82,6 +83,7 @@ class Pipeline:
     web_search: WebSearch
     delivery: DeliveryComposer
     consolidator: Consolidator
+    vocab: VocabProvider
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -128,8 +130,11 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     delivery = DeliveryComposer(queue, llm)
     web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
     register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act
-        tool_registry, episodic=episodic, semantic=semantic,
-        web_search=web_search, profiles=profiles,
+        tool_registry,
+        episodic=episodic,
+        semantic=semantic,
+        web_search=web_search,
+        profiles=profiles,
     )
 
     assembler = PromptAssembler(
@@ -176,6 +181,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         web_search=web_search,
         delivery=delivery,
         consolidator=consolidator,
+        vocab=VocabProvider(semantic, profiles),
     )
 
 

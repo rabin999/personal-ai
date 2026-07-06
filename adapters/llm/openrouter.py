@@ -67,9 +67,7 @@ class OpenRouterLLM:
         except Exception as exc:  # catalog unreachable → skip (don't block startup)
             logger.warning("could not fetch OpenRouter catalog to verify models: %s", exc)
             return {"missing": [], "no_fallback": []}
-        missing = sorted(
-            {m for chain in self._tiers.values() for m in chain if m not in catalog}
-        )
+        missing = sorted({m for chain in self._tiers.values() for m in chain if m not in catalog})
         no_fallback = sorted(t for t, chain in self._tiers.items() if len(chain) < 2)
         if missing:
             logger.error("configured LLM models not in OpenRouter catalog: %s", missing)
@@ -135,9 +133,7 @@ class OpenRouterLLM:
             cost_usd=cost,
         )
 
-    def _log_cost(
-        self, user_id: str, result: CompletionResult, session_id: str | None
-    ) -> None:
+    def _log_cost(self, user_id: str, result: CompletionResult, session_id: str | None) -> None:
         if self._ledger is None:
             return
         self._ledger.log(

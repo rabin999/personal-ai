@@ -17,9 +17,7 @@ class MongoDocStore:
 
     async def put(self, collection: str, doc_id: str, doc: Mapping[str, Any]) -> None:
         replacement = {k: v for k, v in doc.items() if k != "_id"}
-        await self._db.mongo(collection).replace_one(
-            {"_id": doc_id}, replacement, upsert=True
-        )
+        await self._db.mongo(collection).replace_one({"_id": doc_id}, replacement, upsert=True)
 
     async def find(
         self,

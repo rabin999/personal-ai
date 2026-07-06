@@ -28,8 +28,11 @@ class FakeAssembler:
         self, user_id: str, session_id: str, utterance: str, emotion: object = None
     ) -> AssembledPrompt:
         return AssembledPrompt(
-            user_id=user_id, session_id=session_id, utterance=utterance,
-            system_prompt="sys", messages=[{"role": "user", "content": utterance}],
+            user_id=user_id,
+            session_id=session_id,
+            utterance=utterance,
+            system_prompt="sys",
+            messages=[{"role": "user", "content": utterance}],
             complexity_hint="simple",
         )
 
@@ -55,8 +58,11 @@ def client() -> TestClient:
     app.state.user_context = user_context
     app.state.pipeline = SimpleNamespace(
         user_context=user_context,
-        working=WorkingMemory(), assembler=FakeAssembler(), generator=FakeGenerator(),
-        dispatcher=None, delivery=FakeDelivery(),
+        working=WorkingMemory(),
+        assembler=FakeAssembler(),
+        generator=FakeGenerator(),
+        dispatcher=None,
+        delivery=FakeDelivery(),
     )
     return TestClient(app)
 
@@ -84,7 +90,8 @@ def test_chat_rejects_missing_token(client: TestClient) -> None:
 
 def test_chat_rejects_unknown_token(client: TestClient) -> None:
     resp = client.post(
-        "/api/chat", json={"text": "hey"},
+        "/api/chat",
+        json={"text": "hey"},
         headers={"Authorization": "Bearer nope"},
     )
     assert resp.status_code == 401

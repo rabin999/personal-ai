@@ -11,6 +11,7 @@ dispatcher enqueues it (§8.6 — never run search inline) and the worker execut
 this handler, so its result comes back at a pause (§14).
 """
 
+import contextlib
 from typing import Any
 
 from core.memory.episodic import EpisodicMemory
@@ -39,7 +40,7 @@ def register_core_tools(
         ToolSpec(
             id="search_memory",
             description="Search this user's past conversations (episodic memory) for "
-            "relevant snippets. args: {\"query\": str}",
+            'relevant snippets. args: {"query": str}',
             type="readonly",
             latency_class="fast",
         ),
@@ -80,6 +81,29 @@ def register_core_tools(
         web_search_tool,
     )
 
+    async def set_companion_name(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        name = str(args.get("name", "")).strip()[:40]
+        if not name:
+            return {"error": "no name given"}
+        await profiles.update(ctx.user_id, {"companion_name": name, "onboarded": True})
+        # Durable semantic fact so the name survives across sessions (§3.1).
+        # Best-effort: the profile name is canonical if the graph write fails.
+        with contextlib.suppress(Exception):
+            await semantic.add_episode(ctx.user_id, f"The user named the companion '{name}'.")
+        return {"companion_name": name}
+
+    registry.register(
+        ToolSpec(
+            id="set_companion_name",
+            description="Remember the name the user wants to call you (the companion). "
+            'Call this the first time they give you a name. args: {"name": str}',
+            type="action",
+            latency_class="fast",
+            requires_confirmation=False,
+        ),
+        set_companion_name,
+    )
+
     async def update_audio_prefs(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         profile = await profiles.get(ctx.user_id)
         threshold = profile.audio_prefs.vad_threshold
@@ -96,7 +120,7 @@ def register_core_tools(
             id="update_audio_prefs",
             description="Adjust mic sensitivity when the user says you're picking up too "
             "much/little (clamped to a safe range, persisted). "
-            "args: {\"direction\": \"less_sensitive\"|\"more_sensitive\"}",
+            'args: {"direction": "less_sensitive"|"more_sensitive"}',
             type="action",
             latency_class="fast",
             requires_confirmation=False,

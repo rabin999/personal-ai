@@ -11,7 +11,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 && lint-imports && pytest` is green. (See CLAUDE.md §6.) Track test levels per module
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
-**Last updated:** 2026-07-06
+**Last updated:** 2026-07-07
 **Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅)_
 
 ---
@@ -70,7 +70,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
 | ✅ | §19 Audio Input Pipeline | spec §19 | Pipecat/LiveKit | U✅ I✅ E✅ | Toggleable stages; clamped VAD; VADGate cost-gate (idle-is-free); raw per-frame `is_speech` (endpoint timing) vs hysteretic `speech_active` (paid gate); AEC↔barge-in warn; ambient window. Real VAD = `adapters/vad/silero.py` (pipecat's own voice_confidence mis-indexes the 2-D output + wrong frame size → we call the model directly, 512-sample frames). I = real Silero, speech-detection asserted |
-| ✅ | §20 STT Adapter | spec §20 | §6,§3 | U✅ I✅ E✅ | faster-whisper local ($0, ledger-logged in seconds; OpenRouter has no transcription endpoint); windowed partials → final w/ per-word confidence; vocab-boost via initial_prompt. I = real tiny model (skip-loud offline) |
+| ✅ | §20 STT Adapter | spec §20 | §6,§3 | U✅ I✅ E✅ | faster-whisper local ($0, ledger-logged in seconds; OpenRouter has no transcription endpoint — Grok is TTS-only per spec §32 table, so STT stays Whisper); windowed partials → final w/ per-word confidence; vocab-boost via initial_prompt now **seeded live** from Semantic Memory (`core/memory/vocab.py` → VoiceSession) — the user's names/terms (NEPSE/Trishul/companion name). I = real tiny model (skip-loud offline) |
 | ✅ | §21 Semantic Endpointing | spec §21 | §20,§2 | U✅ I– E✅ | Silence + lexical completeness (filler/trailing-conjunction aware), rising-prosody defer; per-user thresholds. Pure logic → integration n/a (stated per §6, like §4) |
 | ✅ | §22 SER Service | spec §22 | emotion2vec | U✅ I✅ E✅ | ⚠️ inference quality human-validated. emotion2vec GPU microservice (`services/ser_service`, `ser` extra) + thin httpx client (Pydantic-validated, retry→neutral fallback); label→valence/arousal map; LaggingEmotionProvider runs one turn behind; self-hosted $0 (unlogged). Feeds §10+§17. I = real service (skip-loud, needs GPU) |
 | ✅ | §23 TTS Adapter | spec §23 | §11,§12,§3 | U✅ I✅ E✅ | **Grok Voice TTS** via xAI `POST /v1/tts` (the spec's chosen voice; endpoint is /v1/tts, NOT OpenAI-style /audio/speech). 5 voices (ara/eve/leo/rex/sal), inline delivery tags, PCM16 streamed, ~$4.20/1M chars logged; clause chunking never splits a tag; interruptible. Key = `X-AI-API`. I = real endpoint live-verified |

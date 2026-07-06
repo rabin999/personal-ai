@@ -23,9 +23,7 @@ OCEAN_TRAITS = (
     "neuroticism",
 )
 
-Stage = Literal[
-    "precontemplation", "contemplation", "preparation", "action", "maintenance"
-]
+Stage = Literal["precontemplation", "contemplation", "preparation", "action", "maintenance"]
 
 # Nudge-not-overwrite update rates (rule 1 / §18 rule 2e). Human-tunable.
 VALUE_LEARNING_RATE = 0.15
@@ -80,9 +78,7 @@ class PsychUserModel:
         model = await self.get(user_id)
         baseline = model.mood_baseline
         baseline.samples += 1
-        alpha = (
-            1.0 / baseline.samples if baseline.samples <= _BASELINE_WINDOW else _BASELINE_ALPHA
-        )
+        alpha = 1.0 / baseline.samples if baseline.samples <= _BASELINE_WINDOW else _BASELINE_ALPHA
         baseline.valence += alpha * (valence - baseline.valence)
         baseline.arousal += alpha * (arousal - baseline.arousal)
         await self._save(model)

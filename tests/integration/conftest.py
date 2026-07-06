@@ -32,8 +32,6 @@ async def db() -> AsyncIterator[Database]:
         await wait_until_healthy(database)
     except TimeoutError:
         await database.aclose()
-        pytest.fail(
-            "datastores unreachable — run `docker compose up -d` before integration tests"
-        )
+        pytest.fail("datastores unreachable — run `docker compose up -d` before integration tests")
     yield database
     await database.aclose()

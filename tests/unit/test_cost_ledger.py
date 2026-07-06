@@ -53,9 +53,7 @@ async def test_one_call_logs_exactly_one_entry_with_units_and_cost(
 # ── acceptance 2: cache hit → cost 0, cache_hit true ─────────────────────
 
 
-async def test_cache_hit_logs_zero_cost_with_flag(
-    docs: FakeDocStore, ledger: CostLedger
-) -> None:
+async def test_cache_hit_logs_zero_cost_with_flag(docs: FakeDocStore, ledger: CostLedger) -> None:
     ledger.log(_entry(cost_usd=0.0, metadata=CostMetadata(cache_hit=True)))
     await ledger.flush()
 
@@ -136,16 +134,10 @@ async def test_get_is_user_scoped(ledger: CostLedger) -> None:
 
 async def test_project_spend_sums_one_project_within_range(ledger: CostLedger) -> None:
     project = CostMetadata(project_id="proj_stocks")
-    ledger.log(
-        _entry(cost_usd=0.10, metadata=project, timestamp="2026-07-01T10:00:00+00:00")
-    )
-    ledger.log(
-        _entry(cost_usd=0.20, metadata=project, timestamp="2026-07-03T10:00:00+00:00")
-    )
+    ledger.log(_entry(cost_usd=0.10, metadata=project, timestamp="2026-07-01T10:00:00+00:00"))
+    ledger.log(_entry(cost_usd=0.20, metadata=project, timestamp="2026-07-03T10:00:00+00:00"))
     # Outside the range / different project / different user — all excluded.
-    ledger.log(
-        _entry(cost_usd=9.0, metadata=project, timestamp="2026-06-01T10:00:00+00:00")
-    )
+    ledger.log(_entry(cost_usd=9.0, metadata=project, timestamp="2026-06-01T10:00:00+00:00"))
     ledger.log(_entry(cost_usd=9.0, metadata=CostMetadata(project_id="proj_other")))
     ledger.log(_entry("u_demo_002", cost_usd=9.0, metadata=project))
     await ledger.flush()

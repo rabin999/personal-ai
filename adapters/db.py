@@ -162,9 +162,7 @@ class Database:
                     sparse_vectors_config={
                         # IDF modifier => BM25-style scoring for the sparse leg
                         # of hybrid search (§5).
-                        SPARSE_VECTOR: models.SparseVectorParams(
-                            modifier=models.Modifier.IDF
-                        )
+                        SPARSE_VECTOR: models.SparseVectorParams(modifier=models.Modifier.IDF)
                     },
                 )
             # Multi-tenant isolation invariant: every search filters on
@@ -176,9 +174,7 @@ class Database:
             )
 
     async def aclose(self) -> None:
-        await asyncio.gather(
-            self._mongo.close(), self._qdrant.close(), self._neo4j.close()
-        )
+        await asyncio.gather(self._mongo.close(), self._qdrant.close(), self._neo4j.close())
 
     # ── pings ────────────────────────────────────────────────────────────
 
