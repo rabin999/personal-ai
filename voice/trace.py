@@ -23,6 +23,7 @@ Level = Literal["info", "debug", "warn", "error"]
 
 class TraceEvent(BaseModel):
     session_id: str
+    turn: int = 0  # groups events into per-utterance conversation turns (UI collapse)
     ts: float = Field(default_factory=time.time)
     stage: Stage
     message: str
@@ -35,7 +36,13 @@ class TraceEmitter:
 
     def __init__(self, session_id: str) -> None:
         self._session_id = session_id
+        self._turn = 0
         self._queue: asyncio.Queue[TraceEvent | None] = asyncio.Queue()
+
+    def begin_turn(self) -> int:
+        """Start a new conversation turn; subsequent events group under it."""
+        self._turn += 1
+        return self._turn
 
     def emit(
         self,
@@ -49,6 +56,7 @@ class TraceEmitter:
         self._queue.put_nowait(
             TraceEvent(
                 session_id=self._session_id,
+                turn=self._turn,
                 stage=stage,
                 message=message,
                 level=level,

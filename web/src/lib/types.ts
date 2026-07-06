@@ -14,6 +14,7 @@ export type Stage =
 
 export interface TraceEvent {
   session_id: string;
+  turn: number;
   ts: number;
   stage: Stage;
   message: string;
@@ -21,5 +22,13 @@ export interface TraceEvent {
   data: Record<string, unknown>;
 }
 
-export type ConnState = "idle" | "connecting" | "ready" | "error";
+export interface TurnGroup {
+  index: number; // 0 = pre-conversation/listening events
+  events: TraceEvent[];
+  heard: string; // what STT transcribed
+  reply: string; // the companion's reply text
+  audio: ArrayBuffer[]; // collected TTS PCM chunks for replay
+}
+
+export type ConnState = "idle" | "connecting" | "active" | "error";
 export type TurnState = "idle" | "listening" | "thinking" | "speaking";

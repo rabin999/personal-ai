@@ -99,7 +99,8 @@ class VADGate:
 
 class AudioFrame(BaseModel):
     pcm: bytes
-    speech_active: bool
+    speech_active: bool  # hysteretic gate state (idle-is-free paid-path gate)
+    is_speech: bool = False  # raw this-frame verdict (endpointing silence timing)
     event: GateEvent | None = None
 
 
@@ -133,11 +134,14 @@ class AudioInputPipeline:
         active (or inside a bounded ambient window) — the idle-is-free gate."""
         async for pcm in frames:
             confidence = self._vad.voice_confidence(pcm)
+            is_speech = confidence >= self._gate.threshold
             event = self._gate.update(confidence)
             ambient = self._ambient_frames_left > 0
             if ambient:
                 self._ambient_frames_left -= 1
-            frame = AudioFrame(pcm=pcm, speech_active=self._gate.active, event=event)
+            frame = AudioFrame(
+                pcm=pcm, speech_active=self._gate.active, is_speech=is_speech, event=event
+            )
             if (self._gate.active or ambient) and on_paid_path is not None:
                 await on_paid_path(frame)
             yield frame

@@ -69,11 +69,11 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 ## Phase 6 — Voice
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
-| ✅ | §19 Audio Input Pipeline | spec §19 | Pipecat/LiveKit | U✅ I✅ E✅ | Toggleable stages; clamped VAD; VADGate cost-gate (idle-is-free); AEC↔barge-in config warn; bounded ambient window. I = real Silero VAD (voice extra, skip-loud) |
+| ✅ | §19 Audio Input Pipeline | spec §19 | Pipecat/LiveKit | U✅ I✅ E✅ | Toggleable stages; clamped VAD; VADGate cost-gate (idle-is-free); raw per-frame `is_speech` (endpoint timing) vs hysteretic `speech_active` (paid gate); AEC↔barge-in warn; ambient window. Real VAD = `adapters/vad/silero.py` (pipecat's own voice_confidence mis-indexes the 2-D output + wrong frame size → we call the model directly, 512-sample frames). I = real Silero, speech-detection asserted |
 | ✅ | §20 STT Adapter | spec §20 | §6,§3 | U✅ I✅ E✅ | faster-whisper local ($0, ledger-logged in seconds; OpenRouter has no transcription endpoint); windowed partials → final w/ per-word confidence; vocab-boost via initial_prompt. I = real tiny model (skip-loud offline) |
 | ✅ | §21 Semantic Endpointing | spec §21 | §20,§2 | U✅ I– E✅ | Silence + lexical completeness (filler/trailing-conjunction aware), rising-prosody defer; per-user thresholds. Pure logic → integration n/a (stated per §6, like §4) |
 | ✅ | §22 SER Service | spec §22 | emotion2vec | U✅ I✅ E✅ | ⚠️ inference quality human-validated. emotion2vec GPU microservice (`services/ser_service`, `ser` extra) + thin httpx client (Pydantic-validated, retry→neutral fallback); label→valence/arousal map; LaggingEmotionProvider runs one turn behind; self-hosted $0 (unlogged). Feeds §10+§17. I = real service (skip-loud, needs GPU) |
-| ✅ | §23 TTS Adapter | spec §23 | §11,§12,§3 | U✅ I✅ E✅ | OpenRouter audio-out chat (openai/gpt-audio-mini; Grok Voice not in catalog — spec adaptation clause); clause chunking never splits a tag; streamed PCM16, interruptible; character cost logged. I = real endpoint live-verified |
+| ✅ | §23 TTS Adapter | spec §23 | §11,§12,§3 | U✅ I✅ E✅ | **Grok Voice TTS** via xAI `POST /v1/tts` (the spec's chosen voice; endpoint is /v1/tts, NOT OpenAI-style /audio/speech). 5 voices (ara/eve/leo/rex/sal), inline delivery tags, PCM16 streamed, ~$4.20/1M chars logged; clause chunking never splits a tag; interruptible. Key = `X-AI-API`. I = real endpoint live-verified |
 | ✅ | §24 Barge-in & Interruption | spec §24 | §19,§23,§11,§13 | U✅ I– E✅ | Stops TTS + cancels generation on speech; action-write protection defers interrupt until write commits (rule 3); AEC dependency validated in §19. Pure asyncio → integration n/a; E covers §19 VAD-event→interrupt+write path |
 
 ## Application Assembly (post-module: wiring the 26 modules into a running app)
@@ -84,11 +84,11 @@ runtime, background worker, demo UI.)_
 | Status | Piece | Ref | Tests | Notes |
 |---|---|---|---|---|
 | ✅ | Composition root | design §17.2 | E✅ (live boot) | `api/composition.py` — single place adapters are wired to core via ports; loads tier chains + pricing from seeded `provider_config` (config over code); boots green against live datastores |
-| ✅ | Voice session runtime | design §17.1 | U✅ E✅ | `voice/session.py` + `voice/trace.py`; assembles §19 gate → §20 STT → §21 endpoint → §10 → §12 → §23 with §24 barge-in + one-turn-behind §22; emits a TraceEvent per stage; idle short-circuits before any paid stage |
+| ✅ | Voice session runtime | design §17.1 | U✅ E✅ | `voice/session.py` + `voice/trace.py`; **continuous** turn-taking (not push-to-talk): §19 gate → §20 STT → §21 endpoint auto-detect utterance boundaries → §10 → §12 → §23, with §24 barge-in (START_FRAMES fresh-speech hysteresis, no self-interrupt) + one-turn-behind §22. TraceEvents grouped by turn; idle short-circuits before any paid stage. Live e2e verified end-to-end (real VAD→STT→LLM→Grok TTS) |
 | ✅ | Serving edge (API) | spec §0.6 | U✅ (routes) E✅ | `api/routes/voice.py` WS (auth-in-first-msg §26, PCM frames → trace JSON + TTS audio, barge-in), `api/routes/chat.py` text turn; `api/streaming.py` merge/reframe; verified a real text turn over HTTP end-to-end |
 | ✅ | Background worker | spec §3, §14 | U✅ | `workers/consolidation_worker.py` deployable entrypoint; registers `tool`/`web_search`/`consolidation` handlers on the §14 queue via the composition root |
 | ✅ | §17 → §10 wiring | §17 rule 3 | U✅ | Reconciled spec inconsistency: §17 says its soft signals feed §10, but §10's step list omitted it. Added optional psych provider to Prompt Assembly (empty until confident; wording via `describe_for_prompt`, tuning yours §7) |
-| ✅ | Demo UI | (new, user-requested) | build✅ | `web/` Vite+React 19+TS+Tailwind v4: mic picker, amplitude-reactive talking orb, live start-to-finish trace sidebar, WS audio (AudioWorklet PCM16@16k up, 24k playback). `tsc -b && vite build` green; FastAPI serves `web/dist` |
+| ✅ | Demo UI | (new, user-requested) | build✅ | `web/` Vite+React 19+TS+Tailwind v4: mic picker, amplitude-reactive talking orb, single **Start/Stop conversation** toggle (continuous — no push-to-talk), **collapsible per-turn trace** cards (newest open) with **replayable reply audio** per turn, WS audio (AudioWorklet PCM16@16k up, 24k Grok playback, barge-in). `tsc -b && vite build` green; FastAPI serves `web/dist` |
 
 **Removed:** dead `adapters/stt/openrouter_whisper.py` (OpenRouter exposes no
 transcription endpoint; faster-whisper local is the STT — §20).

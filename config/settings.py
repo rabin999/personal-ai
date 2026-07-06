@@ -7,6 +7,7 @@ NOT belong here; they live in the profile/registry (spec §2).
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -40,10 +41,18 @@ class Settings(BaseSettings):
     # Per-request timeout for LLM calls; fallback chain handles failures.
     llm_timeout_s: float = 60.0
 
-    # Speech synthesis (§23): audio-out chat completions via OpenRouter
-    # (Grok Voice is not in OpenRouter's catalog; spec allows adaptation).
-    tts_model: str = "openai/gpt-audio-mini"
-    tts_voice: str = "alloy"
+    # Speech synthesis (§23): Grok Voice TTS via the xAI TTS API
+    # (https://api.x.ai/v1/tts) — the spec's chosen voice. Inline delivery
+    # tags supported; ~$4.20 / 1M chars. Key env var is ``X-AI-API``.
+    xai_api_key: str = Field(default="", validation_alias="X-AI-API")
+    xai_base_url: str = "https://api.x.ai/v1"
+    tts_voice: str = "eve"  # ara | eve | leo | rex | sal
+    tts_language: str = "en"
+    tts_timeout_s: float = 30.0
+
+    # STT (§20): faster-whisper local model size. "tiny"/"base" are fast on
+    # CPU (real-time-ish); "small"/"medium" are more accurate but slower.
+    stt_model_size: str = "base"
 
     # SER (§22): self-hosted emotion2vec microservice on a small GPU box
     # (design doc §17.3) — separate service, its own hardware. Empty means

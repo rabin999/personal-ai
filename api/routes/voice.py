@@ -1,11 +1,11 @@
-"""Voice WebSocket route (spec §0.6): live mic → companion, with a trace feed.
+"""Voice WebSocket route (spec §0.6): a continuous spoken conversation + trace.
 
 One WebSocket carries a whole conversation. The client authenticates with its
 bearer token (browsers can't set WS auth headers, so it arrives in the first
-message — spec §26), then per utterance streams PCM16/16kHz frames between
-``start`` and ``stop``. The server runs the turn through the VoiceSession and
-streams back trace events (JSON) + TTS audio (binary). A ``start`` arriving
-while audio is still playing is a barge-in (§24): the in-flight turn is stopped.
+message — spec §26), then sends ``start_conversation`` and streams PCM16/16kHz
+frames continuously. The server takes turns on its own — §19 VAD gate, §21
+endpointing, §24 barge-in — and streams back trace events (JSON) + Grok TTS
+audio (binary). ``stop_conversation`` ends it.
 """
 
 import asyncio
@@ -17,13 +17,13 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.composition import Pipeline
-from api.streaming import merge_turn
+from api.streaming import merge_conversation
 from core.profile.models import AudioPrefs
 from ports.user_context import Unauthorized, UserRecord
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
 from voice.pipeline import PipelineConfig, VADModel
-from voice.session import VoiceSession
+from voice.session import TTS_SAMPLE_RATE, VoiceSession
 from voice.trace import TraceEmitter
 
 logger = logging.getLogger(__name__)
@@ -31,13 +31,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 SAMPLE_RATE = 16_000
-VAD_FRAME_BYTES = 256 * 2  # Silero @16kHz wants exactly 256 samples per call
+VAD_FRAME_BYTES = 512 * 2  # Silero @16kHz requires exactly 512 samples per call
 
 
 def _build_vad() -> VADModel:
-    from pipecat.audio.vad.silero import SileroVADAnalyzer  # voice extra (§19)
+    from adapters.vad.silero import SileroVAD  # voice extra (§19)
 
-    return SileroVADAnalyzer(sample_rate=SAMPLE_RATE)
+    return SileroVAD()
 
 
 def _pipeline_config(user: UserRecord) -> PipelineConfig:
@@ -47,8 +47,16 @@ def _pipeline_config(user: UserRecord) -> PipelineConfig:
         return PipelineConfig()
 
 
-class _Utterance:
-    """Collects the current utterance's frames and drives its turn task."""
+def _endpointer(user: UserRecord) -> SemanticEndpointer:
+    prefs = AudioPrefs.model_validate(user.audio_prefs) if user.audio_prefs else AudioPrefs()
+    return SemanticEndpointer(
+        short_pause_ms=prefs.endpoint_short_pause_ms,
+        long_pause_ms=prefs.endpoint_long_pause_ms,
+    )
+
+
+class _Conversation:
+    """Streams the current conversation's frames in and trace+audio out."""
 
     def __init__(self, ws: WebSocket, session: VoiceSession, trace: TraceEmitter) -> None:
         self._ws = ws
@@ -65,8 +73,8 @@ class _Utterance:
             self._frames.put_nowait(bytes(self._buffer[:VAD_FRAME_BYTES]))
             del self._buffer[:VAD_FRAME_BYTES]
 
-    def end(self) -> None:
-        self._frames.put_nowait(None)  # close the utterance stream
+    def stop(self) -> None:
+        self._frames.put_nowait(None)  # end the continuous frame stream
 
     async def _frame_iter(self) -> AsyncIterator[bytes]:
         while True:
@@ -77,22 +85,22 @@ class _Utterance:
 
     async def _run(self) -> None:
         try:
-            async for kind, payload in merge_turn(
+            async for kind, payload in merge_conversation(
                 self._trace, self.session, self._frame_iter()
             ):
                 if kind == "json":
                     await self._ws.send_json(payload)
                 else:
                     await self._ws.send_bytes(payload)
-            await self._ws.send_json({"type": "turn_end"})
+            await self._ws.send_json({"type": "conversation_ended"})
         except (WebSocketDisconnect, RuntimeError):
-            pass  # client went away mid-turn
+            pass  # client went away mid-conversation
 
 
-def _start_turn(
+def _start(
     ws: WebSocket, pipeline: Pipeline, user: UserRecord, session_id: str,
     vad: VADModel, config: PipelineConfig, voice: str | None,
-) -> _Utterance:
+) -> _Conversation:
     trace = TraceEmitter(session_id)
     session = VoiceSession(
         user_id=user.user_id,
@@ -100,7 +108,7 @@ def _start_turn(
         vad=vad,
         config=config,
         stt=pipeline.stt,
-        endpointer=SemanticEndpointer(),
+        endpointer=_endpointer(user),
         assembler=pipeline.assembler,
         generator=pipeline.generator,
         tts=pipeline.tts,
@@ -110,7 +118,7 @@ def _start_turn(
         emotion=LaggingEmotionProvider(pipeline.ser),
         voice=voice,
     )
-    return _Utterance(ws, session, trace)
+    return _Conversation(ws, session, trace)
 
 
 @router.websocket("/ws/voice")
@@ -142,10 +150,10 @@ async def voice_ws(ws: WebSocket) -> None:
     config = _pipeline_config(user)
     await ws.send_json(
         {"type": "ready", "session_id": session_id, "user_id": user.user_id,
-         "companion_name": user.companion_name}
+         "companion_name": user.companion_name, "sample_rate": TTS_SAMPLE_RATE}
     )
 
-    current: _Utterance | None = None
+    convo: _Conversation | None = None
     try:
         while True:
             message = await ws.receive()
@@ -156,19 +164,17 @@ async def voice_ws(ws: WebSocket) -> None:
             if text is not None:
                 control = json.loads(text)
                 kind = control.get("type")
-                if kind == "start":
-                    if current is not None and not current.task.done():
-                        await current.session.on_barge_in()  # §24: talk over playback
-                        current.task.cancel()
-                    current = _start_turn(ws, pipeline, user, session_id, vad, config, voice)
-                elif kind == "stop" and current is not None:
-                    current.end()
-                elif kind == "barge_in" and current is not None:
-                    await current.session.on_barge_in()
-            elif data is not None and current is not None:
-                current.feed(data)
+                if kind == "start_conversation":
+                    if convo is not None and not convo.task.done():
+                        convo.stop()
+                    convo = _start(ws, pipeline, user, session_id, vad, config, voice)
+                elif kind == "stop_conversation" and convo is not None:
+                    convo.stop()
+            elif data is not None and convo is not None:
+                convo.feed(data)
     except WebSocketDisconnect:
         pass
     finally:
-        if current is not None and not current.task.done():
-            current.task.cancel()
+        if convo is not None and not convo.task.done():
+            convo.stop()
+            convo.task.cancel()

@@ -98,6 +98,26 @@ export class AudioPlayer {
     this.cursor = this.ctx.currentTime;
     this.onLevel(0);
   }
+
+  /** Replay a whole reply from its collected PCM16 chunks. */
+  async replay(chunks: ArrayBuffer[], sampleRate: number): Promise<void> {
+    const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+    if (total === 0) return;
+    const merged = new Int16Array(total / 2);
+    let offset = 0;
+    for (const c of chunks) {
+      const part = new Int16Array(c);
+      merged.set(part, offset);
+      offset += part.length;
+    }
+    const buffer = this.ctx.createBuffer(1, merged.length, sampleRate);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < merged.length; i++) channel[i] = merged[i] / 0x8000;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    src.connect(this.ctx.destination);
+    src.start();
+  }
 }
 
 function rms(samples: Int16Array): number {

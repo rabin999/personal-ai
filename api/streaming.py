@@ -2,7 +2,7 @@
 
 The voice turn produces two interleaved output streams — trace events (JSON,
 for the log sidebar) and TTS audio (binary) — that must arrive over one
-WebSocket in order. ``merge_turn`` fans them into a single ordered iterator so
+WebSocket in order. ``merge_conversation`` fans them into one ordered iterator so
 the route has exactly one sender (no concurrent-write races). ``reframe``
 slices the browser's audio into the fixed frame size the VAD expects.
 """
@@ -30,12 +30,14 @@ async def reframe(source: AsyncIterator[bytes], frame_bytes: int) -> AsyncIterat
             del buffer[:frame_bytes]
 
 
-async def merge_turn(
+async def merge_conversation(
     trace: TraceEmitter,
     session: VoiceSession,
     frames: AsyncIterator[bytes],
 ) -> AsyncIterator[OutItem]:
-    """Yield trace events and TTS audio for one turn as a single ordered stream."""
+    """Yield trace events and TTS audio for a whole conversation as one ordered
+    stream. Audio chunks are tagged with the current turn so the UI can group
+    and replay each reply's audio."""
     out: asyncio.Queue[OutItem | None] = asyncio.Queue()
     live = 2  # trace producer + audio producer
 
@@ -46,12 +48,10 @@ async def merge_turn(
 
     async def drive_audio() -> None:
         try:
-            await out.put(("json", {"type": "audio_start", "sample_rate": TTS_SAMPLE_RATE}))
-            async for chunk in session.run_turn(frames):
+            async for chunk in session.converse(frames):
                 await out.put(("bytes", chunk))
-            await out.put(("json", {"type": "audio_end"}))
         finally:
-            trace.close()  # ends the trace producer once the turn is done
+            trace.close()  # ends the trace producer once the conversation is done
             await out.put(None)
 
     tasks = [asyncio.create_task(forward_trace()), asyncio.create_task(drive_audio())]

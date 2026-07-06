@@ -23,7 +23,7 @@ from adapters.search.brave import BraveSearch
 from adapters.search.serper import SerperSearch
 from adapters.ser.emotion2vec_client import Emotion2VecSER
 from adapters.stt.faster_whisper import FasterWhisperSTT
-from adapters.tts.grok import OpenRouterTTS
+from adapters.tts.grok import GrokTTS
 from adapters.user_context.static import StaticUserContext
 from adapters.vector.qdrant import QdrantVectorStore
 from config.settings import Settings
@@ -72,7 +72,7 @@ class Pipeline:
     self_model: SelfModel
     psych: PsychUserModel
     stt: FasterWhisperSTT
-    tts: OpenRouterTTS
+    tts: GrokTTS
     ser: Emotion2VecSER
     queue: RedisTaskQueue
     tool_registry: ToolRegistry
@@ -155,8 +155,8 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         generator=generator,
         self_model=self_model,
         psych=psych,
-        stt=FasterWhisperSTT(ledger=ledger),
-        tts=OpenRouterTTS(settings, ledger=ledger),
+        stt=FasterWhisperSTT(model_size=settings.stt_model_size, ledger=ledger),
+        tts=GrokTTS(settings, ledger=ledger),
         ser=Emotion2VecSER(settings),
         queue=queue,
         tool_registry=tool_registry,
