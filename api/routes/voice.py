@@ -117,6 +117,8 @@ def _start(
         episodic=pipeline.episodic,
         emotion=LaggingEmotionProvider(pipeline.ser),
         voice=voice,
+        dispatcher=pipeline.dispatcher,
+        delivery=pipeline.delivery,
     )
     return _Conversation(ws, session, trace)
 

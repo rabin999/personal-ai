@@ -15,11 +15,13 @@ can show the whole pipeline and replay each reply's audio.
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from typing import Any, Protocol
 
 from core.memory.episodic import EpisodicMemory
 from core.memory.working import Turn, WorkingMemory
-from core.reasoning.prompt_assembly import DisambiguationRequest, PromptAssembler
-from core.reasoning.response_gen import ResponseGenerator
+from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
+from core.reasoning.response_gen import ResponseGenerator, ToolDispatch
+from core.tools.registry import ToolContext
 from ports.stt import STT
 from ports.tts import TTS
 from voice.emotion import LaggingEmotionProvider
@@ -30,6 +32,16 @@ from voice.trace import TraceEmitter
 logger = logging.getLogger(__name__)
 
 TTS_SAMPLE_RATE = 24_000  # §23 gpt-audio pcm16 output
+
+
+class Delivery(Protocol):
+    """Pull-at-pause background result delivery (§14)."""
+
+    async def deliveries_for_pause(
+        self, session_id: str, user_id: str, recent_context: str
+    ) -> list[Any]: ...
+
+
 SAMPLE_RATE = 16_000
 _MS_PER_BYTE = 1000.0 / (SAMPLE_RATE * 2)  # PCM16 mono
 
@@ -53,6 +65,8 @@ class VoiceSession:
         emotion: LaggingEmotionProvider | None = None,
         voice: str | None = None,
         barge_in: bool = True,
+        dispatcher: "ToolDispatch | None" = None,
+        delivery: "Delivery | None" = None,
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -68,6 +82,8 @@ class VoiceSession:
         self._emotion = emotion
         self._voice = voice
         self._barge_in = barge_in
+        self._dispatcher = dispatcher
+        self._delivery = delivery
 
     async def converse(self, frames: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """Run a whole conversation over a continuous frame stream.
@@ -189,10 +205,15 @@ class VoiceSession:
                     utterance, user_id=self._user_id, session_id=self._session_id
                 )
 
+            # Pull-at-pause (§14): deliver any background result that finished
+            # since last turn (e.g. a web search), in-voice, before the reply.
+            await self._deliver_pending(out)
+
             self._working.append(self._session_id, Turn(role="user", text=transcript))
             prompt = await self._assembler.assemble(
                 self._user_id, self._session_id, transcript, emotion=emotion
             )
+            context = self._tool_context(prompt)
             if isinstance(prompt, DisambiguationRequest):
                 self._trace.emit(
                     "assembly", "ambiguous reference — asking to disambiguate",
@@ -206,7 +227,7 @@ class VoiceSession:
                 )
                 self._trace.emit("router", f"routing to {prompt.complexity_hint} tier")
 
-            result = await self._generator.generate(prompt)
+            result = await self._generator.generate(prompt, self._dispatcher, context)
             self._trace.emit(
                 "generation", f"action={result.action}", action=result.action,
                 turn_id=result.turn_id,
@@ -255,6 +276,36 @@ class VoiceSession:
             total += len(chunk)
             out.put_nowait(chunk)
         self._trace.emit("tts", f"reply audio complete ({total} bytes)", bytes=total)
+
+    def _tool_context(self, prompt: AssembledPrompt | DisambiguationRequest) -> ToolContext:
+        project_id = None
+        if isinstance(prompt, AssembledPrompt):
+            for c in prompt.resolved_entities:
+                if c.entity_type == "project":
+                    project_id = c.entity_id
+                    break
+        return ToolContext(
+            user_id=self._user_id, session_id=self._session_id, project_id=project_id
+        )
+
+    async def _deliver_pending(self, out: asyncio.Queue[bytes | None]) -> None:
+        """Speak any finished background result at this pause, in-voice (§14/§8.6)."""
+        if self._delivery is None:
+            return
+        recent = " ".join(t.text for t in self._working.recent(self._session_id, n=4))
+        try:
+            deliveries = await self._delivery.deliveries_for_pause(
+                self._session_id, self._user_id, recent
+            )
+        except Exception:  # delivery is best-effort; never break the turn
+            logger.exception("background delivery failed")
+            return
+        for item in deliveries:
+            line = getattr(item, "line", "")
+            if not line:
+                continue
+            self._trace.emit("response", line, delivered=True)
+            await self._synthesize(line, out)
 
     def _remember(self, user_text: str, assistant_text: str) -> None:
         """Persist the turn to episodic memory (§5) for future recall; non-blocking."""

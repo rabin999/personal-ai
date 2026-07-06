@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.composition import Pipeline, build_pipeline
-from api.routes import chat, health, voice
+from api.routes import chat, health, profile, voice
 from config.settings import get_settings
 
 WEB_DIST = Path(__file__).parents[1] / "web" / "dist"
@@ -48,6 +48,7 @@ def create_app(*, wire_adapters: bool = True) -> FastAPI:
         app.state.user_context = None
     app.include_router(health.router)
     app.include_router(chat.router)
+    app.include_router(profile.router)
     app.include_router(voice.router)
     _mount_web(app)
     return app

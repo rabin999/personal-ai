@@ -35,8 +35,17 @@ class FakeAssembler:
 
 
 class FakeGenerator:
-    async def generate(self, prompt: object) -> GenerationResult:
+    async def generate(
+        self, prompt: object, dispatcher: object = None, context: object = None
+    ) -> GenerationResult:
         return GenerationResult(final_text="hi there", action="respond", turn_id="t1")
+
+
+class FakeDelivery:
+    async def deliveries_for_pause(
+        self, session_id: str, user_id: str, recent: str
+    ) -> list[object]:
+        return []
 
 
 @pytest.fixture
@@ -47,6 +56,7 @@ def client() -> TestClient:
     app.state.pipeline = SimpleNamespace(
         user_context=user_context,
         working=WorkingMemory(), assembler=FakeAssembler(), generator=FakeGenerator(),
+        dispatcher=None, delivery=FakeDelivery(),
     )
     return TestClient(app)
 

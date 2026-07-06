@@ -17,18 +17,33 @@ defaults — final feel is tuned by a human (contract §7).
 import json
 import logging
 import re
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
 
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
+from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall
+from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
 
 logger = logging.getLogger(__name__)
 
 Action = Literal["respond", "clarify", "curious_followup", "disambiguate"]
+
+# Agentic tool loop (§8/§14.11): max tool round-trips before the model must answer.
+MAX_TOOL_STEPS = 4
+
+
+class ToolDispatch(Protocol):
+    """The slice of the §13 dispatcher the response loop needs."""
+
+    def tools_for(self, context: ToolContext) -> list[ToolSpec]: ...
+
+    async def dispatch(
+        self, call: ToolCall, context: ToolContext, *, confirmed: bool = False
+    ) -> Any: ...
 
 # Default gate thresholds; overridden by curiosity_policy trait params.
 DEFAULT_GATE_PARAMS = {"T_intent": 0.55, "T_novel": 0.7, "T_emotion": 0.6, "T_ambig": 0.65}
@@ -53,6 +68,9 @@ _SAFE_FALLBACK_TEXT = (
     "you mean?"
 )
 
+# Graceful ack when a background lookup is running but the final compose failed.
+_LOOKING_UP_TEXT = "On it — looking that up now, I'll tell you in a sec."
+
 _JUDGMENT_INSTRUCTIONS = """
 Respond ONLY with a JSON object of this exact shape:
 {"draft_response": "<your reply; short, warm, natural spoken language; may
@@ -67,8 +85,10 @@ Respond ONLY with a JSON object of this exact shape:
                  truthfully — e.g. "do you actually care?", "are you human/real/
                  a bot?", "would you miss me?", "do you have feelings?". false for
                  everything else — never volunteer it>,
-              "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"}}
+              "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"},
+ "tool_request": null | {"tool_id": "<id>", "args": {<per the tool's schema>}}}
 Set capability_boundary_flag if your draft claims felt emotion or consciousness.
+tool_request: leave null unless you need a tool to answer well (see tools below).
 Ground every factual claim about the user in the conversation and the provided
 memories/facts. If the answer is not in your context, say you don't remember —
 NEVER invent details about the user's life.
@@ -95,6 +115,13 @@ def _coerce_bool(value: Any) -> Any:
     return value
 
 
+def _coerce_tool_request(value: Any) -> Any:
+    # Models emit "null"/{}/{"tool_id":""} for "no tool" — treat all as None.
+    if not isinstance(value, dict) or not str(value.get("tool_id") or "").strip():
+        return None
+    return value
+
+
 def _coerce_tier(value: Any) -> Any:
     lowered = str(value).strip().lower()
     return lowered if lowered in ("simple", "moderate", "complex") else "moderate"
@@ -113,9 +140,16 @@ class Judgment(BaseModel):
     capability_boundary_flag: Annotated[BoundaryFlag, BeforeValidator(_coerce_flag)] = None
 
 
+class ToolRequest(BaseModel):
+    tool_id: str
+    args: dict[str, Any] = {}
+
+
 class LLMTurn(BaseModel):
     draft_response: str
     judgment: Judgment
+    # If set, the model wants a tool run before answering (§8/§14.11 agentic loop).
+    tool_request: Annotated[ToolRequest | None, BeforeValidator(_coerce_tool_request)] = None
 
 
 class GenerationResult(BaseModel):
@@ -132,17 +166,42 @@ class ResponseGenerator:
         self._registry = registry
 
     async def generate(
-        self, prompt: AssembledPrompt | DisambiguationRequest
+        self,
+        prompt: AssembledPrompt | DisambiguationRequest,
+        dispatcher: "ToolDispatch | None" = None,
+        context: "ToolContext | None" = None,
     ) -> GenerationResult:
+        """One agentic turn (§14.11): the LLM answers, OR requests a tool that is
+        dispatched per §8 (readonly inline / background enqueue / action confirm),
+        looping until a direct answer — then the behavior gates run."""
         if isinstance(prompt, DisambiguationRequest):
             return await self._disambiguate(prompt)
 
-        turn = await self._call_llm(prompt)
-        if turn is None:  # both attempts failed validation / provider down
-            return await self._finish(
-                prompt, _SAFE_FALLBACK_TEXT, "clarify", judgment=None
-            )
+        tool_notes: list[str] = []
+        enqueued_background = False
+        can_use_tools = dispatcher is not None and context is not None
+        turn: LLMTurn | None = None
+        for _ in range(MAX_TOOL_STEPS if can_use_tools else 1):
+            turn = await self._call_llm(prompt, dispatcher, context, tool_notes)
+            if turn is None:  # both attempts failed validation / provider down
+                # If a lookup is already running, acknowledge it gracefully rather
+                # than the generic clarify fallback (the result arrives at a pause).
+                if enqueued_background:
+                    return await self._finish(prompt, _LOOKING_UP_TEXT, "respond", None)
+                return await self._finish(prompt, _SAFE_FALLBACK_TEXT, "clarify", judgment=None)
+            if turn.tool_request is None or not can_use_tools:
+                break
+            note = await self._dispatch_tool(dispatcher, context, turn.tool_request)  # type: ignore[arg-type]
+            if isinstance(note, ConfirmRequest):  # §8.3: action needs confirmation
+                return await self._finish(prompt, note.prompt_text, "respond", turn.judgment)
+            if "in the background" in note:
+                enqueued_background = True
+            tool_notes.append(note)
+        assert turn is not None
+        return await self._finalize(prompt, turn)
 
+    async def _finalize(self, prompt: AssembledPrompt, turn: LLMTurn) -> GenerationResult:
+        """Apply the behavior gates to a final draft, then log + return (§9/§12)."""
         action = await self._curiosity_gate(prompt, turn.judgment)
         text = turn.draft_response
 
@@ -164,20 +223,49 @@ class ResponseGenerator:
         text = _sanitize_tags(text)  # strip stray/echoed bracket tokens before TTS (V-TAGS-1)
         return await self._finish(prompt, text, action, turn.judgment)
 
+    async def _dispatch_tool(
+        self, dispatcher: "ToolDispatch", context: "ToolContext", req: ToolRequest
+    ) -> "str | ConfirmRequest":
+        """Run one tool per §8; return a note for the model, honest about failures."""
+        call = ToolCall(tool_id=req.tool_id, args=req.args)
+        try:
+            outcome = await dispatcher.dispatch(call, context)
+        except UnknownTool:
+            return f"(tool '{req.tool_id}' is not available — do NOT claim you used it)"
+        except Exception as exc:  # surface failures honestly (never pretend it worked)
+            logger.warning("tool %s failed: %s", req.tool_id, exc)
+            return (
+                f"(tool '{req.tool_id}' isn't working right now — tell the user plainly "
+                "that this step failed; do not fabricate a result)"
+            )
+        if isinstance(outcome, ConfirmRequest):
+            return outcome
+        if isinstance(outcome, QueuedHandle):
+            return (
+                f"(started '{req.tool_id}' in the background; its result will arrive at a "
+                "pause — briefly say you're on it, then continue naturally)"
+            )
+        return f"(tool '{req.tool_id}' returned: {json.dumps(outcome.output)[:1500]})"
+
     # ── steps ────────────────────────────────────────────────────────────
 
-    async def _call_llm(self, prompt: AssembledPrompt) -> LLMTurn | None:
+    async def _call_llm(
+        self,
+        prompt: AssembledPrompt,
+        dispatcher: "ToolDispatch | None" = None,
+        context: "ToolContext | None" = None,
+        tool_notes: list[str] | None = None,
+    ) -> LLMTurn | None:
+        instructions = _JUDGMENT_INSTRUCTIONS
+        if prompt.emotion:
+            instructions += f"\nDetected voice emotion signal: {json.dumps(prompt.emotion)}"
+        if dispatcher is not None and context is not None:
+            instructions += _render_tool_instructions(
+                dispatcher.tools_for(context), tool_notes or []
+            )
         messages = [
             *prompt.messages[:-1],
-            {
-                "role": "system",
-                "content": _JUDGMENT_INSTRUCTIONS
-                + (
-                    f"\nDetected voice emotion signal: {json.dumps(prompt.emotion)}"
-                    if prompt.emotion
-                    else ""
-                ),
-            },
+            {"role": "system", "content": instructions},
             prompt.messages[-1],
         ]
         for attempt in range(2):  # rule 1: validate; retry once
@@ -282,6 +370,26 @@ def _sanitize_tags(text: str) -> str:
 
     cleaned = _BRACKET_TOKEN.sub(keep, text)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _render_tool_instructions(tools: list[ToolSpec], notes: list[str]) -> str:
+    """List the available tools + any results so far for the agentic loop (§8)."""
+    if not tools:
+        return ""
+    lines = [
+        "\n\nYou can use tools to actually DO things (not just talk about them). "
+        "For current/live info (news, scores, prices) use web_search; for the "
+        "user's own saved data use the memory/project tools. Request at most one "
+        "tool at a time via tool_request; when you have what you need, answer with "
+        "tool_request null. Never claim you did something a tool didn't return.",
+        "Available tools:",
+    ]
+    for tool in tools:
+        lines.append(f"- {tool.id} ({tool.type}): {tool.description}")
+    if notes:
+        lines.append("Tool activity so far (use it; don't invent beyond it):")
+        lines.extend(notes)
+    return "\n".join(lines)
 
 
 def _wants_disclosure(utterance: str) -> bool:

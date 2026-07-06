@@ -40,6 +40,7 @@ from core.psych.user_model import PsychUserModel
 from core.reasoning.prompt_assembly import PromptAssembler
 from core.reasoning.response_gen import ResponseGenerator
 from core.reasoning.self_model import SelfModel
+from core.tools.builtin.core_tools import register_core_tools
 from core.tools.delivery import DeliveryComposer
 from core.tools.dispatcher import ToolDispatcher
 from core.tools.registry import ToolRegistry
@@ -118,9 +119,18 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     self_model = SelfModel(docs, vectors, llm)
     psych = PsychUserModel(docs)
 
+    queue = RedisTaskQueue(settings)
     tool_registry = ToolRegistry()
     projects = ProjectService(docs, entities, tool_registry, llm=llm)
     await projects.sync_tool_registrations()  # re-register actions for live instances
+
+    dispatcher = ToolDispatcher(tool_registry, queue, ledger=ledger)
+    delivery = DeliveryComposer(queue, llm)
+    web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
+    register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act
+        tool_registry, episodic=episodic, semantic=semantic,
+        web_search=web_search, profiles=profiles,
+    )
 
     assembler = PromptAssembler(
         profiles,

@@ -63,7 +63,9 @@ class FakeAssembler:
 
 
 class FakeGenerator:
-    async def generate(self, prompt: object) -> GenerationResult:
+    async def generate(
+        self, prompt: object, dispatcher: object = None, context: object = None
+    ) -> GenerationResult:
         return GenerationResult(
             final_text="Hey, good to hear you.", action="respond", turn_id="t1"
         )

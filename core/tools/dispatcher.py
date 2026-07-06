@@ -121,6 +121,10 @@ class ToolDispatcher:
         self._log(spec, context)
         return ToolResult(tool_id=spec.id, output=output, elapsed_ms=elapsed_ms)
 
+    def tools_for(self, context: ToolContext) -> list[ToolSpec]:
+        """Tools available in this context (core + the referenced project's)."""
+        return self._registry.tools_for_context(context.project_type)
+
     async def loop(self, prompt: AssembledPrompt, llm: LLM, context: ToolContext) -> LoopOutcome:
         """ReAct-style loop: tools until a direct answer (or a confirmation gate)."""
         tools = self._registry.tools_for_context(context.project_type)

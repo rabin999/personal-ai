@@ -17,13 +17,15 @@ from ports.queue import QueuedTask, TaskQueue
 logger = logging.getLogger(__name__)
 
 _COMPOSE_INSTRUCTIONS = (
-    "A background task you started for the user earlier has finished. "
-    "Given its result and the recent conversation, decide whether it is "
-    "still relevant. Respond ONLY with JSON: "
-    '{"relevant": true|false, "line": "<one short natural spoken interjection '
-    "delivering the result, in your companion voice — only when relevant>\"}. "
+    "A background task you started for the user earlier has finished. Given its "
+    "result and the recent conversation, decide whether it's still relevant, and "
+    "if so, deliver the ACTUAL finding in one short natural spoken line — state "
+    "the key fact from the result itself, do NOT just say it's 'ready' or "
+    "'done'. E.g. 'Market's open till 3 today' — not 'that market info is ready.' "
+    "Respond ONLY with JSON: "
+    '{"relevant": true|false, "line": "<the finding, in your companion voice>"}. '
     "If the user has clearly moved on or the result no longer matters, set "
-    'relevant to false.'
+    "relevant to false."
 )
 
 
