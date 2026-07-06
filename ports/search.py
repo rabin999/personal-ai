@@ -1,11 +1,24 @@
-"""Port: Web search (Serper primary, Brave fallback) + query cache (spec §15).
-
-Interface stub — method signatures are defined when the module is built,
-after reading its spec section.
-"""
+"""Port: web search providers — Serper primary, Brave fallback (spec §15)."""
 
 from typing import Protocol
 
+from pydantic import BaseModel
+
+
+class SearchResult(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class SearchProviderError(Exception):
+    """Provider unreachable or returned an error — caller may fall back."""
+
 
 class SearchProvider(Protocol):
-    """Web search (Serper primary, Brave fallback) + query cache."""
+    name: str
+    cost_per_query_usd: float
+
+    async def search(self, query: str, max_results: int = 8) -> list[SearchResult]:
+        """Run one web search; raise SearchProviderError on failure."""
+        ...

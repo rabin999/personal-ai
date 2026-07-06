@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(§14 ✅ — next: §15 Web Search)_
+**Current module:** _(§15 ✅ — next: §13 Tool Dispatcher)_
 
 ---
 
@@ -57,7 +57,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 |---|---|---|---|---|---|
 | ⬜ | §13 Tool Dispatcher | spec §13 | §14,§3,§11 | ⬜ | inline/background/action; MCP-shaped; context-scoped |
 | ✅ | §14 Background Task Queue | spec §14 | Redis | U✅ I✅ E✅ | Built before §13 (its dependency). Redis lists+JSON records; TaskWorker handler registry; DeliveryComposer: LLM judges relevance → interject or suppress (never templated) |
-| ⬜ | §15 Web Search | spec §15 | §11,§14,§3 | ⬜ | Serper→Brave; cache; summarize; detached call |
+| ✅ | §15 Web Search | spec §15 | §11,§14,§3 | U✅ I✅ E✅ | Cache in Mongo w/ per-query-type TTL (15m time-sensitive / 24h stable); Serper live-verified, Brave adapter key-gated; summarize via simple tier; runs as §14 task (e2e = §14 delivery flow) |
 | ⬜ | §16 Projects | spec §16 | §1,§8,§3,§13 | ⬜ | Types vs instances; ledger; consent-gated insight |
 
 ## Phase 5 — Learning
