@@ -6,9 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.139.0",
     "fastembed>=0.8.0",
+    "faster-whisper>=1.2.1",
     "graphiti-core>=0.29.2",
     "httpx>=0.28.1",
     "neo4j>=6.2.0",
+    "numpy>=2.4.6",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.2",
     "pymongo>=4.17.0",
@@ -20,6 +22,13 @@ dependencies = [
 [project.optional-dependencies]
 voice = [
     "pipecat-ai[silero]>=1.5.0",
+]
+# SER GPU microservice deps (spec §22) — installed only on the GPU box that
+# runs services/ser_service, never in the core app / CI env.
+ser = [
+    "funasr>=1.2.0",
+    "torch>=2.6.0",
+    "torchaudio>=2.6.0",
 ]
 
 [dependency-groups]

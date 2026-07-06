@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(Phase 5 ✅ — next: Phase 6 Voice)_
+**Current module:** _(Phase 6 Voice ✅ — all 26 modules built)_
 
 ---
 
@@ -69,12 +69,12 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 ## Phase 6 — Voice
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
 |---|---|---|---|---|---|
-| ⬜ | §19 Audio Input Pipeline | spec §19 | Pipecat/LiveKit | ⬜ | Toggleable stages; VAD clamp; idle-is-free gate |
-| ⬜ | §20 STT Adapter | spec §20 | §6,§3 | ⬜ | Streaming; vocab boost; word confidence |
-| ⬜ | §21 Semantic Endpointing | spec §21 | §20,§2 | ⬜ | Silence + completeness; filler-aware |
-| ⬜ | §22 SER Service | spec §22 | emotion2vec | ⬜ | ⚠️ behavioral input — GPU; latency-tolerant; one turn behind |
-| ⬜ | §23 TTS Adapter | spec §23 | §11,§12,§3 | ⬜ | Grok tags; clause chunking; interruptible |
-| ⬜ | §24 Barge-in & Interruption | spec §24 | §19,§23,§11,§13 | ⬜ | Write-safety on action tools |
+| ✅ | §19 Audio Input Pipeline | spec §19 | Pipecat/LiveKit | U✅ I✅ E✅ | Toggleable stages; clamped VAD; VADGate cost-gate (idle-is-free); AEC↔barge-in config warn; bounded ambient window. I = real Silero VAD (voice extra, skip-loud) |
+| ✅ | §20 STT Adapter | spec §20 | §6,§3 | U✅ I✅ E✅ | faster-whisper local ($0, ledger-logged in seconds; OpenRouter has no transcription endpoint); windowed partials → final w/ per-word confidence; vocab-boost via initial_prompt. I = real tiny model (skip-loud offline) |
+| ✅ | §21 Semantic Endpointing | spec §21 | §20,§2 | U✅ I– E✅ | Silence + lexical completeness (filler/trailing-conjunction aware), rising-prosody defer; per-user thresholds. Pure logic → integration n/a (stated per §6, like §4) |
+| ✅ | §22 SER Service | spec §22 | emotion2vec | U✅ I✅ E✅ | ⚠️ inference quality human-validated. emotion2vec GPU microservice (`services/ser_service`, `ser` extra) + thin httpx client (Pydantic-validated, retry→neutral fallback); label→valence/arousal map; LaggingEmotionProvider runs one turn behind; self-hosted $0 (unlogged). Feeds §10+§17. I = real service (skip-loud, needs GPU) |
+| ✅ | §23 TTS Adapter | spec §23 | §11,§12,§3 | U✅ I✅ E✅ | OpenRouter audio-out chat (openai/gpt-audio-mini; Grok Voice not in catalog — spec adaptation clause); clause chunking never splits a tag; streamed PCM16, interruptible; character cost logged. I = real endpoint live-verified |
+| ✅ | §24 Barge-in & Interruption | spec §24 | §19,§23,§11,§13 | U✅ I– E✅ | Stops TTS + cancels generation on speech; action-write protection defers interrupt until write commits (rule 3); AEC dependency validated in §19. Pure asyncio → integration n/a; E covers §19 VAD-event→interrupt+write path |
 
 ---
 

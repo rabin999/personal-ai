@@ -40,6 +40,17 @@ class Settings(BaseSettings):
     # Per-request timeout for LLM calls; fallback chain handles failures.
     llm_timeout_s: float = 60.0
 
+    # Speech synthesis (§23): audio-out chat completions via OpenRouter
+    # (Grok Voice is not in OpenRouter's catalog; spec allows adaptation).
+    tts_model: str = "openai/gpt-audio-mini"
+    tts_voice: str = "alloy"
+
+    # SER (§22): self-hosted emotion2vec microservice on a small GPU box
+    # (design doc §17.3) — separate service, its own hardware. Empty means
+    # SER is disabled (acoustic emotion deferred; text-sentiment only).
+    ser_service_url: str = ""
+    ser_timeout_s: float = 3.0
+
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"
