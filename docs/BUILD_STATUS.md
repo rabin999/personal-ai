@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(Phase 6 Voice ✅ — all 26 modules built)_
+**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅)_
 
 ---
 
@@ -75,6 +75,23 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | ✅ | §22 SER Service | spec §22 | emotion2vec | U✅ I✅ E✅ | ⚠️ inference quality human-validated. emotion2vec GPU microservice (`services/ser_service`, `ser` extra) + thin httpx client (Pydantic-validated, retry→neutral fallback); label→valence/arousal map; LaggingEmotionProvider runs one turn behind; self-hosted $0 (unlogged). Feeds §10+§17. I = real service (skip-loud, needs GPU) |
 | ✅ | §23 TTS Adapter | spec §23 | §11,§12,§3 | U✅ I✅ E✅ | OpenRouter audio-out chat (openai/gpt-audio-mini; Grok Voice not in catalog — spec adaptation clause); clause chunking never splits a tag; streamed PCM16, interruptible; character cost logged. I = real endpoint live-verified |
 | ✅ | §24 Barge-in & Interruption | spec §24 | §19,§23,§11,§13 | U✅ I– E✅ | Stops TTS + cancels generation on speech; action-write protection defers interrupt until write commits (rule 3); AEC dependency validated in §19. Pure asyncio → integration n/a; E covers §19 VAD-event→interrupt+write path |
+
+## Application Assembly (post-module: wiring the 26 modules into a running app)
+_(The 26 modules were built and unit/integration/e2e-tested in isolation; this
+layer assembles them into a runnable product — serving edge, live voice
+runtime, background worker, demo UI.)_
+
+| Status | Piece | Ref | Tests | Notes |
+|---|---|---|---|---|
+| ✅ | Composition root | design §17.2 | E✅ (live boot) | `api/composition.py` — single place adapters are wired to core via ports; loads tier chains + pricing from seeded `provider_config` (config over code); boots green against live datastores |
+| ✅ | Voice session runtime | design §17.1 | U✅ E✅ | `voice/session.py` + `voice/trace.py`; assembles §19 gate → §20 STT → §21 endpoint → §10 → §12 → §23 with §24 barge-in + one-turn-behind §22; emits a TraceEvent per stage; idle short-circuits before any paid stage |
+| ✅ | Serving edge (API) | spec §0.6 | U✅ (routes) E✅ | `api/routes/voice.py` WS (auth-in-first-msg §26, PCM frames → trace JSON + TTS audio, barge-in), `api/routes/chat.py` text turn; `api/streaming.py` merge/reframe; verified a real text turn over HTTP end-to-end |
+| ✅ | Background worker | spec §3, §14 | U✅ | `workers/consolidation_worker.py` deployable entrypoint; registers `tool`/`web_search`/`consolidation` handlers on the §14 queue via the composition root |
+| ✅ | §17 → §10 wiring | §17 rule 3 | U✅ | Reconciled spec inconsistency: §17 says its soft signals feed §10, but §10's step list omitted it. Added optional psych provider to Prompt Assembly (empty until confident; wording via `describe_for_prompt`, tuning yours §7) |
+| ✅ | Demo UI | (new, user-requested) | build✅ | `web/` Vite+React 19+TS+Tailwind v4: mic picker, amplitude-reactive talking orb, live start-to-finish trace sidebar, WS audio (AudioWorklet PCM16@16k up, 24k playback). `tsc -b && vite build` green; FastAPI serves `web/dist` |
+
+**Removed:** dead `adapters/stt/openrouter_whisper.py` (OpenRouter exposes no
+transcription endpoint; faster-whisper local is the STT — §20).
 
 ---
 

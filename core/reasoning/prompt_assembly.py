@@ -38,6 +38,16 @@ class ProjectContextProvider(Protocol):
     async def project_context(self, user_id: str, entity_id: str) -> str | None: ...
 
 
+class PsychProvider(Protocol):
+    """Implemented by the Psych User-Model (§17); feeds soft signals to §10.
+
+    §17 rule 3 routes its output into Prompt Assembly. Returns "" until the
+    model has confident-enough evidence — always tendencies, never diagnoses.
+    """
+
+    async def render_for_prompt(self, user_id: str) -> str: ...
+
+
 class AssembledPrompt(BaseModel):
     user_id: str
     session_id: str
@@ -72,6 +82,7 @@ class PromptAssembler:
         entities: EntityResolver,
         self_model: SelfModel,
         projects: ProjectContextProvider | None = None,
+        psych: PsychProvider | None = None,
         char_budget: int = DEFAULT_CHAR_BUDGET,
     ) -> None:
         self._profiles = profiles
@@ -83,6 +94,7 @@ class PromptAssembler:
         self._entities = entities
         self._self_model = self_model
         self._projects = projects
+        self._psych = psych
         self._budget = char_budget
 
     async def assemble(
@@ -133,6 +145,11 @@ class PromptAssembler:
             f"directness={profile.comm_prefs.directness:.2f}, "
             f"emotional_scaffolding={profile.comm_prefs.emotional_scaffolding:.2f}"
         )
+        # §17 rule 3: soft psychological signals feed the prompt (empty until
+        # the model has confident evidence; wording tuned by the user, §7).
+        sections["psych"] = (
+            await self._psych.render_for_prompt(user_id) if self._psych else ""
+        )
         sections["rules"] = "\n".join(f"- {r.rule_text}" for r in rules)
         sections["entities"] = "\n".join(
             f"- {c.name} ({c.entity_type}, id={c.entity_id})" for c in candidates
@@ -175,6 +192,7 @@ _SECTION_TITLES: dict[str, str] = {
     "identity": "",
     "traits": "Behavior traits",
     "comm_prefs": "Communication preferences",
+    "psych": "",  # describe_for_prompt supplies its own caveat header (§17)
     "rules": "Learned rules for this user",
     "entities": "Entities referenced in this message",
     "project": "Project context",
@@ -182,7 +200,7 @@ _SECTION_TITLES: dict[str, str] = {
     "self_statements": "Your own relevant prior statements",
     "episodic": "Relevant conversation memories",
 }
-_TRIM_ORDER = ("episodic", "facts", "self_statements", "project", "rules")
+_TRIM_ORDER = ("episodic", "facts", "self_statements", "psych", "project", "rules")
 
 
 def _render_system_prompt(sections: Mapping[str, str], *, budget: int, reserved: int) -> str:

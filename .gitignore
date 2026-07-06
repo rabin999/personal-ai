@@ -21,3 +21,8 @@ htmlcov/
 .vscode/
 .DS_Store
 .claude/settings.local.json
+
+# Frontend (web/) — build artifacts and deps
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo

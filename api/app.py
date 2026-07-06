@@ -1,8 +1,8 @@
 """FastAPI serving edge (spec §0.6, design doc §17.3).
 
 Thin edge: resolves bearer token → user_id (spec §26) and streams tokens/audio
-(SSE/WebSocket). This module is the composition root — the one place adapters
-are constructed and wired; ``core/`` itself never imports ``adapters/``.
+(SSE/WebSocket). The object graph is built by ``api.composition`` — the single
+composition root — so ``core/`` itself never imports ``adapters/``.
 """
 
 from collections.abc import AsyncIterator
@@ -10,43 +10,33 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
-from adapters.db import Database
-from adapters.doc.mongo import MongoDocStore
-from adapters.user_context.static import StaticUserContext
-from api.routes import health
+from api.composition import Pipeline, build_pipeline
+from api.routes import chat, health, voice
 from config.settings import get_settings
-from core.profile import ProfileService, TraitRegistry
 
-DEFAULTS_DIR = Path(__file__).parents[1] / "config" / "defaults"
+WEB_DIST = Path(__file__).parents[1] / "web" / "dist"
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Wire adapters at startup; fail loudly if any datastore is unreachable (§1)."""
-    db = Database(get_settings())
-    await db.startup()
-
-    store = MongoDocStore(db)
-    profiles = ProfileService(store)
-    registry = TraitRegistry(store, profiles)
-    await registry.seed_defaults(DEFAULTS_DIR)
-
-    app.state.db = db
-    app.state.profiles = profiles
-    app.state.registry = registry
-    app.state.user_context = StaticUserContext.from_defaults(DEFAULTS_DIR, profiles)
+    """Wire the full pipeline at startup; fail loudly if a datastore is down (§1)."""
+    pipeline = await build_pipeline(get_settings())
+    app.state.pipeline = pipeline
+    app.state.user_context = pipeline.user_context
     try:
         yield
     finally:
-        await db.aclose()
+        await pipeline.aclose()
 
 
 def create_app(*, wire_adapters: bool = True) -> FastAPI:
     """Build the serving edge.
 
-    ``wire_adapters=False`` skips the startup wiring (no datastores touched) —
-    for tests that exercise routes or dependencies in isolation.
+    ``wire_adapters=False`` skips startup wiring (no datastores touched) — for
+    tests that exercise routes or dependencies in isolation.
     """
     app = FastAPI(
         title="Personal AI Companion",
@@ -54,9 +44,38 @@ def create_app(*, wire_adapters: bool = True) -> FastAPI:
         lifespan=_lifespan if wire_adapters else None,
     )
     if not wire_adapters:
+        app.state.pipeline = None
         app.state.user_context = None
     app.include_router(health.router)
+    app.include_router(chat.router)
+    app.include_router(voice.router)
+    _mount_web(app)
     return app
+
+
+def _mount_web(app: FastAPI) -> None:
+    """Serve the built UI with explicit paths (not a greedy ``/`` mount, which
+    would shadow API/WS routes). Skipped until ``npm run build`` produces
+    web/dist — dev uses the Vite proxy instead."""
+    if not WEB_DIST.is_dir():
+        return
+    app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
+
+    @app.get("/")
+    async def _index() -> FileResponse:
+        return FileResponse(WEB_DIST / "index.html")
+
+    @app.get("/pcm-worklet.js")
+    async def _worklet() -> FileResponse:
+        return FileResponse(WEB_DIST / "pcm-worklet.js", media_type="text/javascript")
+
+
+def get_pipeline(app: FastAPI) -> Pipeline:
+    """Return the wired pipeline, or raise if the edge was built unwired."""
+    pipeline: Pipeline | None = app.state.pipeline
+    if pipeline is None:
+        raise RuntimeError("pipeline not wired (create_app(wire_adapters=False))")
+    return pipeline
 
 
 app = create_app()

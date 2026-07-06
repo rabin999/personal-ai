@@ -28,6 +28,10 @@ class TaskWorker:
     def register(self, task_type: str, handler: Handler) -> None:
         self._handlers[task_type] = handler
 
+    def task_types(self) -> list[str]:
+        """Registered task types (for startup logging / introspection)."""
+        return sorted(self._handlers)
+
     async def run_once(self, timeout_s: float = 1.0) -> bool:
         """Claim and execute one task; returns False when the queue is idle."""
         task = await self._queue.claim_next(timeout_s=timeout_s)

@@ -32,8 +32,21 @@ class StubProjects:
         return self.contexts.get(entity_id)
 
 
+class StubPsych:
+    def __init__(self, text: str = "") -> None:
+        self.text = text
+
+    async def render_for_prompt(self, user_id: str) -> str:
+        return self.text
+
+
 class Harness:
-    def __init__(self, projects: StubProjects | None = None, char_budget: int = 24_000):
+    def __init__(
+        self,
+        projects: StubProjects | None = None,
+        psych: StubPsych | None = None,
+        char_budget: int = 24_000,
+    ):
         self.docs = FakeDocStore()
         self.vectors = FakeVectorStore()
         self.graph = FakeGraphStore()
@@ -55,6 +68,7 @@ class Harness:
             self.entities,
             self.self_model,
             projects=projects,
+            psych=psych,
             char_budget=char_budget,
         )
 
@@ -86,6 +100,25 @@ async def test_referenced_project_ledger_appears_in_prompt() -> None:
     assert isinstance(result, AssembledPrompt)
     assert "bought 20 SYPNL @ 42" in result.system_prompt
     assert result.resolved_entities[0].entity_id == "proj_nepse"
+
+
+# §17 rule 3: soft psychological signals reach the assembled prompt (§17 → §10).
+async def test_psych_signals_reach_the_prompt() -> None:
+    signal = (
+        "Soft signals about this user (probabilistic hints, never certainties):\n"
+        "- tends toward higher conscientiousness (tentative, confidence 0.6)"
+    )
+    h = Harness(psych=StubPsych(signal))
+    await h.seed()
+    result = await h.assembler.assemble(USER, SESSION, "hey")
+    assert isinstance(result, AssembledPrompt)
+    assert "tends toward higher conscientiousness" in result.system_prompt
+    # An empty psych read adds nothing (fresh user).
+    h2 = Harness(psych=StubPsych(""))
+    await h2.seed()
+    empty = await h2.assembler.assemble(USER, SESSION, "hey")
+    assert isinstance(empty, AssembledPrompt)
+    assert empty.sections["psych"] == ""
 
 
 # Acceptance: ambiguous entity → disambiguation request, not a prompt.

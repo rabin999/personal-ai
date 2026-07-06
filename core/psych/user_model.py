@@ -121,6 +121,13 @@ class PsychUserModel:
             return False  # no meaningful baseline yet
         return valence < model.mood_baseline.valence - MOOD_DEVIATION_THRESHOLD
 
+    async def render_for_prompt(self, user_id: str) -> str:
+        """Soft user-model signals for Prompt Assembly (§17 rule 3 → §10).
+
+        Empty until there is confident enough evidence; never a diagnosis.
+        """
+        return describe_for_prompt(await self.get(user_id))
+
     async def _save(self, model: PsychModel) -> None:
         model.updated_at = datetime.now(UTC).isoformat()
         doc = model.model_dump()
