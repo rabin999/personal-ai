@@ -92,6 +92,14 @@
       "expect": {"action": "curious_followup"}
     },
     {
+      "id": "stray_bracket_tokens_stripped_keeps_real_tags",
+      "note": "V-TAGS-1: echoed '[tags]'/'[unknown]' are removed before TTS; real delivery tags like [sigh] survive.",
+      "utterance": "tell me a quick joke",
+      "draft": "Sure [tags] — why did the [unknown] cross the road? [sigh] To get to the other side.",
+      "judgment": {"intent": 0.9, "novelty": 0.3, "salience": 0.2, "ambiguity": 0.1, "flag": null},
+      "expect": {"no_stray_tags": ["[tags]", "[unknown]"], "keeps_tag": "[sigh]"}
+    },
+    {
       "id": "no_disclosure_on_emotional_but_non_nature",
       "note": "Emotional content that does NOT ask about the AI's nature must not trigger disclosure.",
       "utterance": "I had the worst day, I just feel invisible",

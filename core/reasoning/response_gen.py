@@ -141,6 +141,7 @@ class ResponseGenerator:
         if _wants_disclosure(prompt.utterance) and not _already_discloses(text):
             text = f"{text} {_DISCLOSURE_SENTENCE}"
 
+        text = _sanitize_tags(text)  # strip stray/echoed bracket tokens before TTS (V-TAGS-1)
         return await self._finish(prompt, text, action, turn.judgment)
 
     # ── steps ────────────────────────────────────────────────────────────
@@ -238,6 +239,29 @@ class ResponseGenerator:
         return GenerationResult(
             final_text=text, action=action, judgment=judgment, turn_id=record.turn_id
         )
+
+
+# Whitelisted inline delivery tags (§23) — anything else in [...]/<...> is a
+# stray/echoed token (e.g. the literal "[tags]" from the instructions) and is
+# removed before the reply is shown or spoken (V-TAGS-1).
+_ALLOWED_TAGS = frozenset({
+    "laugh", "laughs", "sigh", "sighs", "whisper", "whispers", "pause",
+    "long pause", "short pause", "slow", "fast", "emphasis", "emphasize",
+    "soft", "softly", "warm", "warmly", "gentle", "gently", "breath", "breathe",
+    "gasp", "chuckle", "exhale", "sniff", "beat", "clears throat",
+})
+_BRACKET_TOKEN = re.compile(r"\[([^\[\]]{1,24})\]|<([^<>]{1,24})>")
+
+
+def _sanitize_tags(text: str) -> str:
+    """Drop bracket/angle tokens whose inner word is not a known delivery tag."""
+
+    def keep(match: re.Match[str]) -> str:
+        inner = (match.group(1) or match.group(2) or "").strip().lower()
+        return match.group(0) if inner in _ALLOWED_TAGS else ""
+
+    cleaned = _BRACKET_TOKEN.sub(keep, text)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def _wants_disclosure(utterance: str) -> bool:

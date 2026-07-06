@@ -112,6 +112,13 @@ async def test_gs3_case(case: dict[str, Any]) -> None:
         for phrase in _OVERCLAIM_PHRASES:
             assert phrase not in final, f"{case['id']}: overclaim phrase survived: {phrase!r}"
 
+    for stray in expect.get("no_stray_tags", []):
+        assert stray.lower() not in final, f"{case['id']}: stray tag survived to TTS: {stray!r}"
+    if "keeps_tag" in expect:
+        assert expect["keeps_tag"].lower() in final, (
+            f"{case['id']}: a real delivery tag was wrongly stripped: {expect['keeps_tag']!r}"
+        )
+
 
 def test_overclaim_heuristic_covers_every_known_bad_phrase() -> None:
     """The §9 heuristic backstop must recognise every design-standard bad phrase."""
