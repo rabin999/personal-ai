@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(§6, §7 ✅ — next: §8 Entity Resolution)_
+**Current module:** _(Phase 2 ✅ — next: Phase 3 §9 Self-Model)_
 
 ---
 
@@ -42,7 +42,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 | ✅ | §5 Episodic Memory | spec §5 | §1 | U✅ I✅ E✅ | fastembed local embedder (bge-small, 384d) + Qdrant/bm25 sparse; RRF via query_points; turn-based chunking; gentle recency half-life; isolation verified |
 | ✅ | §6 Semantic Memory | spec §6 | §1 | U✅ I✅ E✅ | Graphiti group_id=user_id; gemini-2.5-flash extraction (gpt-4.1-mini dropped edges), temp 0, json_object mode; fastembed embedder; LLM usage → Cost Ledger via httpx hook; paid tests skip loudly without OPEN_ROUTER_API_KEY |
 | ✅ | §7 Procedural Memory | spec §7 | §1 | U✅ I✅ E— | Confidence 0.3 start / 0.6 injection threshold / ±delta clamp [0,1]; context filter by trigger words; e2e arrives with §10/§18 (integration covers today's full path — stated per contract §6) |
-| ⬜ | §8 Entity Resolution | spec §8 | §1, §5 | ⬜ | Qdrant entity pointers; disambiguation path |
+| ✅ | §8 Entity Resolution | spec §8 | §1, §5 | U✅ I✅ E— | Deterministic point ids (rename = in-place update); is_ambiguous helper (runner-up ≥0.8×top) for §12's disambiguation; e2e arrives with §10 step 2 (integration covers today's full path) |
 
 ## Phase 3 — Reasoning Core (text-only first)
 | Status | Module | Spec ref | Depends on | Tests (U/I/E) | Notes |
