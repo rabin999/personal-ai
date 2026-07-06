@@ -53,6 +53,30 @@ class OpenRouterLLM:
     def route(self, complexity: Tier) -> str:
         return self._tiers[complexity][0]
 
+    async def verify_models(self) -> dict[str, list[str]]:
+        """Check configured tier models against the live OpenRouter catalog.
+
+        Returns ``{"missing": [...], "no_fallback": [...]}`` — missing model
+        ids (typo/deprecation) and tiers with fewer than two models (no
+        fallback). Called at startup so a bad model id fails loud early rather
+        than mid-conversation.
+        """
+        try:
+            page = await self._client.models.list()
+            catalog = {model.id for model in page.data}
+        except Exception as exc:  # catalog unreachable → skip (don't block startup)
+            logger.warning("could not fetch OpenRouter catalog to verify models: %s", exc)
+            return {"missing": [], "no_fallback": []}
+        missing = sorted(
+            {m for chain in self._tiers.values() for m in chain if m not in catalog}
+        )
+        no_fallback = sorted(t for t, chain in self._tiers.items() if len(chain) < 2)
+        if missing:
+            logger.error("configured LLM models not in OpenRouter catalog: %s", missing)
+        if no_fallback:
+            logger.warning("LLM tiers without a fallback model: %s", no_fallback)
+        return {"missing": missing, "no_fallback": no_fallback}
+
     async def complete(
         self,
         user_id: str,

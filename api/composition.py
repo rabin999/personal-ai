@@ -105,6 +105,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     tiers = await _load_tiers(docs)
     pricing = await _load_pricing(docs)
     llm = OpenRouterLLM(settings, ledger=ledger, tiers=tiers)
+    await llm.verify_models()  # list/verify configured models against the live catalog
 
     vectors = QdrantVectorStore(db, settings.embedding_model)
     graph = GraphitiGraphStore(db, ledger=ledger, pricing=pricing)

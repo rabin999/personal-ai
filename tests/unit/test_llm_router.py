@@ -125,3 +125,19 @@ async def test_response_format_and_max_tokens_pass_through() -> None:
     )
     assert fake.calls[0]["response_format"] == {"type": "json_object"}
     assert fake.calls[0]["max_tokens"] == 64
+
+
+async def test_verify_models_flags_missing_and_no_fallback() -> None:
+    router, _ = _router()  # TIERS: simple has 2, complex has 1
+
+    async def fake_list() -> SimpleNamespace:
+        return SimpleNamespace(
+            data=[SimpleNamespace(id="cheap/model"), SimpleNamespace(id="cheap/backup"),
+                  SimpleNamespace(id="mid/model")]
+        )
+
+    router._client = SimpleNamespace(models=SimpleNamespace(list=fake_list))  # type: ignore[assignment]
+    result = await router.verify_models()
+    assert "strong/model" in result["missing"]  # in TIERS but not in catalog
+    assert "complex" in result["no_fallback"]   # single-model tier
+    assert "simple" not in result["no_fallback"]
