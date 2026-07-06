@@ -181,6 +181,14 @@ sslip host → `certbot --nginx -d 202-58-120-93.sslip.io --redirect` (injects t
 template (dropping certbot's :443 block). If you do, just re-run
 `deploy/enable-https.sh` — certbot re-detects the existing cert and re-wires TLS.
 
+**Bare IP → HTTPS.** `enable-https.sh` also rewrites certbot's :80 catch-all (which
+would otherwise `404` any non-matching Host) so that **any** plain-HTTP request,
+including `http://202.58.120.93`, `301`-redirects to the canonical
+`https://202-58-120-93.sslip.io`. So a user who types the raw IP still lands on the
+trusted-cert HTTPS page. Note: a raw-IP **HTTPS** URL (`https://202.58.120.93`) can't
+have a matching cert — Let's Encrypt won't issue for a bare IP — so it shows a
+name-mismatch warning. Always hand out the sslip URL, not the IP.
+
 **Upgrading to your own domain later** (nicer URL): point an `A` record at
 `202.58.120.93`, then `DOMAIN=yourdomain.com sudo bash deploy/enable-https.sh`
 (it passes `-d $DOMAIN` to certbot and sets `server_name`). Same real-cert flow, no

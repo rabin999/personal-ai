@@ -58,7 +58,15 @@ echo "==> [4/5] obtain/renew Let's Encrypt cert + wire TLS via certbot --nginx"
 certbot --nginx -d "$DOMAIN" --redirect \
   -m "$EMAIL" --agree-tos --no-eff-email --non-interactive --keep-until-expiring
 
-echo "==> [5/5] validate + reload"
+echo "==> [5/5] canonicalize the :80 redirect + validate + reload"
+# certbot's :80 block redirects only when Host == $DOMAIN and otherwise returns
+# 404 - so http://<raw-ip>/ 404s instead of upgrading to HTTPS. Rewrite that
+# catch-all to redirect ANY http Host (incl. the bare IP) to the canonical
+# trusted-cert HTTPS host, so "redirect to https if not https" holds everywhere.
+# Idempotent: only fires while certbot's default 404 line is present.
+if grep -q 'return 404; # managed by Certbot' "$SITE"; then
+  sed -i "s|return 404; # managed by Certbot|return 301 https://${DOMAIN}\$request_uri;|" "$SITE"
+fi
 nginx -t
 systemctl reload nginx
 
