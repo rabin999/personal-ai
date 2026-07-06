@@ -12,7 +12,7 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-06
-**Current module:** _(Phase 2 ✅ — next: Phase 3 §9 Self-Model)_
+**Current module:** _(§11 ✅ — next: §9 Self-Model)_
 
 ---
 
@@ -49,7 +49,7 @@ _(Setup items — verified by "does it run / does CI pass", not unit tests.)_
 |---|---|---|---|---|---|
 | ⬜ | §9 Self-Model (metacognition) | spec §9 | §1, §11 | ⬜ | Overclaim rewrite; self-reference recall |
 | ⬜ | §10 Prompt Assembly | spec §10 | §2,4,5,6,7,8,9,16 | ⬜ | 12-step pipeline; user-scoped; budgeting |
-| ⬜ | §11 LLM Router (OpenRouter) | spec §11 | §3, §2 | ⬜ | Complexity tiering; fallback; cost logging |
+| ✅ | §11 LLM Router (OpenRouter) | spec §11 | §3, §2 | U✅ I✅ E— | Built before §9/§10 (their dependency). Tier chains in provider_config `llm_router`; exact cost via OpenRouter usage accounting; embed() is local fastembed; e2e via §12 turn |
 | ⬜ | §12 Response Gen + behavior gates | spec §12 | §10,§11,§9 | ⬜ | ⚠️ behavioral — mechanism only, human-tuned |
 
 ## Phase 4 — Tools & Projects

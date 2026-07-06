@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # edges to entities outside its node list (all dropped by Graphiti).
     graphiti_llm_model: str = "google/gemini-2.5-flash"
     graphiti_small_model: str = "google/gemini-2.5-flash"
+    # Per-request timeout for LLM calls; fallback chain handles failures.
+    llm_timeout_s: float = 60.0
+
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"
