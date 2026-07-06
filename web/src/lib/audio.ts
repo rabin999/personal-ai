@@ -54,19 +54,33 @@ export class AudioPlayer {
   private cursor = 0;
   private sources = new Set<AudioBufferSourceNode>();
   private rate = 24_000;
+  private remainder = new Uint8Array(0); // odd trailing byte carried to next chunk
 
-  constructor(private onLevel: (level: number) => void) {
+  constructor(
+    private onLevel: (level: number) => void,
+    private onEnded: () => void = () => {},
+  ) {
     this.ctx = new AudioContext();
   }
 
   configure(sampleRate: number): void {
     this.rate = sampleRate;
     this.cursor = this.ctx.currentTime;
+    this.remainder = new Uint8Array(0);
   }
 
   enqueue(pcm: ArrayBuffer): void {
-    const int16 = new Int16Array(pcm);
-    if (int16.length === 0) return;
+    // Streamed PCM chunks split at arbitrary byte boundaries; keep samples
+    // 16-bit aligned by carrying any odd trailing byte into the next chunk.
+    const bytes = new Uint8Array(pcm);
+    const joined = new Uint8Array(this.remainder.length + bytes.length);
+    joined.set(this.remainder);
+    joined.set(bytes, this.remainder.length);
+    const usable = joined.length - (joined.length % 2);
+    this.remainder = joined.slice(usable);
+    if (usable === 0) return;
+
+    const int16 = new Int16Array(joined.buffer, 0, usable / 2);
     const buffer = this.ctx.createBuffer(1, int16.length, this.rate);
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < int16.length; i++) channel[i] = int16[i] / 0x8000;
@@ -81,7 +95,10 @@ export class AudioPlayer {
     this.onLevel(rms(int16));
     src.onended = () => {
       this.sources.delete(src);
-      if (this.sources.size === 0) this.onLevel(0);
+      if (this.sources.size === 0) {
+        this.onLevel(0);
+        this.onEnded(); // playback drained — safe to un-mute the mic (half-duplex)
+      }
     };
   }
 
@@ -102,14 +119,17 @@ export class AudioPlayer {
   /** Replay a whole reply from its collected PCM16 chunks. */
   async replay(chunks: ArrayBuffer[], sampleRate: number): Promise<void> {
     const total = chunks.reduce((n, c) => n + c.byteLength, 0);
-    if (total === 0) return;
-    const merged = new Int16Array(total / 2);
-    let offset = 0;
+    if (total < 2) return;
+    // Concatenate raw bytes first, then align to 16-bit (chunk boundaries are
+    // arbitrary, so a chunk can end mid-sample).
+    const bytes = new Uint8Array(total);
+    let at = 0;
     for (const c of chunks) {
-      const part = new Int16Array(c);
-      merged.set(part, offset);
-      offset += part.length;
+      bytes.set(new Uint8Array(c), at);
+      at += c.byteLength;
     }
+    const usable = total - (total % 2);
+    const merged = new Int16Array(bytes.buffer, 0, usable / 2);
     const buffer = this.ctx.createBuffer(1, merged.length, sampleRate);
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < merged.length; i++) channel[i] = merged[i] / 0x8000;

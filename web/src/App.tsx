@@ -25,6 +25,7 @@ export default function App() {
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
   const turnStateRef = useRef<TurnState>("idle");
+  const mutedRef = useRef(false); // half-duplex: mute mic while the reply plays
 
   useEffect(() => {
     listMicrophones().then(setDevices).catch(() => {});
@@ -71,15 +72,24 @@ export default function App() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(`${proto}://${location.host}/ws/voice`);
     ws.binaryType = "arraybuffer";
-    playerRef.current = new AudioPlayer((l) => {
-      if (turnStateRef.current === "speaking") setLevel(l);
-    });
+    playerRef.current = new AudioPlayer(
+      (l) => {
+        if (turnStateRef.current === "speaking") setLevel(l);
+      },
+      () => {
+        // Reply finished playing → un-mute the mic and go back to listening.
+        mutedRef.current = false;
+        setLevel(0);
+        setTurn("idle");
+      },
+    );
 
     ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, voice }));
     ws.onclose = () => stopLocalCapture();
     ws.onerror = () => setConn("error");
     ws.onmessage = async (ev) => {
       if (ev.data instanceof ArrayBuffer) {
+        mutedRef.current = true; // companion is speaking — don't capture the echo
         playerRef.current?.enqueue(ev.data);
         const turn = audioTurnRef.current;
         upsertTurn(turn, (t) => (t.audio = [...t.audio, ev.data]));
@@ -113,8 +123,13 @@ export default function App() {
     micRef.current = new MicCapture();
     await micRef.current.start(
       micId,
-      (pcm) => wsRef.current?.readyState === WebSocket.OPEN && wsRef.current.send(pcm),
-      (l) => turnStateRef.current !== "speaking" && setLevel(l),
+      (pcm) => {
+        // Half-duplex: stop sending mic audio while the reply is playing so the
+        // companion never hears (and answers) its own voice (§19/§24 need AEC).
+        if (mutedRef.current) return;
+        if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(pcm);
+      },
+      (l) => !mutedRef.current && setLevel(l),
     );
     if (devices.length === 0) listMicrophones().then(setDevices).catch(() => {});
   };
