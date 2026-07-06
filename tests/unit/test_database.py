@@ -15,6 +15,7 @@ from adapters.db import (
     DENSE_VECTOR,
     ENTITIES_COLLECTION,
     EPISODIC_COLLECTION,
+    SELF_STATEMENTS_COLLECTION,
     SPARSE_VECTOR,
     USER_ID_FIELD,
     Database,
@@ -142,24 +143,27 @@ async def test_creates_missing_collections_with_dense_sparse_and_user_id_index(
     assert [c["collection_name"] for c in qdrant.created] == [
         EPISODIC_COLLECTION,
         ENTITIES_COLLECTION,
+        SELF_STATEMENTS_COLLECTION,
     ]
     for created in qdrant.created:
         assert DENSE_VECTOR in created["vectors_config"]
         assert SPARSE_VECTOR in created["sparse_vectors_config"]
     assert all(i["field_name"] == USER_ID_FIELD for i in qdrant.indexed)
-    assert len(qdrant.indexed) == 2
+    assert len(qdrant.indexed) == 3
 
 
 async def test_existing_collections_are_not_recreated_but_index_is_ensured(
     db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    qdrant = _RecordingQdrant(existing={EPISODIC_COLLECTION, ENTITIES_COLLECTION})
+    qdrant = _RecordingQdrant(
+        existing={EPISODIC_COLLECTION, ENTITIES_COLLECTION, SELF_STATEMENTS_COLLECTION}
+    )
     monkeypatch.setattr(db, "_qdrant", qdrant)
 
     await db.ensure_qdrant_collections()
 
     assert qdrant.created == []
-    assert len(qdrant.indexed) == 2
+    assert len(qdrant.indexed) == 3
 
 
 # ── graphiti wiring ──────────────────────────────────────────────────────

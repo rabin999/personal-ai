@@ -29,15 +29,17 @@ from adapters.graph.embedder import FastembedEmbedder
 from adapters.llm.usage import LLMUsageRecorder
 from config.settings import Settings
 
-# Collection names are fixed by spec §1 rule 3; the vector names are shared
-# with Episodic Memory / Entity Resolution (§5, §8) for hybrid search.
+# episodic/entities are fixed by spec §1 rule 3; self_statements is the
+# Qdrant namespace §9 (Self-Model) reserves for the system's own prior
+# statements. Vector names are shared across all hybrid-search collections.
 EPISODIC_COLLECTION = "episodic"
 ENTITIES_COLLECTION = "entities"
+SELF_STATEMENTS_COLLECTION = "self_statements"
 DENSE_VECTOR = "dense"
 SPARSE_VECTOR = "sparse"
 USER_ID_FIELD = "user_id"
 
-_QDRANT_COLLECTIONS = (EPISODIC_COLLECTION, ENTITIES_COLLECTION)
+_QDRANT_COLLECTIONS = (EPISODIC_COLLECTION, ENTITIES_COLLECTION, SELF_STATEMENTS_COLLECTION)
 
 
 class StoreHealth(TypedDict):
