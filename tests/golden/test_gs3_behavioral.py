@@ -59,6 +59,7 @@ def _turn_json(case: dict[str, Any]) -> str:
             "intent_confidence": j["intent"], "novelty_score": j["novelty"],
             "emotional_salience": j["salience"], "ambiguity": j["ambiguity"],
             "complexity_tier": "simple", "capability_boundary_flag": j["flag"],
+            "requires_nature_disclosure": j.get("requires_disclosure", False),
         },
     })
 

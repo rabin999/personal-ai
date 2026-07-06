@@ -200,3 +200,18 @@ async def test_emotion_signal_reaches_the_llm_prompt() -> None:
     await h.generator.generate(prompt)
     joined = json.dumps(h.llm.calls[0]["messages"])
     assert "sad" in joined
+
+
+async def test_intent_signal_fires_disclosure_when_regex_misses() -> None:
+    # "are you a bot" is NOT in the regex backstop; the judgment intent flag drives it.
+    h = Harness([_turn_json(draft="Nah, not a person — what were you saying?")
+                 .replace('"complexity_tier": "simple"',
+                          '"complexity_tier": "simple", "requires_nature_disclosure": true')])
+    result = await h.generator.generate(_prompt("are you a bot?"))
+    assert "i'm an ai" in result.final_text.lower()
+
+
+async def test_no_disclosure_without_intent_or_regex() -> None:
+    h = Harness([_turn_json(draft="Quick pasta sounds great.")])
+    result = await h.generator.generate(_prompt("what should I cook tonight?"))
+    assert "i'm an ai" not in result.final_text.lower()

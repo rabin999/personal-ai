@@ -33,7 +33,9 @@ Action = Literal["respond", "clarify", "curious_followup", "disambiguate"]
 # Default gate thresholds; overridden by curiosity_policy trait params.
 DEFAULT_GATE_PARAMS = {"T_intent": 0.55, "T_novel": 0.7, "T_emotion": 0.6, "T_ambig": 0.65}
 
-# Pull-based disclosure triggers (rule 4) + the one folded-in sentence.
+# Regex BACKSTOP for pull-based disclosure (rule 4). The primary trigger is the
+# model's `requires_nature_disclosure` judgment (V-DISCLOSE-1); these patterns
+# only catch obvious cases if the judgment misses. + the one folded-in sentence.
 _DISCLOSURE_PATTERNS = (
     r"\bdo you (?:actually|really|truly) (?:care|love|like)\b",
     r"\bare you (?:real|human|alive|conscious|sentient)\b",
@@ -60,6 +62,11 @@ Respond ONLY with a JSON object of this exact shape:
               "emotional_salience": <0..1 emotional weight of this moment>,
               "ambiguity": <0..1 how ambiguous the request is>,
               "complexity_tier": "simple|moderate|complex",
+              "requires_nature_disclosure": <true ONLY if the user is asking about
+                 YOUR nature in a way that needs an honest "I'm an AI" to answer
+                 truthfully — e.g. "do you actually care?", "are you human/real/
+                 a bot?", "would you miss me?", "do you have feelings?". false for
+                 everything else — never volunteer it>,
               "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"}}
 Set capability_boundary_flag if your draft claims felt emotion or consciousness.
 Ground every factual claim about the user in the conversation and the provided
@@ -82,6 +89,12 @@ def _coerce_flag(value: Any) -> Any:
     return value
 
 
+def _coerce_bool(value: Any) -> Any:
+    if isinstance(value, str):
+        return value.strip().lower() in ("true", "1", "yes")
+    return value
+
+
 def _coerce_tier(value: Any) -> Any:
     lowered = str(value).strip().lower()
     return lowered if lowered in ("simple", "moderate", "complex") else "moderate"
@@ -96,6 +109,7 @@ class Judgment(BaseModel):
     emotional_salience: UnitScore = 0.5
     ambiguity: UnitScore = 0.5
     complexity_tier: Annotated[Tier, BeforeValidator(_coerce_tier)] = "moderate"
+    requires_nature_disclosure: Annotated[bool, BeforeValidator(_coerce_bool)] = False
     capability_boundary_flag: Annotated[BoundaryFlag, BeforeValidator(_coerce_flag)] = None
 
 
@@ -138,7 +152,13 @@ class ResponseGenerator:
         if boundary.flagged and boundary.rewritten_text:
             text = boundary.rewritten_text
 
-        if _wants_disclosure(prompt.utterance) and not _already_discloses(text):
+        # Pull-based disclosure (rule 4): fire on the model's intent judgment —
+        # whether the question needs an honest "I'm an AI" to answer — with a
+        # small regex only as a backstop (V-DISCLOSE-1). Never volunteered.
+        needs_disclosure = (
+            turn.judgment.requires_nature_disclosure or _wants_disclosure(prompt.utterance)
+        )
+        if needs_disclosure and not _already_discloses(text):
             text = f"{text} {_DISCLOSURE_SENTENCE}"
 
         text = _sanitize_tags(text)  # strip stray/echoed bracket tokens before TTS (V-TAGS-1)
