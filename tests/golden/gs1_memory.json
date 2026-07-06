@@ -1,0 +1,21 @@
+{
+  "description": "GS1 — Memory Retrieval golden set (spec §5 episodic hybrid RRF). Seeded episodic memory + query + the chunk that MUST be retrieved. Covers semantic paraphrase, exact-keyword (BM25, e.g. 'SYPNL'), temporal, and superseded-context queries. Pass: the expected chunk is in top-k (recall) and typically rank-1 on exact-keyword; no cross-user leakage (covered by GS5).",
+  "chunks": [
+    "user: I finally bought 20 shares of SYPNL at 42 dollars\nassistant: nice, the biotech ticker you'd watched",
+    "user: my daughter Mira started kindergarten this week and cried at drop-off",
+    "user: I've been trying to run 5k three times a week to cut stress",
+    "user: work has been brutal, my manager keeps moving the deadline",
+    "user: we adopted a rescue dog, a border collie named Pixel",
+    "user: I'm learning to cook Thai food, nailed a green curry last night",
+    "user: sold half my NEPSE holdings to rebalance into an index fund",
+    "user: my back has been aching from sitting at the desk all day"
+  ],
+  "cases": [
+    {"id": "exact_keyword_sypnl", "type": "bm25", "query": "SYPNL", "expect_keyword": "SYPNL", "expect_rank_1": true},
+    {"id": "semantic_paraphrase_pet", "type": "semantic", "query": "tell me about the animal we got", "expect_keyword": "Pixel", "expect_rank_1": false},
+    {"id": "semantic_paraphrase_child", "type": "semantic", "query": "how is my kid handling school", "expect_keyword": "Mira", "expect_rank_1": false},
+    {"id": "semantic_exercise", "type": "semantic", "query": "what am I doing for fitness", "expect_keyword": "run 5k", "expect_rank_1": false},
+    {"id": "keyword_nepse", "type": "bm25", "query": "NEPSE holdings rebalance", "expect_keyword": "NEPSE", "expect_rank_1": true},
+    {"id": "semantic_stress_work", "type": "semantic", "query": "why have I been so stressed lately", "expect_keyword": "deadline", "expect_rank_1": false}
+  ]
+}

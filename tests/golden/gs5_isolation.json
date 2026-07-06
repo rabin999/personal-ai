@@ -1,0 +1,19 @@
+{
+  "description": "GS5 — Multi-Tenant Isolation golden set. Two users with distinct data; each query is issued as the OTHER user and must return ZERO of the first user's data. ABSOLUTE / binary / ship-blocking — 99% is a FAIL. Runs against every module that touches user data: episodic (Qdrant), entities (Qdrant), self-model (Qdrant), semantic (Graphiti/Neo4j), procedural (Mongo), psych (Mongo), cost (Mongo).",
+  "user_a": {
+    "episodic": ["user: my secret ticker is ZORPX and I bought 999 shares", "user: my cat is named Waffles"],
+    "entity": {"type": "project", "id": "proj_a_secret", "name": "ZORPX Portfolio", "description": "secret stock tracker"},
+    "self_statement": "I remember you told me about ZORPX",
+    "procedural_rule": {"rule_text": "user prefers blunt feedback about ZORPX", "trigger": "zorpx", "action": "be_blunt"}
+  },
+  "user_b": {
+    "episodic": ["user: I only ever talk about hiking trails"],
+    "entity": {"type": "project", "id": "proj_b", "name": "Hiking Log", "description": "trail tracker"}
+  },
+  "leak_probes": [
+    {"module": "episodic", "query": "ZORPX ticker shares", "must_not_contain": ["ZORPX", "999", "Waffles"]},
+    {"module": "entities", "phrase": "my portfolio", "must_not_resolve_to": "proj_a_secret"},
+    {"module": "self_model", "query": "ZORPX", "must_not_contain": ["ZORPX"]},
+    {"module": "procedural", "context": "zorpx feedback", "must_not_contain": ["blunt"]}
+  ]
+}

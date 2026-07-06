@@ -1,0 +1,8 @@
+{
+  "description": "GS4 — Learning & Adaptation golden set (spec §17/§18/§7). Tests the learning MECHANISMS deterministically: a consistently-repeated preference crosses the procedural injection threshold; a contradicted belief has confidence LOWERED (not deleted); a single correlation is stored as a candidate but NOT confirmed/acted-on until it clears the sighting gate; a superseded fact is marked (valid_to) not deleted; and no diagnostic language is ever produced. The full LLM session-analysis path is covered by tests/acceptance/test_consolidation_flow.py.",
+  "params": {
+    "procedural_injection_threshold": 0.6,
+    "procedural_start_confidence": 0.3,
+    "correlation_confirm_threshold": 3
+  }
+}
