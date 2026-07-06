@@ -20,6 +20,12 @@ ENTITIES_COLLECTION = "entities"
 # A runner-up within this fraction of the top score is "close" → ambiguous.
 CLOSE_SCORE_RATIO = 0.8
 
+# Minimum fused (dense+BM25 RRF) score to treat a hit as a real reference
+# (V-ENTITY-1). Empirically a confident match scores ~1.0 while an unrelated
+# phrase tops out ~0.5, so a mid-gap floor rejects "resolve to the nearest
+# entity for any phrase". Tunable; below it, resolution returns nothing.
+MIN_RESOLUTION_SCORE = 0.6
+
 _POINT_NAMESPACE = uuid.UUID("6d0cbe8e-4d5f-4a51-9e0f-1f2c3d4e5a6b")
 
 
@@ -55,8 +61,14 @@ class EntityResolver:
         )
         await self._vectors.upsert_texts(ENTITIES_COLLECTION, [doc])
 
-    async def resolve(self, user_id: str, phrase: str, k: int = 3) -> list[EntityCandidate]:
-        """Hybrid dense+BM25 candidates for a phrase, this user only (rule 2)."""
+    async def resolve(
+        self, user_id: str, phrase: str, k: int = 3, min_score: float = MIN_RESOLUTION_SCORE
+    ) -> list[EntityCandidate]:
+        """Hybrid dense+BM25 candidates for a phrase, this user only (rule 2).
+
+        Candidates below ``min_score`` are dropped: an unrelated phrase resolves
+        to nothing rather than to the nearest entity (V-ENTITY-1).
+        """
         hits = await self._vectors.hybrid_search(
             ENTITIES_COLLECTION, phrase, user_id=user_id, k=k
         )
@@ -68,6 +80,7 @@ class EntityResolver:
                 score=hit.score,
             )
             for hit in hits
+            if hit.score >= min_score
         ]
 
 

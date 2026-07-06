@@ -12,7 +12,8 @@
     {"id": "dominant_brother", "phrase": "text my brother Ram", "expect_resolves_to": "person_ram", "expect_ambiguous": false},
     {"id": "dominant_fitness", "phrase": "log today's gym workout", "expect_resolves_to": "proj_fitness", "expect_ambiguous": false},
     {"id": "near_collision_trading_tracker", "phrase": "update my share trading tracker", "expect_ambiguous": true, "collision_between": ["proj_nepse", "proj_us"]},
-    {"id": "no_match_weather", "phrase": "what's the weather like today", "expect_no_resolution": true, "known_violation": "V-ENTITY-1: entity resolution applies no minimum-similarity floor, so an unrelated phrase ('weather') still resolves to the nearest entity (e.g. a person) instead of returning no match. Downstream §10 injects it as a resolved entity. Needs a score floor or a relevance gate."},
+    {"id": "no_match_weather", "phrase": "what's the weather like today", "expect_no_resolution": true},
+    {"id": "no_match_gibberish", "phrase": "random gibberish qwzx nothing here", "expect_no_resolution": true},
     {"id": "colleague_reference", "phrase": "ask Sita from the data team", "expect_resolves_to": "person_sita", "expect_ambiguous": false}
   ]
 }
