@@ -64,6 +64,9 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"
     redis_url: str = "redis://localhost:6379/0"
+    # Task-queue key namespace (§14). Tests pass a unique namespace so an
+    # isolated queue is never drained by a live worker on the default one.
+    queue_namespace: str = "companion"
 
 
 @lru_cache

@@ -27,11 +27,11 @@ pytestmark = [
 
 
 async def test_background_result_delivered_as_fresh_line_at_pause() -> None:
-    queue = RedisTaskQueue(get_settings())
+    queue = RedisTaskQueue(get_settings(), namespace=f"test_{uuid.uuid4().hex[:12]}")
     session = f"it_s_{uuid.uuid4().hex[:8]}"
     user_id = f"it_{uuid.uuid4().hex[:12]}"
     try:
-        await queue._redis.delete("companion:tasks:queued")  # stale tasks from prior runs
+        await queue._redis.delete(queue._queue_key)  # stale tasks from prior runs
         task_id = await queue.enqueue(
             session_id=session,
             user_id=user_id,

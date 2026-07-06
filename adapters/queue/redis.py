@@ -14,10 +14,6 @@ import redis.asyncio as aioredis
 from config.settings import Settings
 from ports.queue import QueuedTask
 
-_QUEUE_KEY = "companion:tasks:queued"
-_TASK_KEY = "companion:task:{task_id}"
-_SESSION_KEY = "companion:session_tasks:{session_id}"
-
 # Tasks expire after a week; delivery is conversational, not archival.
 _TASK_TTL_S = 7 * 24 * 3600
 
@@ -27,10 +23,16 @@ def _now() -> str:
 
 
 class RedisTaskQueue:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, namespace: str | None = None) -> None:
         self._redis: aioredis.Redis = aioredis.from_url(
             settings.redis_url, decode_responses=True
         )
+        # All keys are namespaced so an isolated queue (e.g. per test run) can
+        # never be drained by a live worker on the default "companion" queue.
+        ns = namespace or settings.queue_namespace
+        self._queue_key = f"{ns}:tasks:queued"
+        self._task_key = f"{ns}:task:{{task_id}}"
+        self._session_key = f"{ns}:session_tasks:{{session_id}}"
 
     async def enqueue(
         self, *, session_id: str, user_id: str, type: str, params: dict[str, Any]
@@ -44,19 +46,19 @@ class RedisTaskQueue:
             created_at=_now(),
         )
         await self._save(task)
-        await self._redis.sadd(_SESSION_KEY.format(session_id=session_id), task.task_id)
-        await self._redis.expire(_SESSION_KEY.format(session_id=session_id), _TASK_TTL_S)
-        await self._redis.lpush(_QUEUE_KEY, task.task_id)
+        await self._redis.sadd(self._session_key.format(session_id=session_id), task.task_id)
+        await self._redis.expire(self._session_key.format(session_id=session_id), _TASK_TTL_S)
+        await self._redis.lpush(self._queue_key, task.task_id)
         return task.task_id
 
     async def status(self, task_id: str) -> QueuedTask:
         return await self._load(task_id)
 
     async def pending_deliveries(self, session_id: str) -> list[QueuedTask]:
-        task_ids = await self._redis.smembers(_SESSION_KEY.format(session_id=session_id))
+        task_ids = await self._redis.smembers(self._session_key.format(session_id=session_id))
         tasks = []
         for task_id in task_ids:
-            raw = await self._redis.get(_TASK_KEY.format(task_id=task_id))
+            raw = await self._redis.get(self._task_key.format(task_id=task_id))
             if raw is None:
                 continue
             task = QueuedTask.model_validate_json(raw)
@@ -72,7 +74,7 @@ class RedisTaskQueue:
         await self._set_delivery(task_id, "suppressed")
 
     async def claim_next(self, timeout_s: float = 1.0) -> QueuedTask | None:
-        popped = await self._redis.brpop([_QUEUE_KEY], timeout=timeout_s)
+        popped = await self._redis.brpop([self._queue_key], timeout=timeout_s)
         if popped is None:
             return None
         _, task_id = popped
@@ -105,11 +107,11 @@ class RedisTaskQueue:
 
     async def _save(self, task: QueuedTask) -> None:
         await self._redis.set(
-            _TASK_KEY.format(task_id=task.task_id), task.model_dump_json(), ex=_TASK_TTL_S
+            self._task_key.format(task_id=task.task_id), task.model_dump_json(), ex=_TASK_TTL_S
         )
 
     async def _load(self, task_id: str) -> QueuedTask:
-        raw = await self._redis.get(_TASK_KEY.format(task_id=task_id))
+        raw = await self._redis.get(self._task_key.format(task_id=task_id))
         if raw is None:
             raise KeyError(f"unknown task {task_id}")
         return QueuedTask.model_validate_json(raw)

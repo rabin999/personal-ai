@@ -17,8 +17,8 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 async def queue() -> AsyncIterator[RedisTaskQueue]:
-    q = RedisTaskQueue(Settings(_env_file=None))
-    await q._redis.delete("companion:tasks:queued")
+    q = RedisTaskQueue(Settings(_env_file=None), namespace=f"test_{uuid.uuid4().hex[:12]}")
+    await q._redis.delete(q._queue_key)
     yield q
     await q.aclose()
 

@@ -42,12 +42,12 @@ DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
 async def test_session_close_learns_via_queued_consolidation() -> None:
     settings = get_settings()
     database = Database(settings)
-    queue = RedisTaskQueue(settings)
+    queue = RedisTaskQueue(settings, namespace=f"test_{uuid.uuid4().hex[:12]}")
     user_id = f"it_{uuid.uuid4().hex[:12]}"
     session = f"it_s_{uuid.uuid4().hex[:8]}"
     try:
         await wait_until_healthy(database)
-        await queue._redis.delete("companion:tasks:queued")
+        await queue._redis.delete(queue._queue_key)
 
         docs = MongoDocStore(database)
         ledger = CostLedger(docs)

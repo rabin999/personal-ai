@@ -43,7 +43,7 @@ async def test_project_action_flow_end_to_end() -> None:
     database = Database(settings)
     user_id = f"it_{uuid.uuid4().hex[:12]}"
     session = f"it_s_{uuid.uuid4().hex[:8]}"
-    queue = RedisTaskQueue(settings)
+    queue = RedisTaskQueue(settings, namespace=f"test_{uuid.uuid4().hex[:12]}")
     try:
         await wait_until_healthy(database)
         await database.startup()
