@@ -60,7 +60,8 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <nav className="sticky top-0 z-10 flex gap-1 border-b border-neutral-200 bg-white/80 px-4 py-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/80">
+      {/* Horizontally scrollable on narrow screens so the tabs never clip. */}
+      <nav className="thin-scroll sticky top-0 z-10 flex gap-1 overflow-x-auto border-b border-neutral-200 bg-white/80 px-3 py-3 backdrop-blur sm:px-4 dark:border-neutral-800 dark:bg-neutral-900/80">
         <NavItem to="/">Companion</NavItem>
         <NavItem to="/conversations">Conversations</NavItem>
         <NavItem to="/memories">Memories</NavItem>
@@ -77,7 +78,7 @@ function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
       to={to}
       end={to === "/"}
       className={({ isActive }) =>
-        `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+        `shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
           isActive
             ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
             : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
