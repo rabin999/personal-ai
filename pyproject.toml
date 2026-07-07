@@ -97,6 +97,7 @@ markers = [
     "integration: needs real datastores from docker-compose (Mongo/Qdrant/Neo4j/Redis)",
     "acceptance: end-to-end acceptance-criteria tests",
     "paid: hits a real paid provider (needs an API key); skipped loudly without one",
+    "real_call: real model + real stores end-to-end (no mocks), LLM-judged; needs keys + docker",
 ]
 
 [tool.coverage.run]

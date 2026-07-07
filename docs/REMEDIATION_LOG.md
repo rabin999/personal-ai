@@ -454,3 +454,22 @@ Real xAI /tts probe + code audit. Findings + fixes:
 Verified: `tests/e2e/test_voice_output.py` (8) — resolve_voice normalization + engine run proving
 one pinned voice across all TTS calls + voice recorded in trace; web tsc clean. Blocked on a human
 ear for actual audio cleanliness and on the uninstalled voice extra for the Pipecat runtime.
+
+---
+
+## Autonomous backlog run — Item 3: Real-call harness + LLM-judge (2026-07-07)
+
+Built the safety net the brief said was missing (ZERO real_call tests existed):
+- `real_call` pytest marker (real model + real stores; skips loudly without prereqs).
+- `tests/support/judge.py` — reusable, calibrated companion-voice judge (pinned complex tier).
+- `tests/support/real_pipeline.py` — `RealTurns` live-pipeline harness; `.say()` runs a real turn.
+- `tests/real_call/conftest.py` — module-scoped live pipeline (loop-scoped for AsyncMongoClient).
+- `tests/real_call/test_judge.py` — PROVES the judge on an 8-case human-calibration set (fails
+  "hi→How can I help you?" + AI disclaimers; passes warm replies). 8/8.
+- `tests/real_call/test_companion_voice_real.py` — 8 real judged turns; permanent Item 2 net.
+
+Defect the harness caught: the nature question ("do you actually care?") flakily got a COLD
+disclosure on the fast tier. Fix: `_warm_disclosure` warm-polishes any nature-disclosure draft on
+a stronger tier (leads with genuine attention, keeps the honest "I'm an AI"), and only accepts the
+polish if it still discloses (`_HAS_DISCLOSURE` guard — never drops the honesty; this also keeps the
+gs3 golden green under a scripted FakeLLM). Real reruns 4/4 warm; suite 8/8.

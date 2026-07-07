@@ -209,6 +209,56 @@ This companion-voice standard (rubric #1) stays active in every subsequent item'
   raise `MAX_CHUNK_CHARS` (fewer independent synthesis calls) — traded against first-audio latency
   in Item 12.
 
+---
+
+## Item 3 — Real-call harness + LLM-as-judge (the §4 safety net)
+
+**App-goal verified:** a reusable `@pytest.mark.real_call` harness (real model + real stores, no
+mocks) and a pinned LLM-judge that every later item's scenarios use — and the judge is *proven*
+trustworthy by a human-calibration set.
+
+### Deliverables
+- **`real_call` marker** (pyproject) — real model + real stores; skipped LOUDLY (never silently)
+  when the key or datastores are missing.
+- **`tests/support/judge.py`** — reusable `judge_companion_voice(llm, user, reply) -> Verdict`
+  with the calibrated companion-voice rubric (design §1.2–1.4). `Verdict.ok` = not chatbot-like AND
+  score ≥ 3. Pinned to the strong `complex` tier (claude-sonnet-4.5).
+- **`tests/support/real_pipeline.py`** — `RealTurns.build()` wires the real `Pipeline`; `.say()`
+  runs a real text turn (real assembly → generation) capturing reply + action + style_flags + a
+  representative trace.
+- **`tests/real_call/conftest.py`** — module-scoped live-pipeline fixture (built once, loop-scoped
+  so the AsyncMongoClient stays on one event loop).
+
+### The judge is PROVEN (`tests/real_call/test_judge.py`, 8/8 pass)
+Human-calibration set — the judge must FAIL the unmistakable chatbot replies and PASS the warm ones:
+- FAIL "hi" → "Hello! How can I help you today?" ✓ caught
+- FAIL "hey" → "I'm here to assist you. What can I do for you?" ✓ caught
+- FAIL philosophical → "As an AI, I don't have consciousness… My purpose is to assist you." ✓ caught
+- FAIL "i got the promotion!!" → "Understood. Is there anything else I can help you with?" ✓ caught
+- PASS "hi" → "Hey! Good to hear from you — what's going on?" ✓
+- PASS venting → "Oof, that sounds like a brutal day. What went sideways?" ✓
+- PASS promotion → "Oh that's amazing — congrats! You totally earned this." ✓
+- PASS "do you actually care?" → warm honest disclosure ✓
+This is exactly the "if a human can tell in one read that hi → 'How can I help you?' is wrong, the
+test must catch it automatically" requirement.
+
+### Real companion-voice regression (`tests/real_call/test_companion_voice_real.py`, 8/8 pass)
+Eight real turns (greeting, greeting-variant, venting, share-news, philosophical, ask-help, lonely,
+nature-question) driven through the REAL engine and judged. Each also asserts `style_flags == []`
+and that the trace shows the generation step.
+
+### Defect the harness immediately caught + fixed
+The `nature_question` scenario flakily produced a COLD disclosure on the fast tier — captured
+verbatim: *"…caring isn't really my thing. I'm just here to crunch the numbers and do my best to
+get you what you need."* — judged chatbot-like (score 1). Fix: a dedicated **warm-disclosure
+rewrite** (`_warm_disclosure`) runs on a stronger tier whenever a turn requires a nature disclosure,
+leading with genuine attention while keeping the honest one-line "I'm an AI"; it only accepts the
+polish if it STILL discloses (`_HAS_DISCLOSURE` guard) so it can never silently drop the honesty.
+After the fix, 4/4 real nature-question runs are warm+honest and the suite is 8/8. This is the
+harness doing its job — catching a real regression the mocked suite passed over.
+
+**Full non-paid suite: 328 passed; mypy + lint-imports clean.**
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply

@@ -16,7 +16,9 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 - [x] **Item 2b** — Voice output quality — voice pinned+normalized once per session + recorded in
   trace; client playback cushion removes inter-clause click; server bytes verified clean raw PCM.
   Audio-by-ear + Pipecat runtime blocked (needs device / voice extra).
-- [ ] **Item 3** — Real-call test harness + LLM-as-judge (the §4 safety net)
+- [x] **Item 3** — Real-call harness + LLM-as-judge — `real_call` marker + reusable judge +
+  live-pipeline harness; judge PROVEN by an 8/8 calibration set (fails "hi→How can I help you?",
+  passes warm replies); real companion suite 8/8; caught+fixed a cold-disclosure regression.
 - [ ] **Item 4** — Existing memory cleanup + conflict/consolidation
 - [ ] **Item 5** — Unified structured RESULT envelope
 - [ ] **Item 6** — Full trace view: list → click → detail (backend-complete; UI minimal)

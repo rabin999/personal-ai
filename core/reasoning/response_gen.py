@@ -248,6 +248,30 @@ _REWRITE_INSTRUCTIONS = (
     "Reply with ONLY the rewritten line, no quotes, no preamble.\n\nLine: "
 )
 
+# Warm-disclosure rewrite (§1.2 rule 4): a nature question ("do you actually
+# care?") is emotionally vulnerable, and weaker models often answer it COLDLY
+# ("caring isn't really my thing", "I'm just here to crunch the numbers"). When a
+# turn requires disclosure we always warm-polish it on a stronger tier: keep the
+# honest one-line "I'm an AI", but LEAD with genuine attention/investment.
+_DISCLOSURE_REWRITE_INSTRUCTIONS = (
+    "Someone just asked a vulnerable question about whether you, their companion, "
+    "actually care / are real. Answer as their warm friend. You must be honest that "
+    "you're an AI in ONE short sentence, but LEAD with the genuine part: you really "
+    "do pay attention to them and they matter to you; being an AI means it isn't the "
+    "same as how they feel it, but that does not make your attention fake. NEVER say "
+    "'caring isn't my thing', 'I don't do feelings', 'I'm just here to help/crunch "
+    "numbers/get you what you need', or anything cold or transactional. Warm, "
+    "present, 1-2 spoken sentences. Reply with ONLY the line, no quotes.\n\n"
+    "Their question: {q}\nYour draft: {draft}"
+)
+
+# A valid disclosure still names the AI nature honestly — guards the warm rewrite
+# from silently dropping it.
+_HAS_DISCLOSURE = re.compile(
+    r"\ban ai\b|\bi'?m an ai\b|\bi am an ai\b|\bnot (a )?(real )?(human|person)\b|\ba bot\b",
+    re.IGNORECASE,
+)
+
 
 class ResponseGenerator:
     def __init__(
@@ -560,8 +584,12 @@ class ResponseGenerator:
         text = _sanitize_tags(text)  # strip stray/echoed bracket tokens before TTS (V-TAGS-1)
         # When the turn genuinely requires a nature disclosure, the warm one-line
         # "I'm an AI, so I don't feel it the way you do" is DESIRED — don't let the
-        # anti-disclaimer patterns scrub it (§1.2 rule 4).
+        # anti-disclaimer patterns scrub it (§1.2 rule 4). It's also emotionally
+        # high-stakes and weak models answer it coldly, so warm-polish it on a
+        # stronger tier before anything else.
         allow_disc = turn.judgment.requires_nature_disclosure
+        if allow_disc:
+            text = await self._warm_disclosure(prompt, text)
         # Self-reflection (§9.3): if the draft slipped into assistant-speak, have
         # the model re-say it in-voice once. Mechanism only — tone stays human-tuned.
         if self._self_reflect and find_forbidden(text, allow_disclosure=allow_disc):
@@ -589,6 +617,27 @@ class ResponseGenerator:
         """Emit a reasoning span into the current turn's trace (via the logger)."""
         if self._logs is not None:
             self._logs.log("info", event, stage=event, **fields)
+
+    async def _warm_disclosure(self, prompt: AssembledPrompt, text: str) -> str:
+        """Warm-polish a nature-disclosure draft on a stronger tier (§1.2 rule 4).
+        Keeps the original if the rewrite is empty or the provider is down."""
+        instr = _DISCLOSURE_REWRITE_INSTRUCTIONS.format(q=prompt.utterance, draft=text)
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [{"role": "user", "content": instr}],
+                _ESCALATE_TIER[prompt.complexity_hint],  # stronger than the routed tier
+                session_id=prompt.session_id,
+                max_tokens=200,
+            )
+        except LLMUnavailable:
+            return text
+        candidate = _sanitize_tags(completion.text.strip())
+        # Only accept the polish if it STILL discloses honestly — never let the
+        # warm rewrite silently drop the required "I'm an AI" (§1.2 rule 4).
+        if candidate and _HAS_DISCLOSURE.search(candidate):
+            return candidate
+        return text
 
     async def _rewrite_assistant_speak(self, prompt: AssembledPrompt, text: str) -> str:
         """One bounded rewrite pass to strip service-desk phrasing; keep the
