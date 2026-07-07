@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Orb } from "../components/Orb";
+import { Waveform } from "../components/Waveform";
 import { MicPicker } from "../components/MicPicker";
 import { TraceLog } from "../components/TraceLog";
 import { ThemeToggle } from "../components/ThemeToggle";
@@ -291,6 +292,10 @@ export default function CompanionPage() {
           {/* Soft backdrop wash */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(99,102,241,0.08),transparent_70%)]" />
           <Orb state={turnState} level={level} />
+          {/* Live mic-input waveform — reacts to the user's voice while listening. */}
+          {conn === "active" && (
+            <Waveform level={level} active={turnState === "listening"} />
+          )}
         </div>
 
         {/* Bottom action bar */}
