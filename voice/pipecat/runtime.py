@@ -81,8 +81,15 @@ def build_pipeline(
 
 
 async def run_pipeline(pipeline: Pipeline) -> None:
-    """Run the assembled pipeline; interruptions/barge-in are framework-driven."""
-    task = PipelineTask(pipeline, params=PipelineParams())
+    """Run the assembled pipeline; interruptions/barge-in are framework-driven.
+
+    ``allow_interruptions=True`` is what actually turns barge-in on: without it
+    Pipecat keeps speaking over the user (its default is False), so the user
+    talking mid-reply is ignored until the bot finishes (spec §24). With it on,
+    the VAD hearing the user during playback emits a StartInterruptionFrame that
+    stops TTS and — via CompanionProcessor — cancels the in-flight reply.
+    """
+    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
     await PipelineRunner().run(task)
 
 

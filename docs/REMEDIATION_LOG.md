@@ -364,3 +364,35 @@ hand-rolled OAuth/SMTP): **Authlib** (`authlib.integrations.starlette_client`),
   session-cookie API client (`credentials:"include"`, 401 → /login), `/auth/me`
   guard, logout; removed the token field. Mobile: mobile-first login, and the
   data-page nav added to the profile slide-over (header nav is hidden on phones).
+
+---
+
+## Autonomous backlog run — Item 1: Barge-in / interruption (2026-07-07)
+
+### Decision (§0.1) — how barge-in is verified
+Barge-in is a runtime control-flow invariant (stop TTS + cancel generation + drain queued audio
++ start a fresh turn with context intact), independent of which model wrote the reply. Verified it
+deterministically by driving the **real `VoiceSession._consume` state machine** (real WorkingMemory,
+SemanticEndpointer, VAD gate, audio pipeline) with controllable STT/TTS/generator collaborators,
+rather than the live LLM (whose timing would be non-deterministic without changing the property).
+New engine E2E: `tests/e2e/test_barge_in_engine.py` — 3 scenarios (interrupt+switch-topic,
+sub-threshold echo-blip does-not-interrupt, interrupt+same-topic continuity). All pass.
+
+### Defects fixed
+- **Pipecat path had barge-in off.** `voice/pipecat/runtime.py` used `PipelineParams()` — Pipecat's
+  default `allow_interruptions=False` — so the framework talked over the user despite the docstring
+  claiming framework-driven barge-in. Set `allow_interruptions=True`.
+- **Pipecat CompanionProcessor generation was not cancellable.** It `await`ed `generate()` inline, so
+  an interruption mid-generation couldn't stop it (a late `TextFrame` could still be pushed). Reworked
+  to run the reply as a cancellable task; `StartInterruptionFrame` (or a superseding final transcript)
+  cancels it — mirroring the native `turn.cancel()`.
+
+### Confirmed already-correct (native path, prior commits 07524c0/b3f2bea)
+Full-duplex mic streams during playback; sustained-fresh-speech guard (`_BARGE_IN_FRAMES=8`) prevents
+self-interrupt on echo blips; interrupt drains the output queue and begins a new turn; working memory
+survives the interrupt. The engine E2E now pins all of this.
+
+### Blocked (hardware/env)
+- Browser mic + AEC full-duplex path: needs a real microphone (manual step recorded in TEST_REPORT).
+- Pipecat runtime: `voice` optional extra (pipecat/silero) not installed here, so `voice/pipecat/*`
+  doesn't import — the two fixes are code-correct per Pipecat's API; runtime check needs the extra + a mic.

@@ -12,6 +12,7 @@ uses, so both runtimes share one engine.
 """
 
 import asyncio
+import contextlib
 import logging
 from typing import Any, Protocol
 
@@ -20,6 +21,7 @@ from pipecat.frames.frames import (
     InterimTranscriptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
+    StartInterruptionFrame,
     TextFrame,
     TranscriptionFrame,
 )
@@ -67,19 +69,42 @@ class CompanionProcessor(FrameProcessor):
         self._extractor = extractor
         self._dispatcher = dispatcher
         self._make_context = make_context
+        self._reply_task: asyncio.Task[None] | None = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
+        # Barge-in (§24): the framework's VAD emits StartInterruptionFrame when the
+        # user speaks over the reply. Cancel the in-flight reply so we stop thinking
+        # about (and speaking) the abandoned turn — matching the native runtime,
+        # which cancels its turn task. TTS is stopped by the framework; this cancels
+        # OUR generation so a late TextFrame can't be pushed after the interruption.
+        if isinstance(frame, StartInterruptionFrame):
+            self._cancel_reply()
+            await self.push_frame(frame, direction)
+            return
         # Act on a FINAL user transcription (TranscriptionFrame, not the interim
         # partials); pass everything else through so Pipecat's system/control frames
         # (start/end/interruption) flow normally. We consume the transcription so
-        # the user's own words are never forwarded to TTS.
+        # the user's own words are never forwarded to TTS. The reply runs as a
+        # cancellable task (not awaited inline) so an interruption mid-generation
+        # actually stops it.
         if isinstance(frame, TranscriptionFrame) and not isinstance(
             frame, InterimTranscriptionFrame
         ):
-            await self._respond(frame.text)
+            self._cancel_reply()  # a new final transcript supersedes any in-flight reply
+            self._reply_task = asyncio.create_task(self._respond(frame.text))
+            self._reply_task.add_done_callback(self._on_reply_done)
         else:
             await self.push_frame(frame, direction)
+
+    def _cancel_reply(self) -> None:
+        if self._reply_task is not None and not self._reply_task.done():
+            self._reply_task.cancel()
+        self._reply_task = None
+
+    def _on_reply_done(self, task: "asyncio.Task[None]") -> None:
+        with contextlib.suppress(asyncio.CancelledError):
+            task.exception()  # retrieve to avoid "never retrieved" warnings
 
     async def _respond(self, text: str) -> None:
         if not text.strip():
