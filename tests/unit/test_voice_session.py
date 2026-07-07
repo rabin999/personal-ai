@@ -148,6 +148,55 @@ async def test_silence_short_circuits_before_any_paid_stage() -> None:
     assert working.recent(SESSION) == []
 
 
+class CountingSTT(FakeSTT):
+    """Records how many audio frames actually reached transcription."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.frames_seen = 0
+
+    async def transcribe_stream(
+        self,
+        frames: AsyncIterator[bytes],
+        vocab: list[str] | None = None,
+        *,
+        user_id: str,
+        session_id: str | None = None,
+    ) -> AsyncIterator[TranscriptPiece]:
+        self.calls += 1
+        async for _ in frames:
+            self.frames_seen += 1
+        yield TranscriptPiece(
+            text=self.text,
+            words=[WordConfidence(word=self.text or "x", confidence=0.9)],
+            is_final=True,
+        )
+
+
+async def test_preroll_recovers_onset_frames_the_gate_swallowed() -> None:
+    # §19 fix: the gate only fires speech_start after START_FRAMES(3) of speech,
+    # so those onset frames precede the event. The pre-roll must fold them back
+    # in so the first word is transcribed instead of clipped.
+    trace = TraceEmitter(SESSION)
+    working = WorkingMemory()
+    stt = CountingSTT("hey there")
+    # 4 idle + a 20-frame speech burst + trailing silence to endpoint.
+    confidences = [0.05] * 4 + [0.9] * 20 + [0.02] * 40
+    session = _session(ScriptedVAD(confidences), stt, working, trace)
+
+    async for _ in session.converse(_frames(confidences)):
+        pass
+    trace.close()
+
+    events = [e async for e in trace.events()]
+    capturing = next(e for e in events if e.stage == "vad" and "capturing" in e.message)
+    # The gate-opening frames (>= START_FRAMES) are recovered, not lost.
+    assert capturing.data["preroll_frames"] >= 3
+    # More frames reach STT than just those from speech_start onward: the full
+    # 20-frame burst plus the pre-gate onset are transcribed.
+    assert stt.frames_seen > 20
+
+
 async def test_events_are_grouped_into_turns() -> None:
     trace = TraceEmitter(SESSION)
     working = WorkingMemory()

@@ -14,6 +14,7 @@ can show the whole pipeline and replay each reply's audio.
 
 import asyncio
 import logging
+from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
@@ -48,6 +49,12 @@ _MS_PER_BYTE = 1000.0 / (SAMPLE_RATE * 2)  # PCM16 mono
 # Poll for a finished background result about this often while idle (~1.3s at
 # 32ms/frame). Cheap: only synthesizes when a task has actually completed (§8.2).
 _DELIVERY_POLL_FRAMES = 40
+# Rolling pre-roll ring buffer (spec §19 fix): the VAD gate only fires
+# ``speech_start`` after START_FRAMES of consecutive speech, so the frames that
+# opened the gate — plus the quiet onset before them — precede the event. Without
+# a pre-roll the first phoneme/word is clipped. 10 frames ≈ 320ms at 512-sample
+# (32ms) frames, comfortably covering the START_FRAMES(3) gate latency + onset.
+_PREROLL_FRAMES = 10
 
 
 class VoiceSession:
@@ -117,6 +124,8 @@ class VoiceSession:
     ) -> None:
         self._trace.emit("session", "conversation started", user_id=self._user_id)
         buffer: list[bytes] = []
+        # Pre-roll ring of the most recent pre-speech frames (§19 first-word fix).
+        preroll: deque[bytes] = deque(maxlen=_PREROLL_FRAMES)
         silence_ms = 0.0
         barge_frames = 0
         idle_frames = 0
@@ -147,9 +156,15 @@ class VoiceSession:
 
                 if frame.event == "speech_start":
                     self._trace.begin_turn()
-                    self._trace.emit("vad", "speech detected — capturing")
-                    capturing, buffer, silence_ms, decided_incomplete = True, [], 0.0, False
+                    # Seed the utterance with the pre-roll so the onset the gate
+                    # swallowed (START_FRAMES + quiet lead-in) is transcribed too.
+                    buffer = list(preroll)
+                    self._trace.emit(
+                        "vad", "speech detected — capturing", preroll_frames=len(buffer)
+                    )
+                    capturing, silence_ms, decided_incomplete = True, 0.0, False
                 if not capturing:
+                    preroll.append(frame.pcm)  # keep the rolling pre-roll fresh
                     # §8.2: while idle, proactively deliver a finished background
                     # result at this pause (no user turn needed). Cheap poll —
                     # only synthesizes when something has actually completed.
