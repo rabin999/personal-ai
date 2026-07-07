@@ -122,6 +122,14 @@ class Settings(BaseSettings):
     # "native" = the hand-rolled asyncio loop. Swapping engines is one wiring line.
     orchestrator: Literal["native", "langgraph"] = "langgraph"
 
+    # Langfuse (A8): self-hosted tracing/prompt-mgmt/evals. When enabled, every
+    # per-turn trace record also flows to Langfuse (behind the LogSink port, so it's
+    # swappable). Keys come from the self-hosted instance's auto-provisioned project.
+    langfuse_enabled: bool = False
+    langfuse_host: str = "http://localhost:3000"
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+
     # Reasoning-model policy (A2): the MAIN user-facing reasoning turn uses a MATURE,
     # strong model — quality of thought over raw speed — instead of the flashy fast
     # tier (which produced shallow, context-blind answers). Trivial sub-steps (context

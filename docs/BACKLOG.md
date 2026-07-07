@@ -40,7 +40,7 @@ via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is pos
 - [x] **A3** — Context/working-memory — suppress_live_search flag set by the context node on a follow-up (no irrelevant re-search); reasons over carried info (real captures); 3 real_call scenarios pass
 - [x] **A4** — Multi-utterance — classify_utterance (accumulate/merge/split by timing+continuity+state) + combine; integrated in VoiceSession (fold a quick addition into one turn); decision logged in trace. unit + engine E2E; live-audio timing mic-blocked
 - [x] **A5** — Deep traces — graph nodes log persona read (emotion+context), context-connection, multi-utterance decision, and explicit tool why-not (each uncalled tool explained); + llm model/tokens/cost + reflection. real capture
-- [ ] **A8** — Consolidate on Langfuse (self-hosted) for prompt mgmt/evals/traces
+- [~] **A8** — Langfuse — FULL self-hosted stack up (PG+ClickHouse+Redis+MinIO+web+worker, healthy); LangfuseTraceSink behind the LogSink port (swappable); real turn → 12 observations (LLM gens w/ model+tokens+cost + reasoning + tools). Tracing DONE; prompt-mgmt/eval migration = follow-up
 - [ ] **A9** — Full trace detail page
 - [ ] **A10** — Reranker / RAGAS / Arq / secrets / rate-limit / migrations
 - [ ] **A6** — Mobile-first UI

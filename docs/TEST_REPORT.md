@@ -780,3 +780,42 @@ fully reconstructable. A5 additions (captured on a real "rough day" turn):
   self-reflection span shows ran/checked/revised.
 
 Non-paid suite 357+; real trace captured above. (A9 renders this as a full detail page.)
+
+---
+
+## A8 — Consolidate on self-hosted Langfuse (traces)
+
+**App-goal verified:** the full self-hosted Langfuse stack is running, and the per-turn trace flows
+into it behind a swappable port.
+
+### Stack (self-hosted, full production topology)
+`deploy/langfuse/docker-compose.yml` (official Langfuse v3) — Postgres + ClickHouse + Redis + MinIO
+(S3) + langfuse-web + langfuse-worker, all up and healthy (`/api/public/health` → 200, v3.206.0). An
+org/project/user + API keys are auto-provisioned via `LANGFUSE_INIT_*`. Redis remapped to host
+6380 to avoid clashing with the app's redis; S3 secrets aligned with MinIO (a signature mismatch was
+diagnosed from the worker log and fixed).
+
+### Integration (behind the LogSink port — swappable, A1.5)
+`adapters/tracing/langfuse_sink.py::LangfuseTraceSink` implements `ports.log_sink.LogSink`. Every
+per-turn trace record (bound `trace_id`=session / `turn_id` / `user_id` / `stage`) becomes a Langfuse
+observation grouped under one trace per (session,turn): `llm` stages → **generations** (model +
+`usage_details` tokens + `cost_details`), everything else → spans. Enabled by config
+(`langfuse_enabled` + keys; default off so tests/CI don't need Langfuse). `langfuse` is imported
+ONLY in the adapter — `lint-imports` stays green (core never imports it).
+
+### Verified (real turn → Langfuse API)
+A real "weather in Kathmandu?" turn produced **12 observations** in Langfuse:
+```
+5 x graph.node (SPAN)   — perceive / resolve_context / respond / reflect_log reasoning
+4 x llm.call (GENERATION, model=claude-4.5-sonnet, tokens + cost)
+1 x judgment (SPAN)   1 x reflection (SPAN)   1 x tool.call (SPAN)
+```
+The whole pipeline — model/tokens/cost, reasoning nodes (incl. the A5 why-not), tool + reflection —
+is now queryable in the Langfuse UI (hierarchical spans, cost, latency).
+
+### Scope (honest)
+Delivered: full stack + **tracing** consolidated on Langfuse behind a swappable port, verified with
+real data. Langfuse **prompt-management/versioning migration** and its **eval/dataset/experiment**
+features (to power §4 judging + prompt attribution natively) are the next A8 steps — the stack + SDK
++ port are in place for them; the app's own prompt_version + attribution (Item 7) remain in the
+interim. Non-paid suite 364; lint-imports clean.

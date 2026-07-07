@@ -28,3 +28,4 @@ web/dist/
 web/*.tsbuildinfo
 .claude/
 logs/
+deploy/langfuse/.env

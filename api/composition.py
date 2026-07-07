@@ -132,7 +132,24 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     # structured logs fan to the configured sinks + a trace-store sink that maps
     # correlation-bound records into the durable per-turn trace.
     traces = TraceStore(docs)
-    logs = StructuredLogger([*build_log_sinks(settings), TraceStoreLogSink(traces)])
+    trace_sinks: list[Any] = [*build_log_sinks(settings), TraceStoreLogSink(traces)]
+    # A8: also route the per-turn trace into self-hosted Langfuse when enabled
+    # (behind the LogSink port — swappable). Guarded so a bad key never blocks boot.
+    if settings.langfuse_enabled and settings.langfuse_public_key:
+        try:
+            from adapters.tracing.langfuse_sink import LangfuseTraceSink
+
+            trace_sinks.append(
+                LangfuseTraceSink(
+                    settings.langfuse_public_key,
+                    settings.langfuse_secret_key,
+                    settings.langfuse_host,
+                )
+            )
+            logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
+        except Exception:
+            logger.exception("Langfuse sink init failed; continuing without it")
+    logs = StructuredLogger(trace_sinks)
 
     profiles = ProfileService(docs)
     registry = TraitRegistry(docs, profiles)
