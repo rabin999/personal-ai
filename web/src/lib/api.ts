@@ -101,6 +101,13 @@ export function getSessionTrace(
 ): Promise<{ events: TraceEvent[]; turns: TurnTotals[] }> {
   return authed(`/debug/traces/${encodeURIComponent(sessionId)}`);
 }
+export interface VersionRow {
+  prompt_version: string; thumbs_up: number; thumbs_down: number;
+  n: number; up_rate: number | null; avg_judge_score: number | null;
+}
+export function getAttribution(): Promise<{ by_prompt_version: VersionRow[] }> {
+  return authed("/debug/attribution");
+}
 
 // ── model selection (§4) ─────────────────────────────────────────────────
 export function getModels(): Promise<{

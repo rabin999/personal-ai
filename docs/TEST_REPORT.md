@@ -407,10 +407,51 @@ minimal list→detail UI surfaces all of it.
 - Web `tsc --noEmit` + `vite build` clean; full non-paid suite 344 passed.
 
 ### Still deferred
-- **Prompt VERSION id** on the assembly span → Item 7.
+- **Prompt VERSION id** on the assembly span → done in Item 7 (below).
 - **Judge score + user feedback** attached to the turn's trace: the judge runs test-side today and
   feedback lands in a separate `feedback` store keyed by session+turn; joining them onto the trace
-  view is a small follow-up (feedback UI already exists on the page).
+  view is a small follow-up (feedback UI already exists on the page). Item 7 does the
+  feedback↔prompt_version join for attribution.
+
+---
+
+## Item 7 — Prompt versioning + performance attribution + caching (spec §7)
+
+**App-goal verified:** every turn records the `prompt_version` that produced it; prompt-cache
+hit/miss is logged; and response quality (thumbs-up rate) is attributable per prompt_version so two
+versions can be compared.
+
+### Prompt versioning
+- `PROMPT_TEMPLATE_VERSION` (currently **2**, with an in-code changelog: v2 = the Item 2 persona
+  rework) + `_prompt_version(traits)` = `pt{template}.{sha1(trait_id:version…)[:8]}`, e.g.
+  `pt2.89201a74`. Same template + trait versions → same id; a persona bump OR any trait
+  description/version change → a new id. Attached to `AssembledPrompt.prompt_version` and emitted on
+  the **assembly** trace span (chat route + harness). Verified deterministic + order-stable, and
+  changes when a trait version bumps.
+
+### Prompt caching (hit/miss, $0)
+- `CompletionResult.cached_tokens` + `_cached_tokens(usage)` read the provider's prompt-cache read
+  tokens (`prompt_tokens_details.cached_tokens` / `cache_read_input_tokens`). The **llm.call** span
+  now carries `cached_tokens` + `cache_hit`; cached tokens are billed $0 (already reflected in the
+  provider cost). Verified on a real turn: `cache_hit=False cached_tokens=0` on gemini-flash-lite
+  (which doesn't report cache reads) — the field is present and correct; a cache-supporting model
+  reports >0.
+
+### Attribution (grouped by prompt_version)
+- `core/observability/attribution.py` (pure, unit-tested): `prompt_version_by_turn(events)` reads
+  the assembly spans; `attribute_by_prompt_version(feedback, version_by_turn)` joins thumbs feedback
+  → prompt_version and rolls up `{thumbs_up, thumbs_down, n, up_rate, avg_judge_score}`, ranked
+  best-first, unmatched → "unknown" (never dropped).
+- Endpoint `GET /debug/attribution`; minimal UI table on the Traces page ("Response quality by
+  prompt version": version · 👍 · 👎 · up-rate · judge).
+
+### Verification
+- Unit (`tests/unit/test_attribution.py`, 4): the "two versions → comparative performance" scenario
+  — version A (75% up) ranks above version B (25% up); assembly-span reading; unknown bucketing;
+  judge-score averaging.
+- Real-call (`test_trace_reconstruction.py`): the assembly span carries a `pt…` prompt_version and
+  every llm span carries `cache_hit`.
+- Web `tsc` + full non-paid suite 348 passed; mypy + lint-imports clean.
 
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the

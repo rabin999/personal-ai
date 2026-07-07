@@ -8,6 +8,7 @@ entities. Episodic snippets and older facts trim first (rule 9).
 """
 
 import asyncio
+import hashlib
 from collections.abc import Mapping
 from typing import Any, Literal, Protocol
 
@@ -18,10 +19,19 @@ from core.memory.episodic import EpisodicMemory
 from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn, WorkingMemory
-from core.profile import ProfileService, TraitRegistry
+from core.profile import ProfileService, TraitDef, TraitRegistry
 from core.reasoning.self_model import SelfModel
 from ports.llm import Tier
 from ports.preference_memory import PreferenceMemory
+
+# Prompt template version (Item 7 / spec §7): the identity + behavior-composition
+# template. BUMP on any change to the persona/self/tics/capability blocks below,
+# with a one-line changelog entry, so a turn's trace records exactly which prompt
+# produced it and performance can be attributed per version.
+#   v1 — original identity/capabilities.
+#   v2 — Item 2 rework: _SELF (no volunteered AI-disclaimers, engage big questions),
+#        _VOICE_TICS (anti-chatbot phrasings), warm pull-based disclosure exemplar.
+PROMPT_TEMPLATE_VERSION = 2
 
 # Character budget for the assembled prompt (~6k tokens at 4 chars/token).
 # Deployment-tunable; the trim ORDER is the invariant, not the number.
@@ -57,6 +67,10 @@ class AssembledPrompt(BaseModel):
     system_prompt: str
     messages: list[dict[str, str]]
     complexity_hint: Tier
+    # Item 7: which prompt template + trait-version set produced this turn, e.g.
+    # "pt2.a1b2c3d4" — recorded in the trace so response quality (judge score /
+    # thumbs-up rate) can be attributed per prompt_version.
+    prompt_version: str = f"pt{PROMPT_TEMPLATE_VERSION}"
     # §4: user-selected fast model to try first (non-complex turns only); the
     # router keeps the tier chain as fallback. None → default tier routing.
     model_override: str | None = None
@@ -186,6 +200,7 @@ class PromptAssembler:
 
         # Step 10 — complexity hint + emotion signal travel with the prompt.
         complexity_hint = _complexity_hint(utterance)
+        prompt_version = _prompt_version(traits)
         # §4: honor the user's fast-model choice on non-complex turns; hard turns
         # still route to the strong tier.
         model_override = profile.model_prefs.fast_model if complexity_hint != "complex" else None
@@ -196,6 +211,7 @@ class PromptAssembler:
             system_prompt=system_prompt,
             messages=messages,
             complexity_hint=complexity_hint,
+            prompt_version=prompt_version,
             model_override=model_override,
             emotion=dict(emotion) if emotion else None,
             cold_start=cold_start,
@@ -257,6 +273,17 @@ _COLD_START_GUIDANCE = (
     "a sentence or two; don't interrogate or run a questionnaire. If they tell "
     "you a name to call you, use the set_companion_name tool to remember it."
 )
+
+
+def _prompt_version(traits: list[TraitDef]) -> str:
+    """A stable id for the template + the exact enabled-trait versions (Item 7).
+
+    Same template + same trait versions → same id; a persona template bump OR a
+    trait description/version change → a new id, so performance is attributable to
+    the precise prompt that produced a turn."""
+    sig = ",".join(f"{t.id}:{t.version}" for t in sorted(traits, key=lambda t: t.id))
+    digest = hashlib.sha1(sig.encode()).hexdigest()[:8]
+    return f"pt{PROMPT_TEMPLATE_VERSION}.{digest}"
 
 
 def _identity_section(companion_name: str | None) -> str:

@@ -86,6 +86,7 @@ class RealTurns:
             "assembly",
             f"prompt assembled ({len(prompt.system_prompt)} chars)",
             complexity=prompt.complexity_hint,
+            prompt_version=prompt.prompt_version,
             prompt_chars=len(prompt.system_prompt),
         )
         trace.emit(

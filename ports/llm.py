@@ -19,6 +19,10 @@ class CompletionResult(BaseModel):
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    # Prompt-cache read tokens (Item 7): the portion of the input served from the
+    # provider's prompt cache. >0 means a cache hit — those tokens are billed at $0
+    # (already reflected in cost_usd); recorded so hit/miss is visible in the trace.
+    cached_tokens: int = 0
 
 
 class LLMUnavailable(Exception):

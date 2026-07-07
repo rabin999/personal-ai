@@ -102,6 +102,7 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
             f"prompt assembled ({len(prompt.system_prompt)} chars, "
             f"{len(prompt.messages)} messages)",
             complexity=prompt.complexity_hint,
+            prompt_version=prompt.prompt_version,  # Item 7: attributable per version
             prompt_chars=len(prompt.system_prompt),
             sections=[k for k, v in sections.items() if v.strip()],
             system_prompt=prompt.system_prompt[:4000],

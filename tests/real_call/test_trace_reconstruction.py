@@ -45,6 +45,13 @@ async def test_a_turn_is_fully_reconstructable_from_the_trace(real_turns) -> Non
     response_spans = [e for e in events if e["stage"] == "response"]
     assert response_spans and "voice_text" in response_spans[-1]["data"]
 
+    # Item 7: the assembly span records the prompt_version that produced the turn.
+    assembly = [e for e in events if e["stage"] == "assembly"]
+    assert assembly and str(assembly[-1]["data"].get("prompt_version", "")).startswith("pt")
+
+    # Item 7: llm spans carry prompt-cache hit/miss visibility.
+    assert all("cache_hit" in e["data"] for e in llm_spans)
+
     # Per-turn totals roll up cost + tokens from the spans (§3.12).
     totals = _turn_totals(events)
     assert totals, "no per-turn totals computed"

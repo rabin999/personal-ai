@@ -23,6 +23,28 @@ from ports.llm import CompletionResult, LLMUnavailable, Tier
 
 logger = logging.getLogger(__name__)
 
+
+def _cached_tokens(usage: Any) -> int:
+    """Prompt-cache read tokens from an OpenAI/OpenRouter usage object.
+
+    Cache-supporting models report ``prompt_tokens_details.cached_tokens``; some
+    providers surface ``cache_read_input_tokens`` in the usage extras instead. A
+    value >0 is a cache hit (billed $0 for that portion)."""
+    if usage is None:
+        return 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is not None:
+        cached = getattr(details, "cached_tokens", None)
+        if cached is None and isinstance(details, dict):
+            cached = details.get("cached_tokens")
+        if cached:
+            return int(cached)
+    extra = getattr(usage, "model_extra", None)
+    if extra:
+        return int(extra.get("cache_read_input_tokens") or 0)
+    return 0
+
+
 # Fallback chains if provider_config carries no llm_router document.
 DEFAULT_TIERS: dict[str, list[str]] = {
     "simple": ["google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
@@ -178,7 +200,12 @@ class OpenRouterLLM:
             if getattr(usage, "model_extra", None):
                 cost = float(usage.model_extra.get("cost") or 0.0)
         return CompletionResult(
-            text=text, model=model_id, input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost
+            text=text,
+            model=model_id,
+            input_tokens=in_tok,
+            output_tokens=out_tok,
+            cost_usd=cost,
+            cached_tokens=_cached_tokens(usage),
         )
 
     def preload(self) -> None:
@@ -219,6 +246,7 @@ class OpenRouterLLM:
             input_tokens=usage.prompt_tokens if usage else 0,
             output_tokens=usage.completion_tokens if usage else 0,
             cost_usd=cost,
+            cached_tokens=_cached_tokens(usage),
         )
 
     def _log_call(self, result: CompletionResult, tier: Tier, latency_ms: float) -> None:
@@ -234,6 +262,10 @@ class OpenRouterLLM:
             output_tokens=result.output_tokens,
             cost_usd=result.cost_usd,
             latency_ms=round(latency_ms, 1),
+            # Item 7 prompt caching: how many input tokens were served from cache
+            # (billed $0), and whether this call was a cache hit at all.
+            cached_tokens=result.cached_tokens,
+            cache_hit=result.cached_tokens > 0,
         )
 
     def _log_cost(self, user_id: str, result: CompletionResult, session_id: str | None) -> None:

@@ -526,3 +526,18 @@ Verified (real run) the persisted trace already reconstructs a turn richly; clos
   (model/tokens/cost/latency/status/action + raw voice_text). Data-complete, low-pixel per the plan.
 Proven: real_call trace-reconstruction test + `_turn_totals` unit tests; web tsc+build clean;
 non-paid suite 344.
+
+---
+
+## Autonomous backlog run — Item 7: Prompt versioning + attribution + caching (2026-07-07)
+
+- Prompt versioning: PROMPT_TEMPLATE_VERSION (=2, in-code changelog) + _prompt_version(traits) →
+  pt2.<sha1 of trait id:version>; on AssembledPrompt + emitted on the assembly span. Deterministic,
+  order-stable, changes on a trait bump.
+- Caching: CompletionResult.cached_tokens (_cached_tokens reads prompt_tokens_details.cached_tokens /
+  cache_read_input_tokens); llm.call span carries cached_tokens + cache_hit (cached billed $0).
+- Attribution: core/observability/attribution.py joins thumbs feedback → prompt_version (from the
+  assembly spans) → thumbs-up rate per version, ranked best-first, unknown bucketed. GET
+  /debug/attribution + a minimal UI table on the Traces page.
+- Proven: attribution unit tests (two versions ranked by up-rate) + real_call trace assertions
+  (prompt_version present, cache_hit present). Non-paid suite 348.

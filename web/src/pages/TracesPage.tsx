@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  getAttribution,
   getSessionTrace,
   listTraceSessions,
   sendFeedback,
   type TraceEvent,
   type TurnTotals,
+  type VersionRow,
 } from "../lib/api";
 
 // A READABLE, user-facing view of what happened each turn — what they said, what
@@ -17,12 +19,14 @@ export default function TracesPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [totals, setTotals] = useState<TurnTotals[]>([]);
+  const [versions, setVersions] = useState<VersionRow[]>([]);
 
   useEffect(() => {
     void listTraceSessions().then((r) => {
       setSessions(r.sessions);
       if (r.sessions[0]) setSelected(r.sessions[0].session_id);
     }).catch(() => {});
+    void getAttribution().then((r) => setVersions(r.by_prompt_version)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -46,6 +50,31 @@ export default function TracesPage() {
   return (
     <section>
       <h1 className="mb-4 text-xl font-semibold">Traces</h1>
+
+      {versions.length > 0 && (
+        <div className="mb-4 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+          <p className="mb-2 font-semibold">Response quality by prompt version</p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="text-neutral-500">
+                <tr><th className="text-left">version</th><th>👍</th><th>👎</th><th>up-rate</th><th>judge</th></tr>
+              </thead>
+              <tbody>
+                {versions.map((v) => (
+                  <tr key={v.prompt_version} className="border-t border-neutral-100 dark:border-neutral-800">
+                    <td className="py-1 font-mono">{v.prompt_version}</td>
+                    <td className="text-center">{v.thumbs_up}</td>
+                    <td className="text-center">{v.thumbs_down}</td>
+                    <td className="text-center">{v.up_rate === null ? "—" : `${Math.round(v.up_rate * 100)}%`}</td>
+                    <td className="text-center">{v.avg_judge_score ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {sessions.length === 0 && <p className="text-sm text-neutral-500">No traced conversations yet.</p>}
 
       {sessions.length > 0 && (

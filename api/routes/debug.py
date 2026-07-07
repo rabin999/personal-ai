@@ -10,17 +10,25 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request, status
 
 from api.deps import CurrentUser
+from core.observability.attribution import (
+    attribute_by_prompt_version,
+    prompt_version_by_turn,
+)
 
 router = APIRouter(prefix="/debug")
 
 
-def _trace_store(request: Request) -> Any:
+def _pipeline(request: Request) -> Any:
     pipeline = request.app.state.pipeline
     if pipeline is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="pipeline not wired"
         )
-    return pipeline.traces
+    return pipeline
+
+
+def _trace_store(request: Request) -> Any:
+    return _pipeline(request).traces
 
 
 @router.get("/traces")
@@ -42,6 +50,25 @@ async def get_session_trace(session_id: str, user: CurrentUser, request: Request
         "events": events,
         "turns": _turn_totals(events),
     }
+
+
+@router.get("/attribution")
+async def prompt_version_attribution(user: CurrentUser, request: Request) -> dict[str, Any]:
+    """Response-quality attribution grouped by prompt_version (Item 7 / §7): joins
+    this user's thumbs feedback with the prompt_version on each turn's trace and
+    rolls up a thumbs-up rate per version — so two prompt versions can be compared."""
+    pipeline = _pipeline(request)
+    feedback, _ = await pipeline.feedback.list_for_user(user.user_id, limit=100000)
+    # Build (session, turn) → prompt_version across the sessions that have feedback.
+    sessions = {fb.get("session_id", "") for fb in feedback}
+    version_by_turn: dict[tuple[str, int], str] = {}
+    for sid in sessions:
+        if not sid:
+            continue
+        events = await pipeline.traces.traces_for(user.user_id, sid)
+        version_by_turn.update(prompt_version_by_turn(events))
+    rows = attribute_by_prompt_version(feedback, version_by_turn)
+    return {"user_id": user.user_id, "by_prompt_version": rows}
 
 
 def _num(value: Any) -> float:
