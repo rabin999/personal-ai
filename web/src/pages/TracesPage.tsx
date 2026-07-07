@@ -149,6 +149,16 @@ function TurnView({
           <span>{totals.llm_calls} LLM · {totals.tool_calls} tool</span>
           {totals.failures > 0 && <span className="text-red-500">{totals.failures} failed</span>}
           {totals.reflected && <span>self-reflected</span>}
+          {totals.langfuse_url && (
+            <a
+              href={totals.langfuse_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-indigo-500 underline"
+            >
+              full trace in Langfuse ↗
+            </a>
+          )}
         </div>
       )}
 

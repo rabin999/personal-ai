@@ -5,6 +5,7 @@ persisted traces (§0.5 multi-tenant isolation). Backed by the ``turn_traces``
 Mongo collection written during each voice conversation (``core/observability``).
 """
 
+import hashlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -44,11 +45,22 @@ async def get_session_trace(session_id: str, user: CurrentUser, request: Request
     totals roll-up (§3.12: end-to-end latency + total tokens/cost) so a turn can be
     reconstructed AND its cost/latency read at a glance from the trace alone."""
     events = await _trace_store(request).traces_for(user.user_id, session_id)
+    turns = _turn_totals(events)
+    # A9: deep-link each turn to its full Langfuse trace (the hierarchical detail
+    # view). Langfuse's create_trace_id(seed) is sha256(seed)[:32].
+    settings = _pipeline(request).settings
+    if settings.langfuse_enabled:
+        for t in turns:
+            seed = f"{session_id}:{t['turn']}"
+            tid = hashlib.sha256(seed.encode()).hexdigest()[:32]
+            t["langfuse_url"] = (
+                f"{settings.langfuse_host}/project/{settings.langfuse_project}/traces/{tid}"
+            )
     return {
         "user_id": user.user_id,
         "session_id": session_id,
         "events": events,
-        "turns": _turn_totals(events),
+        "turns": turns,
     }
 
 

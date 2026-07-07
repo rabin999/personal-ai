@@ -41,6 +41,6 @@ via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is pos
 - [x] **A4** — Multi-utterance — classify_utterance (accumulate/merge/split by timing+continuity+state) + combine; integrated in VoiceSession (fold a quick addition into one turn); decision logged in trace. unit + engine E2E; live-audio timing mic-blocked
 - [x] **A5** — Deep traces — graph nodes log persona read (emotion+context), context-connection, multi-utterance decision, and explicit tool why-not (each uncalled tool explained); + llm model/tokens/cost + reflection. real capture
 - [~] **A8** — Langfuse — FULL self-hosted stack up (PG+ClickHouse+Redis+MinIO+web+worker, healthy); LangfuseTraceSink behind the LogSink port (swappable); real turn → 12 observations (LLM gens w/ model+tokens+cost + reasoning + tools). Tracing DONE; prompt-mgmt/eval migration = follow-up
-- [ ] **A9** — Full trace detail page
+- [x] **A9** — Full trace detail — in-app technical breakdown (Item 6) + per-turn deep-link to the full Langfuse trace UI (langfuse_url = deterministic trace id)
 - [ ] **A10** — Reranker / RAGAS / Arq / secrets / rate-limit / migrations
 - [ ] **A6** — Mobile-first UI

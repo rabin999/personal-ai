@@ -819,3 +819,19 @@ real data. Langfuse **prompt-management/versioning migration** and its **eval/da
 features (to power §4 judging + prompt attribution natively) are the next A8 steps — the stack + SDK
 + port are in place for them; the app's own prompt_version + attribution (Item 7) remain in the
 interim. Non-paid suite 364; lint-imports clean.
+
+---
+
+## A9 — Full trace detail page (Langfuse deep-link)
+
+Per the addendum ("if Langfuse's own trace UI already provides this depth, use it directly — link to
+the Langfuse trace"), the Traces page now gives BOTH:
+- the in-app technical breakdown (Item 6): every span with model/tokens/cost/latency/status/action +
+  raw tagged voice_text, the per-turn totals, and the graph reasoning nodes (perceive/resolve_context/
+  respond/reflect_log) with persona read + tool why-not (A5);
+- a **"full trace in Langfuse ↗"** deep-link per turn to the hierarchical Langfuse trace detail
+  (`/debug/traces/{session}` returns `langfuse_url` computed as `{host}/project/{project}/traces/
+  {sha256(session:turn)[:32]}` — Langfuse's deterministic trace id, verified `== create_trace_id`).
+
+Opening a turn reconstructs the entire turn — in-app for a quick read, and in Langfuse for the full
+span tree with cost/latency. Web tsc+build clean.

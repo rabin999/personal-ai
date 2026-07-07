@@ -129,6 +129,7 @@ class Settings(BaseSettings):
     langfuse_host: str = "http://localhost:3000"
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
+    langfuse_project: str = "companion"  # for building trace-detail deep links (A9)
 
     # Reasoning-model policy (A2): the MAIN user-facing reasoning turn uses a MATURE,
     # strong model — quality of thought over raw speed — instead of the flashy fast

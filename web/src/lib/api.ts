@@ -91,7 +91,7 @@ export interface TraceEvent {
 export interface TurnTotals {
   turn: number; tokens_in: number; tokens_out: number; cost_usd: number;
   llm_calls: number; tool_calls: number; failures: number; total_ms: number;
-  reflected: boolean;
+  reflected: boolean; langfuse_url?: string;
 }
 export function listTraceSessions(): Promise<{ sessions: { session_id: string; last_ts: number }[] }> {
   return authed("/debug/traces");
