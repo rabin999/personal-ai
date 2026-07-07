@@ -19,6 +19,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ValidationError
 
 from core.cost import CostEntry, CostLedger, CostMetadata
+from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt
 from core.tools.registry import ToolContext, ToolRegistry, ToolSpec
 from core.tools.results import ToolResultStore
@@ -80,12 +81,14 @@ class ToolDispatcher:
         ledger: CostLedger | None = None,
         variable_budget_s: float = VARIABLE_BUDGET_S,
         results: ToolResultStore | None = None,
+        logs: StructuredLogger | None = None,
     ) -> None:
         self._registry = registry
         self._queue = queue
         self._ledger = ledger
         self._variable_budget_s = variable_budget_s
         self._results = results
+        self._logs = logs
 
     async def dispatch(
         self, call: ToolCall, context: ToolContext, *, confirmed: bool = False
@@ -120,6 +123,19 @@ class ToolDispatcher:
 
         elapsed_ms = (time.perf_counter() - started) * 1000
         self._log(spec, context)
+        # Tool-call span in the per-turn trace (name / class / args / latency /
+        # result preview) — correlation-bound so it lands under the current turn.
+        if self._logs is not None:
+            self._logs.log(
+                "info",
+                "tool.call",
+                stage="tool",
+                tool=spec.id,
+                tool_type=spec.type,
+                args=call.args,
+                latency_ms=round(elapsed_ms, 1),
+                result=json.dumps(output)[:300],
+            )
         await self._persist_result(spec.id, call.args, output, context)
         return ToolResult(tool_id=spec.id, output=output, elapsed_ms=elapsed_ms)
 

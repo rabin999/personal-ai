@@ -13,6 +13,7 @@ is a documented follow-up — semantic facts are view-only here.
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
+from pydantic import BaseModel
 
 from api.deps import CurrentUser
 
@@ -83,6 +84,23 @@ async def procedural_memories(user: CurrentUser, request: Request) -> dict[str, 
             for r in rules
         ],
     }
+
+
+class _Correction(BaseModel):
+    fact: str
+
+
+@router.post("/memories/semantic")
+async def correct_semantic_fact(
+    body: _Correction, user: CurrentUser, request: Request
+) -> dict[str, Any]:
+    """Correct a wrong fact: record the corrected version; Graphiti's temporal
+    reasoning supersedes the contradicted one (never deletes it, §6)."""
+    fact = body.fact.strip()
+    if not fact:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="fact required")
+    await _pipeline(request).semantic.record_fact(user.user_id, fact)
+    return {"recorded": fact}
 
 
 @router.delete("/memories/episodic/{memory_id}")

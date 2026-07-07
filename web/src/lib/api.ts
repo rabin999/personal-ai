@@ -76,6 +76,9 @@ export function getProceduralMemories(): Promise<{ items: ProceduralItem[] }> {
 export function deleteEpisodicMemory(id: string): Promise<{ deleted: string }> {
   return authed(`/api/memories/episodic/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+export function correctSemanticFact(fact: string): Promise<{ recorded: string }> {
+  return authed("/api/memories/semantic", { method: "POST", body: JSON.stringify({ fact }) });
+}
 
 // ── traces ───────────────────────────────────────────────────────────────
 export interface TraceEvent {

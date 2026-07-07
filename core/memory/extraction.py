@@ -164,11 +164,9 @@ class MemoryExtractor:
                 logger.exception("episodic write failed")
         for fact in extraction.semantic_facts:
             try:
-                # Graphiti orphans an edge (and then can't retrieve the fact) when
-                # the episode has no explicit subject to attach to — verified: a
-                # bare "takes meds at 8pm" returns nothing, "The user takes…"
-                # returns reliably. So ensure every fact names the user.
-                await self._semantic.add_episode(user_id, _with_subject(fact))
+                # record_fact ensures the fact names the user so Graphiti attaches
+                # (and can retrieve) it — the fix for empty semantic retrieval.
+                await self._semantic.record_fact(user_id, fact)
                 result.semantic_written += 1
             except Exception:
                 logger.exception("semantic write failed")
@@ -204,18 +202,6 @@ class MemoryExtractor:
             ):
                 return True
         return False
-
-
-_SUBJECT_STARTS = ("the user", "user ", "user'", "they ", "he ", "she ")
-
-
-def _with_subject(fact: str) -> str:
-    """Ensure a semantic fact names the user so Graphiti attaches (and can
-    retrieve) it. Facts that already start with a user subject are left as-is."""
-    stripped = fact.strip()
-    if stripped.lower().startswith(_SUBJECT_STARTS):
-        return stripped
-    return f"The user {stripped[0].lower()}{stripped[1:]}" if stripped else stripped
 
 
 def _strip_fences(text: str) -> str:

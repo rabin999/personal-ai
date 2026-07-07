@@ -7,6 +7,7 @@ so the UI's log sidebar works for typed turns too.
 """
 
 import logging
+import time
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -22,8 +23,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
-# Per-session verbatim turn counters for the durable conversation log (§6).
+# Per-session turn counter: each text request is one turn, so successive turns get
+# distinct numbers in the trace store + conversation log (a fresh TraceEmitter per
+# request would otherwise label every turn "1").
 _turn_counters: dict[str, int] = {}
+
+
+def _next_turn(session_id: str) -> int:
+    _turn_counters[session_id] = _turn_counters.get(session_id, 0) + 1
+    return _turn_counters[session_id]
 
 
 class ChatRequest(BaseModel):
@@ -42,7 +50,10 @@ class ChatResponse(BaseModel):
 async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatResponse:
     pipeline: Pipeline = request.app.state.pipeline
     trace = TraceEmitter(body.session_id)
-    trace.emit("session", "text turn started", user_id=user.user_id)
+    turn_started = time.perf_counter()
+    turn_no = _next_turn(body.session_id)
+    trace.begin_turn()
+    trace.emit("session", "text turn started", user_id=user.user_id, text=body.text)
 
     # Pull-at-pause (§14): results of prior background tasks (e.g. a web search)
     # get delivered now, in the companion's voice, dropped if no longer relevant.
@@ -61,19 +72,37 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
             candidates=[c.name for c in prompt.candidates[:3]],
         )
     else:
+        # Memory READ span: exactly what each store returned for this turn.
+        sections = prompt.sections
         trace.emit(
-            "assembly",
-            f"prompt assembled (complexity={prompt.complexity_hint})",
-            complexity=prompt.complexity_hint,
+            "retrieval",
+            "memory read before reasoning",
+            episodic=_lines(sections.get("episodic", "")),
+            semantic_facts=_lines(sections.get("facts", "")),
+            preferences=_lines(sections.get("preferences", "")),
+            procedural=_lines(sections.get("rules", "")),
             entities=[c.name for c in prompt.resolved_entities],
         )
-        trace.emit("router", f"routing to {prompt.complexity_hint} tier")
+        # Constructed-prompt span: the actual assembled prompt handed to the model.
+        trace.emit(
+            "assembly",
+            f"prompt assembled ({len(prompt.system_prompt)} chars, "
+            f"{len(prompt.messages)} messages)",
+            complexity=prompt.complexity_hint,
+            prompt_chars=len(prompt.system_prompt),
+            sections=[k for k, v in sections.items() if v.strip()],
+            system_prompt=prompt.system_prompt[:4000],
+        )
+        trace.emit(
+            "router",
+            f"routing to {prompt.complexity_hint} tier",
+            tier=prompt.complexity_hint,
+            model_override=prompt.model_override,
+        )
 
     # Bind correlation ids around the WHOLE turn so every LLM call inside
     # generation/extraction emits a per-call span into this turn's trace (§5).
-    with pipeline.logs.bind(
-        trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
-    ):
+    with pipeline.logs.bind(trace_id=body.session_id, turn_id=turn_no, user_id=user.user_id):
         pipeline.logs.info("turn.request", text=body.text)
         result = await pipeline.generator.generate(prompt, pipeline.dispatcher, context)
         pipeline.logs.info(
@@ -96,24 +125,41 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     # Memory parity with the voice runtime: the text path also persists the turn
     # to episodic memory (§5, cross-session recall) and the durable conversation
     # log (§6), best-effort so it never blocks the reply.
-    with pipeline.logs.bind(
-        trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
-    ):
+    with pipeline.logs.bind(trace_id=body.session_id, turn_id=turn_no, user_id=user.user_id):
         await _persist_turn(
-            pipeline, user.user_id, body.session_id, body.text, result.final_text, trace
+            pipeline, user.user_id, body.session_id, body.text, result.final_text, trace, turn_no
         )
 
     # Any background result that landed during this turn is prepended to the reply.
     reply = " ".join([*(d.line for d in deliveries), result.final_text]).strip()
 
+    # Per-turn summary span: total wall-clock latency (per-step token/cost live on
+    # each llm.call/tool.call span; the /traces detail view sums them per turn).
+    trace.emit(
+        "session",
+        "turn complete",
+        total_ms=round((time.perf_counter() - turn_started) * 1000, 1),
+    )
     trace.close()
     events = [event async for event in trace.events()]
+    # Persist every stage span to the durable trace store so the full technical
+    # trace (retrieval → prompt → llm.call → judgment → reflection → tool → memory
+    # → response → summary) is inspectable at /debug/traces (CLAUDE.md §5).
+    for event in events:
+        span = event.model_dump()
+        span["turn"] = turn_no
+        await pipeline.traces.record(user.user_id, span)
     return ChatResponse(
         reply=reply,
         action=result.action,
         turn_id=result.turn_id,
         trace=events,
     )
+
+
+def _lines(section: str) -> list[str]:
+    """Split a rendered prompt section into individual items for the trace."""
+    return [line.strip("- ").strip() for line in section.splitlines() if line.strip()][:8]
 
 
 async def _persist_turn(
@@ -123,6 +169,7 @@ async def _persist_turn(
     user_text: str,
     assistant_text: str,
     trace: TraceEmitter,
+    turn_no: int,
 ) -> None:
     """Run the memory-extraction write step + the durable conversation log (§1/§6)."""
     try:
@@ -143,14 +190,13 @@ async def _persist_turn(
     except Exception:
         logger.exception("memory extraction failed (text turn)")
     try:
-        _turn_counters[session_id] = _turn_counters.get(session_id, 0) + 1
         await pipeline.conversations.record_turn(
             user_id=user_id,
             session_id=session_id,
-            turn_index=_turn_counters[session_id],
+            turn_index=turn_no,
             user_text=user_text,
             assistant_text=assistant_text,
-            trace_turn=trace.current_turn,
+            trace_turn=turn_no,
         )
     except Exception:
         logger.exception("conversation persistence failed (text turn)")

@@ -15,6 +15,18 @@ _PROFILE_QUERY = (
     "preferences, work, projects, health, plans"
 )
 
+_SUBJECT_STARTS = ("the user", "user ", "user'", "they ", "he ", "she ")
+
+
+def ensure_user_subject(fact: str) -> str:
+    """Graphiti orphans a fact edge (and then can't retrieve it) when the episode
+    has no explicit subject — verified: a bare "takes meds at 8pm" returns nothing,
+    "The user takes…" returns reliably. So ensure every fact names the user."""
+    stripped = fact.strip()
+    if not stripped or stripped.lower().startswith(_SUBJECT_STARTS):
+        return stripped
+    return f"The user {stripped[0].lower()}{stripped[1:]}"
+
 
 class SemanticMemory:
     def __init__(self, graph: GraphStore) -> None:
@@ -23,6 +35,12 @@ class SemanticMemory:
     async def add_episode(self, user_id: str, text: str, timestamp: str | None = None) -> None:
         """Feed one episode; entities/relations/facts are extracted by the store."""
         await self._graph.add_episode(user_id, text, timestamp)
+
+    async def record_fact(self, user_id: str, fact: str) -> None:
+        """Store a distilled fact, ensuring it names the user so Graphiti attaches
+        (and can retrieve) it. Correcting a fact = record the corrected version;
+        Graphiti's temporal reasoning supersedes the contradicted one (§6 rule 2)."""
+        await self._graph.add_episode(user_id, ensure_user_subject(fact))
 
     async def facts_for(self, user_id: str, entity_ids: list[str], limit: int = 10) -> list[Fact]:
         """Facts + relationships for resolved entities, with validity windows."""

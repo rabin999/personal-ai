@@ -107,8 +107,14 @@ class _Fact:
 
 
 class FakeSemantic:
+    def __init__(self) -> None:
+        self.recorded: list[tuple[str, str]] = []
+
     async def profile_facts(self, user_id, limit=50):  # type: ignore[no-untyped-def]
         return [_Fact("takes meds at 8pm")]
+
+    async def record_fact(self, user_id, fact):  # type: ignore[no-untyped-def]
+        self.recorded.append((user_id, fact))
 
 
 class _EpiHit:
@@ -146,6 +152,14 @@ class FakeProcedural:
         return [_Rule()]
 
 
+class FakeTraces:
+    def __init__(self) -> None:
+        self.records: list[dict[str, object]] = []
+
+    async def record(self, user_id, event):  # type: ignore[no-untyped-def]
+        self.records.append(event)
+
+
 @pytest.fixture
 def client() -> TestClient:
     app = create_app(wire_adapters=False)
@@ -166,6 +180,7 @@ def client() -> TestClient:
         feedback=FakeFeedback(),
         semantic=FakeSemantic(),
         procedural=FakeProcedural(),
+        traces=FakeTraces(),
     )
     return TestClient(app)
 
@@ -261,3 +276,12 @@ def test_memories_grouped_by_type(client: TestClient) -> None:
 def test_delete_episodic_memory(client: TestClient) -> None:
     assert client.delete("/api/memories/episodic/m1", headers=_auth()).status_code == 200
     assert client.delete("/api/memories/episodic/nope", headers=_auth()).status_code == 404
+
+
+def test_correct_semantic_fact(client: TestClient) -> None:
+    assert client.post("/api/memories/semantic", json={"fact": "I moved"}).status_code == 401
+    r = client.post("/api/memories/semantic", json={"fact": "I moved to Boston"}, headers=_auth())
+    assert r.status_code == 200 and r.json()["recorded"] == "I moved to Boston"
+    assert (
+        client.post("/api/memories/semantic", json={"fact": ""}, headers=_auth()).status_code == 400
+    )

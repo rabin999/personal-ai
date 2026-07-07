@@ -151,7 +151,9 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     await projects.sync_tool_registrations()  # re-register actions for live instances
 
     tool_results = ToolResultStore(docs)
-    dispatcher = ToolDispatcher(tool_registry, queue, ledger=ledger, results=tool_results)
+    dispatcher = ToolDispatcher(
+        tool_registry, queue, ledger=ledger, results=tool_results, logs=logs
+    )
     delivery = DeliveryComposer(queue, llm)
     web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
     register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act

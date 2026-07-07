@@ -58,7 +58,7 @@ class TraceStore:
             limit=limit,
         )
         docs.sort(key=lambda d: (d.get("turn", 0), d.get("ts", 0.0)))
-        return docs
+        return [_jsonable(d) for d in docs]
 
     async def recent_sessions(self, user_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
         """Most-recent session ids for this user (for a trace-browser index)."""
@@ -69,3 +69,8 @@ class TraceStore:
             latest[sid] = max(latest.get(sid, 0.0), float(d.get("ts", 0.0)))
         ordered = sorted(latest.items(), key=lambda kv: kv[1], reverse=True)
         return [{"session_id": sid, "last_ts": ts} for sid, ts in ordered[:limit]]
+
+
+def _jsonable(doc: dict[str, Any]) -> dict[str, Any]:
+    """Strip the Mongo ``_id`` (an ObjectId isn't JSON-serializable) for the API."""
+    return {k: v for k, v in doc.items() if k != "_id"}

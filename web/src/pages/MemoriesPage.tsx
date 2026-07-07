@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  correctSemanticFact,
   deleteEpisodicMemory,
   getEpisodicMemories,
   getProceduralMemories,
@@ -44,6 +45,9 @@ export default function MemoriesPage() {
             {f.valid_to && <Tag>superseded {f.valid_to}</Tag>}
           </Row>
         ))}
+        <CorrectFact
+          onDone={() => getSemanticMemories().then((r) => setSemantic(r.items)).catch(() => {})}
+        />
       </Group>
 
       <Group title="Things that happened" subtitle="episodic — timestamped events">
@@ -108,4 +112,32 @@ function Tag({ children }: { children: React.ReactNode }) {
 
 function Empty() {
   return <div className="px-4 py-2.5 text-sm text-neutral-400">Nothing here yet.</div>;
+}
+
+// "That's wrong — it's actually…": record the correction. Graphiti supersedes the
+// contradicted fact (never deletes it).
+function CorrectFact({ onDone }: { onDone: () => void }) {
+  const [fact, setFact] = useState("");
+  return (
+    <form
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!fact.trim()) return;
+        await correctSemanticFact(fact.trim()).catch(() => {});
+        setFact("");
+        onDone();
+      }}
+      className="flex items-center gap-2 px-4 py-2.5"
+    >
+      <input
+        value={fact}
+        onChange={(e) => setFact(e.target.value)}
+        placeholder="correct or add a fact — e.g. 'I moved to Boston'"
+        className="flex-1 rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
+      />
+      <button type="submit" className="text-xs text-neutral-500 underline">
+        save
+      </button>
+    </form>
+  );
 }

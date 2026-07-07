@@ -32,6 +32,7 @@ from tests.integration.conftest import wait_until_healthy
 pytestmark = [
     pytest.mark.acceptance,
     pytest.mark.integration,
+    pytest.mark.paid,  # drives the real LLM + asserts model recall (nondeterministic)
     pytest.mark.skipif(
         not get_settings().open_router_api_key,
         reason="OPEN_ROUTER_API_KEY not set — full turn needs a real LLM",

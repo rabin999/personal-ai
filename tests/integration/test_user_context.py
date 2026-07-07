@@ -24,6 +24,11 @@ async def user_context(db: Database) -> StaticUserContext:
 async def test_resolve_creates_and_reuses_real_profile(
     db: Database, user_context: StaticUserContext
 ) -> None:
+    # Hermetic: a prior run (or real app use) may have onboarded this demo user in
+    # the shared Mongo. Clear the demo profiles so "first resolve creates a fresh,
+    # un-onboarded profile" is tested deterministically.
+    await db.mongo("user_profile").delete_many({"_id": {"$in": ["u_demo_001", "u_demo_002"]}})
+
     first = await user_context.resolve("static_token_abc")
     stored = await db.mongo("user_profile").find_one({"_id": first.user_id})
     assert stored is not None and stored["onboarded"] is False
