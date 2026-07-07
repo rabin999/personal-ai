@@ -260,3 +260,59 @@ async def test_unparseable_loop_steps_end_with_safe_final() -> None:
 
     assert isinstance(outcome, LoopOutcome)
     assert outcome.kind == "final" and outcome.text
+
+
+# ── Item 5: unified failure envelope ──────────────────────────────────────
+
+
+def _registry_with_broken() -> ToolRegistry:
+    registry = ToolRegistry()
+
+    async def boom(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        raise RuntimeError("provider exploded")
+
+    async def slow(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        await asyncio.sleep(5)
+        return {"never": True}
+
+    registry.register(ToolSpec(id="boom", description="always fails", type="readonly"), boom)
+    registry.register(ToolSpec(id="slow", description="too slow", type="readonly"), slow)
+    return registry
+
+
+async def test_broken_tool_returns_failure_envelope_not_a_raise() -> None:
+    dispatcher = ToolDispatcher(_registry_with_broken(), FakeQueue())
+    result = await dispatcher.dispatch(ToolCall(tool_id="boom"), CONTEXT)
+    assert isinstance(result, ToolResult)
+    assert result.status == "failure" and not result.ok
+    assert "provider exploded" in (result.error or "")
+    assert result.output == {}  # no fabricated result
+
+
+async def test_run_inline_timeout_is_a_clean_timeout_envelope() -> None:
+    dispatcher = ToolDispatcher(_registry_with_broken(), FakeQueue())
+    result = await dispatcher.run_inline(ToolCall(tool_id="slow"), CONTEXT, timeout_s=0.05)
+    assert result.status == "timeout" and not result.ok
+    assert result.output == {}
+
+
+async def test_run_inline_broken_tool_is_a_failure_envelope() -> None:
+    dispatcher = ToolDispatcher(_registry_with_broken(), FakeQueue())
+    result = await dispatcher.run_inline(ToolCall(tool_id="boom"), CONTEXT, timeout_s=1.0)
+    assert result.status == "failure" and not result.ok
+    assert "provider exploded" in (result.error or "")
+
+
+async def test_loop_completes_when_a_tool_fails() -> None:
+    """A broken tool mid-loop must not crash the turn: the loop feeds the failure
+    back to the model, which still returns a final answer (Item 5 'turn completes')."""
+    dispatcher = ToolDispatcher(_registry_with_broken(), FakeQueue())
+    llm = FakeLLM(
+        [
+            json.dumps({"action": "tool", "tool_id": "boom", "args": {}}),
+            json.dumps({"action": "final", "text": "I couldn't check that just now."}),
+        ]
+    )
+    outcome = await dispatcher.loop(_prompt(), llm, CONTEXT)
+    assert isinstance(outcome, LoopOutcome)
+    assert outcome.kind == "final" and outcome.text

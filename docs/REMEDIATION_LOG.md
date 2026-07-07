@@ -495,3 +495,20 @@ validity window (superseded, not deleted) and the new value is current — captu
 
 Tests: unit (`_dedup_key` + `deduplicate`) and real_call (`test_memory_cleanup.py`: real-Qdrant dedup
 idempotent + real-Graphiti supersession). Full non-paid suite 331 passed.
+
+---
+
+## Autonomous backlog run — Item 5: Unified result envelope (2026-07-07)
+
+- `core/steps.py`: `StepResult`/`StepCost`/`StepStatus` + `run_step()` wrapper (times a step, catches
+  exceptions→failure, timeout→timeout, RE-RAISES CancelledError for barge-in). `trace_fields()` flattens
+  the envelope for a span.
+- Tool dispatch adopts it: `ToolResult` gained status/error/ok; `dispatch()`/`run_inline()` turn a
+  raising or timing-out tool into a clean failure/timeout envelope (empty output) instead of
+  propagating, and emit the unified fields on the tool span. Response loop: inline timeout→promote to
+  queue; failed envelope→honest "this step failed" note (never fabricate).
+- Proven: unit (run_step + dispatcher failure/timeout + loop-completes-on-failure) and REAL e2e
+  (monkeypatched web_search to raise → the weather turn still completed with a warm honest "drawing a
+  blank" reply, no crash/hang/fabrication).
+- Scope: envelope adopted at the tool boundary (main failure surface); LLM/memory/search spans already
+  carry cost/latency and can migrate to the identical shape mechanically (tracked for trace items 6-7).

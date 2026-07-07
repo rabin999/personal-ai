@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 from core.cost import CostEntry, CostLedger, CostMetadata
 from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt
+from core.steps import StepStatus, run_step
 from core.tools.registry import ToolContext, ToolRegistry, ToolSpec
 from core.tools.results import ToolResultStore
 from ports.llm import LLM, LLMUnavailable
@@ -52,6 +53,15 @@ class ToolResult(BaseModel):
     tool_id: str
     output: dict[str, Any]
     elapsed_ms: float
+    # Unified step envelope (Item 5): a broken tool becomes a clean failure result
+    # (status + error, empty output) instead of a raised exception — the turn still
+    # completes and the failure is visible in the trace.
+    status: StepStatus = "success"
+    error: str | None = None
+
+    @property
+    def ok(self) -> bool:
+        return self.status in ("success", "skipped", "not_available")
 
 
 class QueuedHandle(BaseModel):
@@ -106,38 +116,77 @@ class ToolDispatcher:
             return await self._enqueue(call, context)
 
         started = time.perf_counter()
-        if spec.type == "action":
-            # Rule 6: writes are never cancelled mid-execution; a barge-in
-            # is handled after the write completes (§24).
-            output = await asyncio.shield(asyncio.ensure_future(handler(call.args, context)))
-        elif spec.latency_class == "variable":
-            try:
-                output = await asyncio.wait_for(
-                    handler(call.args, context), timeout=self._variable_budget_s
-                )
-            except TimeoutError:
-                logger.info("variable tool %s overran budget; promoting to queue", spec.id)
-                return await self._enqueue(call, context)
-        else:
-            output = await handler(call.args, context)
+        try:
+            if spec.type == "action":
+                # Rule 6: writes are never cancelled mid-execution; a barge-in
+                # is handled after the write completes (§24).
+                output = await asyncio.shield(asyncio.ensure_future(handler(call.args, context)))
+            elif spec.latency_class == "variable":
+                try:
+                    output = await asyncio.wait_for(
+                        handler(call.args, context), timeout=self._variable_budget_s
+                    )
+                except TimeoutError:
+                    logger.info("variable tool %s overran budget; promoting to queue", spec.id)
+                    return await self._enqueue(call, context)
+            else:
+                output = await handler(call.args, context)
+        except asyncio.CancelledError:
+            raise  # barge-in / shutdown — must propagate (§24)
+        except Exception as exc:  # Item 5: broken tool → clean failure envelope
+            return self._tool_failure(spec, call, context, started, exc, spec.type)
 
         elapsed_ms = (time.perf_counter() - started) * 1000
         self._log(spec, context)
-        # Tool-call span in the per-turn trace (name / class / args / latency /
-        # result preview) — correlation-bound so it lands under the current turn.
-        if self._logs is not None:
-            self._logs.log(
-                "info",
-                "tool.call",
-                stage="tool",
-                tool=spec.id,
-                tool_type=spec.type,
-                args=call.args,
-                latency_ms=round(elapsed_ms, 1),
-                result=json.dumps(output)[:300],
-            )
+        self._tool_span(spec.id, spec.type, call.args, elapsed_ms, output, "success", None)
         await self._persist_result(spec.id, call.args, output, context)
         return ToolResult(tool_id=spec.id, output=output, elapsed_ms=elapsed_ms)
+
+    def _tool_span(
+        self,
+        tool_id: str,
+        tool_type: str,
+        args: dict[str, Any],
+        elapsed_ms: float,
+        output: dict[str, Any] | None,
+        status: StepStatus,
+        error: str | None,
+    ) -> None:
+        """Tool-call span in the per-turn trace with the unified envelope fields."""
+        if self._logs is None:
+            return
+        self._logs.log(
+            "info" if status == "success" else "warn",
+            "tool.call",
+            stage="tool",
+            tool=tool_id,
+            tool_type=tool_type,
+            args=args,
+            status=status,
+            ok=status in ("success", "skipped", "not_available"),
+            error=error,
+            latency_ms=round(elapsed_ms, 1),
+            result=json.dumps(output)[:300] if output else "",
+        )
+
+    def _tool_failure(
+        self,
+        spec: ToolSpec,
+        call: "ToolCall",
+        context: ToolContext,
+        started: float,
+        exc: Exception,
+        tool_type: str,
+    ) -> ToolResult:
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        error = f"{type(exc).__name__}: {exc}"
+        logger.warning("tool %s failed: %s", spec.id, error)
+        self._tool_span(
+            spec.id, f"{tool_type}:failed", call.args, elapsed_ms, None, "failure", error
+        )
+        return ToolResult(
+            tool_id=spec.id, output={}, elapsed_ms=elapsed_ms, status="failure", error=error
+        )
 
     def tools_for(self, context: ToolContext) -> list[ToolSpec]:
         """Tools available in this context (core + the referenced project's)."""
@@ -155,20 +204,34 @@ class ToolDispatcher:
         """
         spec, handler = self._registry.get(call.tool_id)
         started = time.perf_counter()
-        output = await asyncio.wait_for(handler(call.args, context), timeout=timeout_s)
+        # Item 5: a broken/slow inline tool becomes a clean failure/timeout
+        # envelope (not a raised exception), so the response loop's backstop can
+        # fall through to the model's own words instead of the turn crashing.
+        result, output = await run_step(
+            f"tool:{spec.id}", handler(call.args, context), timeout_s=timeout_s
+        )
         elapsed_ms = (time.perf_counter() - started) * 1000
-        self._log(spec, context)
-        if self._logs is not None:
-            self._logs.log(
-                "info",
-                "tool.call",
-                stage="tool",
-                tool=spec.id,
-                tool_type=f"{spec.type}:inline",
-                args=call.args,
-                latency_ms=round(elapsed_ms, 1),
-                result=json.dumps(output)[:300],
+        if not result.ok or output is None:
+            self._tool_span(
+                spec.id,
+                f"{spec.type}:inline:{result.status}",
+                call.args,
+                elapsed_ms,
+                None,
+                result.status,
+                result.error,
             )
+            return ToolResult(
+                tool_id=spec.id,
+                output={},
+                elapsed_ms=elapsed_ms,
+                status=result.status,
+                error=result.error,
+            )
+        self._log(spec, context)
+        self._tool_span(
+            spec.id, f"{spec.type}:inline", call.args, elapsed_ms, output, "success", None
+        )
         await self._persist_result(spec.id, call.args, output, context)
         return ToolResult(tool_id=spec.id, output=output, elapsed_ms=elapsed_ms)
 

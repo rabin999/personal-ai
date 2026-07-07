@@ -20,7 +20,7 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
   live-pipeline harness; judge PROVEN by an 8/8 calibration set (fails "hi→How can I help you?",
   passes warm replies); real companion suite 8/8; caught+fixed a cold-disclosure regression.
 - [x] **Item 4** — Memory cleanup + conflict/consolidation — live store deduped (SYPNL 3→1, headache 2→1); dedup wired into consolidation; Graphiti supersession verified (old superseded, new current, history kept); unit + real_call tests
-- [ ] **Item 5** — Unified structured RESULT envelope
+- [x] **Item 5** — Unified structured RESULT envelope — StepResult + run_step wrapper; tool dispatch produces clean failure/timeout envelopes (never raises); real forced-failure turn completes gracefully; unit + real e2e
 - [ ] **Item 6** — Full trace view: list → click → detail (backend-complete; UI minimal)
 - [ ] **Item 7** — Prompt versioning + performance attribution + caching
 - [ ] **Item 8** — Conversation behaviors (design §3.6 + §8.8)

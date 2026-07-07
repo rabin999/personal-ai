@@ -317,6 +317,49 @@ design intent (§6 rule 2/3).
 Every dedup/consolidation call is `user_id`-scoped; the real-call tests use fresh users so cleanup
 never touches another user's data (invariant §3.1).
 
+---
+
+## Item 5 — Unified structured RESULT envelope (spec §3)
+
+**App-goal verified:** every step reports a uniform `StepResult` (`{step, status, ok, error,
+latency_ms, cost{tokens_in,tokens_out,usd}, result_summary, detail}`); a broken step becomes a
+clean `failure`/`timeout` envelope — never a hang or a bare exception — and the turn still completes.
+
+### Implemented
+- **`core/steps.py`** — `StepResult` + `StepCost` + `StepStatus`
+  (`success|failure|skipped|timeout|not_available`); `ok` = success/skipped/not_available;
+  `trace_fields()` flattens the envelope for a trace span. Plus **`run_step(name, coro, …)`**, the
+  reusable wrapper: times the step, catches exceptions → `failure`, maps a timeout → `timeout`, and
+  **re-raises `CancelledError`** so barge-in (§24) still works.
+- **Tool dispatch adopts the envelope** (`core/tools/dispatcher.py`): `ToolResult` gained
+  `status`/`error`/`ok`; both `dispatch()` and `run_inline()` now turn a raising or timing-out tool
+  into a clean failure/timeout `ToolResult` (empty output, error text) instead of propagating —
+  emitting the unified fields (`status`, `ok`, `error`, `latency_ms`) on the tool trace span.
+- **Response loop honors it** (`response_gen.py`): `run_inline` timeout → promote to the background
+  queue; a failed tool envelope → an honest "this step failed, don't fabricate" note to the model.
+
+### Verification
+- Unit (`tests/unit/test_steps.py`, 6): `ok` semantics; `run_step` success+summary; exception →
+  `failure` (not raised); timeout → `timeout`; **cancellation re-raised**; `trace_fields` flattening.
+- Unit (`tests/unit/test_dispatcher.py`, +4): a broken tool → `failure` envelope (not a raise, empty
+  output); `run_inline` timeout → `timeout` envelope; broken inline tool → `failure`; and
+  `dispatcher.loop()` **completes with a final answer when a tool fails mid-loop**.
+- **Real end-to-end (forced failure):** monkeypatched the REAL `web_search` handler to raise
+  ("serper down"), then ran "what is the weather in Kathmandu right now?" through the REAL generator:
+  > TURN COMPLETED. action=respond
+  > "Oh, I'm so sorry, Nandi! I'm really drawing a blank on what the weather is like in Kathmandu
+  >  right now. I wish I could tell you!"
+  No crash, no hang, no fabricated weather — the companion degraded gracefully and honestly. This is
+  exactly the Item 5 acceptance ("force a failure → clean status, turn still completes").
+- Full non-paid suite 341 passed; mypy (40 files) + lint-imports clean.
+
+### Scope note (honest)
+The canonical `StepResult` + `run_step` are in place and adopted at the **tool** boundary (the most
+common external-failure surface). LLM calls already emit per-call token/cost/latency spans and
+memory writes log stored-counts; migrating those and the search/reasoning/self-reflection spans onto
+the identical `StepResult` shape is a mechanical follow-up (the model + wrapper now exist for it) and
+is tracked for the trace items (6–7).
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply

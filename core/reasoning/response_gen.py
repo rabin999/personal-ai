@@ -27,7 +27,7 @@ from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
 from core.reasoning.style import find_forbidden, scrub_forbidden
-from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall
+from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
 
@@ -674,15 +674,16 @@ class ResponseGenerator:
         )
         try:
             if is_background:
-                try:
-                    outcome = await dispatcher.run_inline(call, context)
-                except TimeoutError:  # too slow to block on → hand it to the queue
+                outcome = await dispatcher.run_inline(call, context)
+                # Item 5: run_inline returns a clean envelope, not a raise. Too slow
+                # inline → promote to the queue (the background/waiter path).
+                if isinstance(outcome, ToolResult) and outcome.status == "timeout":
                     outcome = await dispatcher.dispatch(call, context)
             else:
                 outcome = await dispatcher.dispatch(call, context)
         except UnknownTool:
             return f"(tool '{req.tool_id}' is not available — do NOT claim you used it)"
-        except Exception as exc:  # surface failures honestly (never pretend it worked)
+        except Exception as exc:  # any residual raise — surface honestly, never fake it
             logger.warning("tool %s failed: %s", req.tool_id, exc)
             return (
                 f"(tool '{req.tool_id}' isn't working right now — tell the user plainly "
@@ -694,6 +695,12 @@ class ResponseGenerator:
             return (
                 f"(started '{req.tool_id}' in the background; its result will arrive at a "
                 "pause — briefly say you're on it, then continue naturally)"
+            )
+        # A failed/timed-out tool envelope: tell the model plainly, don't fabricate.
+        if isinstance(outcome, ToolResult) and not outcome.ok:
+            return (
+                f"(tool '{req.tool_id}' didn't complete ({outcome.status}) — tell the user "
+                "plainly that this step failed; do not fabricate a result)"
             )
         return f"(tool '{req.tool_id}' returned: {json.dumps(outcome.output)[:1500]})"
 
