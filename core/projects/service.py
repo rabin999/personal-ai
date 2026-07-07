@@ -112,6 +112,23 @@ class ProjectService:
         self._register_type_tools(type_id, blueprint)
         return project
 
+    async def find_or_create(self, user_id: str, type_id: str, name: str) -> Project:
+        """Return the user's existing instance of ``type_id`` or create one.
+
+        Lets conversational commands ("record my trade") persist immediately even
+        on a cold account — the §16 instance is created on first use so the
+        type's actions (and prompt context) light up without a separate setup step.
+        """
+        existing = await self._docs.find(
+            PROJECTS_COLLECTION, {"user_id": user_id, "type": type_id}, limit=1
+        )
+        if existing:
+            doc = existing[0]
+            return Project.model_validate(
+                {"id": doc["_id"], **{k: v for k, v in doc.items() if k != "_id"}}
+            )
+        return await self.create(user_id, type_id, name)
+
     async def rename(self, project_id: str, user_id: str, name: str) -> Project:
         project = await self._project(project_id, user_id)
         project.name = name

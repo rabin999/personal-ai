@@ -135,6 +135,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         semantic=semantic,
         web_search=web_search,
         profiles=profiles,
+        projects=projects,
     )
 
     assembler = PromptAssembler(

@@ -17,11 +17,14 @@ from typing import Any
 from core.memory.episodic import EpisodicMemory
 from core.memory.semantic import SemanticMemory
 from core.profile import ProfileService
+from core.projects.service import ProjectService
 from core.tools.registry import ToolContext, ToolRegistry, ToolSpec
 from core.tools.web_search import WebSearch
 
 # VAD nudge per "you're too sensitive" style request (§11.3); clamped in §2.
 _VAD_STEP = 0.12
+
+FINANCE_TYPE = "finance_portfolio"
 
 
 def register_core_tools(
@@ -31,6 +34,7 @@ def register_core_tools(
     semantic: SemanticMemory,
     web_search: WebSearch,
     profiles: ProfileService,
+    projects: ProjectService,
 ) -> None:
     async def search_memory(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         hits = await episodic.retrieve(ctx.user_id, str(args.get("query", "")), k=5)
@@ -102,6 +106,48 @@ def register_core_tools(
             requires_confirmation=False,
         ),
         set_companion_name,
+    )
+
+    async def record_trade(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        # §16: persist a stock trade to the user's finance portfolio, creating the
+        # project instance on first use so "record my trade" works from a cold
+        # account (root cause of trades not persisting — no create path existed).
+        ticker = str(args.get("ticker", "")).upper().strip()
+        side = str(args.get("side", "")).lower().strip()
+        if not ticker or side not in ("buy", "sell"):
+            return {"error": "need a ticker and side (buy or sell)"}
+        try:
+            qty = float(args.get("qty", 0))
+            price = float(args.get("price", 0))
+        except (TypeError, ValueError):
+            return {"error": "qty and price must be numbers"}
+        project = await projects.find_or_create(ctx.user_id, FINANCE_TYPE, "My portfolio")
+        await projects.log_entry(
+            project.id,
+            ctx.user_id,
+            {"ticker": ticker, "side": side, "qty": qty, "price": price},
+        )
+        return {
+            "recorded": True,
+            "project_id": project.id,
+            "ticker": ticker,
+            "side": side,
+            "qty": qty,
+            "price": price,
+        }
+
+    registry.register(
+        ToolSpec(
+            id="record_trade",
+            description="Record a stock trade the user tells you about (buy/sell). Creates "
+            "their portfolio the first time. Use when they say things like 'I bought 10 "
+            'AAPL at 150\' or \'record my trade\'. args: {"ticker": str, "side": "buy"|"sell", '
+            '"qty": number, "price": number}',
+            type="action",
+            latency_class="fast",
+            requires_confirmation=False,
+        ),
+        record_trade,
     )
 
     async def update_audio_prefs(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:

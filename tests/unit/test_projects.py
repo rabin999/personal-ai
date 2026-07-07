@@ -5,10 +5,25 @@ from pathlib import Path
 import pytest
 
 from core.memory.entities import EntityResolver
+from core.memory.episodic import EpisodicMemory
+from core.memory.semantic import SemanticMemory
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectNotFound, ProjectService
+from core.tools.builtin.core_tools import register_core_tools
 from core.tools.registry import ToolContext, ToolRegistry
-from tests.fakes import FakeDocStore, FakeVectorStore
+from core.tools.web_search import WebSearch
+from ports.search import SearchResult
+from tests.fakes import FakeDocStore, FakeGraphStore, FakeLLM, FakeVectorStore
+
+
+class _StubSearchProvider:
+    name = "stub"
+    cost_per_query_usd = 0.0
+
+    async def search(
+        self, query: str, max_results: int = 5
+    ) -> list[SearchResult]:  # pragma: no cover - unused here
+        return []
 
 DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
 USER = "u_demo_001"
@@ -61,6 +76,58 @@ async def test_type_tools_absent_until_an_instance_exists(h: Harness) -> None:
 async def test_create_with_unknown_type_fails(h: Harness) -> None:
     with pytest.raises(ProjectNotFound):
         await h.service.create(USER, "spaceship_program", "X")
+
+
+async def test_find_or_create_is_idempotent_per_user_and_type(h: Harness) -> None:
+    first = await h.service.find_or_create(USER, "finance_portfolio", "My portfolio")
+    second = await h.service.find_or_create(USER, "finance_portfolio", "Other name")
+    assert first.id == second.id  # reuses the existing instance, never duplicates
+    # A different user gets their own isolated instance (§0.5 multi-tenant).
+    other = await h.service.find_or_create("u_demo_002", "finance_portfolio", "P")
+    assert other.id != first.id
+
+
+async def test_record_trade_tool_persists_from_a_cold_account(h: Harness) -> None:
+    # Root-cause fix (§16 / brief §6): "record my trade" must persist even when no
+    # portfolio exists yet — the tool creates the instance then logs the entry.
+    register_core_tools(
+        h.registry,
+        episodic=EpisodicMemory(h.vectors),
+        semantic=SemanticMemory(FakeGraphStore()),
+        web_search=WebSearch(h.docs, FakeLLM(), _StubSearchProvider()),
+        profiles=ProfileService(h.docs),
+        projects=h.service,
+    )
+    _, handler = h.registry.get("record_trade")
+    ctx = ToolContext(user_id=USER, session_id="s1")
+
+    result = await handler({"ticker": "aapl", "side": "buy", "qty": 10, "price": 150}, ctx)
+    assert result["recorded"] and result["ticker"] == "AAPL"
+
+    state = await h.service.state(result["project_id"], USER)
+    assert state.metrics["entry_count"] == 1
+    assert state.metrics["net_invested"] == 1500.0
+
+    # A second trade appends to the SAME portfolio (no duplicate instance).
+    again = await handler({"ticker": "aapl", "side": "buy", "qty": 5, "price": 160}, ctx)
+    assert again["project_id"] == result["project_id"]
+    state = await h.service.state(result["project_id"], USER)
+    assert state.metrics["entry_count"] == 2
+
+
+async def test_record_trade_rejects_bad_input(h: Harness) -> None:
+    register_core_tools(
+        h.registry,
+        episodic=EpisodicMemory(h.vectors),
+        semantic=SemanticMemory(FakeGraphStore()),
+        web_search=WebSearch(h.docs, FakeLLM(), _StubSearchProvider()),
+        profiles=ProfileService(h.docs),
+        projects=h.service,
+    )
+    _, handler = h.registry.get("record_trade")
+    ctx = ToolContext(user_id=USER, session_id="s1")
+    assert "error" in await handler({"ticker": "", "side": "buy"}, ctx)
+    assert "error" in await handler({"ticker": "AAPL", "side": "hold"}, ctx)
 
 
 # Acceptance: logging a sell computes updated P&L from the ledger.
