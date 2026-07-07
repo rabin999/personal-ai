@@ -572,3 +572,16 @@ Moved episodic/semantic/procedural routing off the live path into a cursor-based
 - Proven: unit (rerun routes 0 = no double-write; watermark advances on failure) + real e2e (raw-log
   write 2.5ms non-blocking; #1 routed=1 #2 routed=0; fact promoted) + real_call regression.
 Non-paid suite 351.
+
+---
+
+## Autonomous backlog run — Item 10: Remaining edge cases (2026-07-07)
+
+- Cost ceiling: settings.max_turn_cost_usd (0.50) + per-turn _CostBudget threaded through the
+  reasoning loop (_call_llm accumulates cost_usd); loop stops + emits a cost_ceiling span when
+  crossed. Unit-tested (runaway loop capped, still replies).
+- Graceful degradation: prompt-assembly memory reads wrapped in _safe() — a store outage drops that
+  layer, turn still assembles. Verified real (episodic.retrieve raising → 8745-char prompt) + unit.
+- Verified real: capability regression (lonely→no search; nonsense→search), ambiguity guardrail
+  (DisambiguationRequest), feedback→trace (session+turn keyed, Item 7 attribution).
+Non-paid suite 356.

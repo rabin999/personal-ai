@@ -25,7 +25,7 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 - [x] **Item 7** — Prompt versioning + attribution + caching — prompt_version (pt2.<traits-hash>) on every assembly span; cache hit/miss on llm spans; /debug/attribution groups thumbs-up rate by prompt_version (+ UI table). two-version comparison unit-tested
 - [x] **Item 8** — Conversation behaviors — pileup cap (summarize-and-offer, config-driven, anti-machine-gun) + session-end→consolidation hook (verified: learned durable facts). correction-supersede/staleness/waiter already working+verified
 - [x] **Item 9** — Memory routing to background worker — raw-log cursor (routed watermark) + MemoryRouter.route_pending (exactly-once) + worker poll loop; live path deferred (raw-log write 2.5ms, no inline extract). cursor prevents double-write (verified real). config defer_memory_routing
-- [ ] **Item 10** — Remaining edge cases (degradation, cost ceiling, ambiguity, feedback→trace)
+- [x] **Item 10** — Remaining edge cases — cost-ceiling enforcement (per-turn _CostBudget, config cap) + graceful degradation (memory reads wrapped, store-down still assembles) + verified capability regression / ambiguity guardrail / feedback→trace
 - [ ] **Item 11** — Engine/model selection + streaming input + acknowledge-first-parallel
 - [ ] **Item 12** — Performance testing + latency levers
 - [ ] **Item 13** — Mobile speaker routing (native default + Pipecat)

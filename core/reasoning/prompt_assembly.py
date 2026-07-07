@@ -9,8 +9,9 @@ entities. Episodic snippets and older facts trim first (rule 9).
 
 import asyncio
 import hashlib
-from collections.abc import Mapping
-from typing import Any, Literal, Protocol
+import logging
+from collections.abc import Awaitable, Mapping
+from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +33,22 @@ from ports.preference_memory import PreferenceMemory
 #   v2 — Item 2 rework: _SELF (no volunteered AI-disclaimers, engage big questions),
 #        _VOICE_TICS (anti-chatbot phrasings), warm pull-based disclosure exemplar.
 PROMPT_TEMPLATE_VERSION = 2
+
+logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+
+async def _safe(coro: Awaitable[_T], default: _T, what: str) -> _T:
+    """Await a memory-store read; degrade to ``default`` if it fails (§10).
+
+    A dependency outage drops that context layer but never crashes the turn."""
+    try:
+        return await coro
+    except Exception:
+        logger.warning("prompt-assembly read '%s' failed; degrading to empty", what)
+        return default
+
 
 # Character budget for the assembled prompt (~6k tokens at 4 chars/token).
 # Deployment-tunable; the trim ORDER is the invariant, not the number.
@@ -136,19 +153,31 @@ class PromptAssembler:
                 candidates=candidates,
             )
 
-        # Steps 3-8 — gather context layers.
+        # Steps 3-8 — gather context layers. Each memory store read degrades to
+        # empty if that dependency is down (§10 graceful degradation): a Qdrant/
+        # Neo4j/Mem0 outage drops that layer of context but the turn still completes.
         recent = self._working.recent(session_id, n=RECENT_TURNS)
-        episodic_hits = await self._episodic.retrieve(user_id, utterance, k=EPISODIC_K)
         entity_names = [c.name for c in candidates]
-        entity_facts = await self._semantic.facts_for(user_id, entity_names, limit=FACTS_LIMIT)
-        profile_facts = await self._semantic.profile_facts(user_id, limit=FACTS_LIMIT)
-        rules = await self._procedural.rules_for(user_id, context=utterance)
+        episodic_hits = await _safe(
+            self._episodic.retrieve(user_id, utterance, k=EPISODIC_K), [], "episodic"
+        )
+        entity_facts = await _safe(
+            self._semantic.facts_for(user_id, entity_names, limit=FACTS_LIMIT), [], "facts"
+        )
+        profile_facts = await _safe(
+            self._semantic.profile_facts(user_id, limit=FACTS_LIMIT), [], "profile_facts"
+        )
+        rules = await _safe(self._procedural.rules_for(user_id, context=utterance), [], "rules")
         preferences = (
-            await self._preferences.search(user_id, utterance) if self._preferences else []
+            await _safe(self._preferences.search(user_id, utterance), [], "preferences")
+            if self._preferences
+            else []
         )
         profile = await self._profiles.first_run_sync(user_id)
         traits = await self._registry.enabled_traits(user_id)
-        prior_statements = await self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K)
+        prior_statements = await _safe(
+            self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K), [], "self_model"
+        )
         project_section = ""
         if self._projects is not None:
             for candidate in candidates:

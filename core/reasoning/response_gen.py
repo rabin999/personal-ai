@@ -38,6 +38,22 @@ Action = Literal["respond", "clarify", "curious_followup", "disambiguate"]
 # Agentic tool loop (§8/§14.11): max tool round-trips before the model must answer.
 MAX_TOOL_STEPS = 4
 
+
+class _CostBudget:
+    """Per-turn spend accumulator for the cost ceiling (§10). Bounds a runaway
+    tool/reasoning loop by cost, on top of the fixed step cap."""
+
+    def __init__(self, cap_usd: float) -> None:
+        self.cap = cap_usd
+        self.spent = 0.0
+
+    def add(self, usd: float) -> None:
+        self.spent += usd or 0.0
+
+    def exceeded(self) -> bool:
+        return self.cap > 0 and self.spent >= self.cap
+
+
 # On a JSON-validation retry, escalate one tier: the cheap/fast model (e.g.
 # gemini-flash-lite) intermittently returns malformed JSON even with
 # response_format, and re-hitting the SAME model just fails again → a generic
@@ -282,12 +298,14 @@ class ResponseGenerator:
         *,
         self_reflect: bool = True,
         logs: StructuredLogger | None = None,
+        max_turn_cost_usd: float = 0.50,
     ) -> None:
         self._llm = llm
         self._self_model = self_model
         self._registry = registry
         self._self_reflect = self_reflect
         self._logs = logs
+        self._max_turn_cost_usd = max_turn_cost_usd
         # Action tools awaiting the user's yes/no, keyed by session (§8.3).
         self._pending: dict[str, ConfirmRequest] = {}
 
@@ -323,8 +341,21 @@ class ResponseGenerator:
         last_draft = ""
         turn: LLMTurn | None = None
         seen_calls: set[str] = set()  # dedup identical tool calls within the turn
+        budget = _CostBudget(self._max_turn_cost_usd)
         for _ in range(MAX_TOOL_STEPS if can_use_tools else 1):
-            turn = await self._call_llm(prompt, dispatcher, context, tool_notes)
+            # Cost ceiling (§10): a runaway loop stops at the configurable cap and
+            # answers with what it has, rather than burning the budget.
+            if budget.exceeded():
+                self._span(
+                    "cost_ceiling",
+                    level="warn",
+                    spent_usd=round(budget.spent, 4),
+                    cap_usd=self._max_turn_cost_usd,
+                )
+                if last_draft.strip():
+                    break
+                return await self._finish(prompt, _SAFE_FALLBACK_TEXT, "respond", judgment=None)
+            turn = await self._call_llm(prompt, dispatcher, context, tool_notes, budget)
             if turn is None:  # both attempts failed validation / provider down
                 # Prefer the model's own last words (e.g. its ack when it kicked
                 # off a search) over any canned line; only a total outage falls
@@ -620,10 +651,10 @@ class ResponseGenerator:
             )
         return await self._finish(prompt, text, action, turn.judgment)
 
-    def _span(self, event: str, **fields: Any) -> None:
+    def _span(self, event: str, *, level: str = "info", **fields: Any) -> None:
         """Emit a reasoning span into the current turn's trace (via the logger)."""
         if self._logs is not None:
-            self._logs.log("info", event, stage=event, **fields)
+            self._logs.log(level, event, stage=event, **fields)
 
     async def _warm_disclosure(self, prompt: AssembledPrompt, text: str) -> str:
         """Warm-polish a nature-disclosure draft on a stronger tier (§1.2 rule 4).
@@ -719,6 +750,7 @@ class ResponseGenerator:
         dispatcher: "ToolDispatch | None" = None,
         context: "ToolContext | None" = None,
         tool_notes: list[str] | None = None,
+        budget: "_CostBudget | None" = None,
     ) -> LLMTurn | None:
         instructions = _JUDGMENT_INSTRUCTIONS
         if prompt.emotion:
@@ -750,6 +782,8 @@ class ResponseGenerator:
             except LLMUnavailable:
                 logger.warning("generation call failed (attempt %d)", attempt + 1)
                 continue
+            if budget is not None:
+                budget.add(result.cost_usd)  # §10 cost ceiling accounting
             try:
                 return LLMTurn.model_validate(json.loads(_strip_fences(result.text)))
             except (json.JSONDecodeError, ValidationError):

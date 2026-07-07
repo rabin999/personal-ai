@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     # How often the worker polls the raw log for unrouted turns (seconds).
     memory_routing_poll_s: float = 2.0
 
+    # Cost-ceiling enforcement (§10): hard per-turn spend cap. If a turn's LLM
+    # spend crosses this, the tool/reasoning loop STOPS and answers with what it
+    # has (a cost_ceiling span is traced) — a runaway loop can't burn the budget.
+    max_turn_cost_usd: float = 0.50
+
     # Welcome-email SMTP (fastapi-mail via Gmail). Gmail requires an APP PASSWORD
     # (2FA enabled) — the normal account password will NOT work. Empty MAIL_*
     # disables sending; the outbox still records (worker marks it skipped).

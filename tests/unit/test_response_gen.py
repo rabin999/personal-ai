@@ -311,3 +311,54 @@ async def test_duplicate_action_tool_call_runs_once_per_turn() -> None:
     )
     assert len(calls) == 1, f"action tool ran {len(calls)}x, expected once"
     assert "logged" in result.final_text.lower()
+
+
+# ── Item 10: cost-ceiling enforcement (runaway loop stops at the cap) ──────
+
+
+async def test_cost_ceiling_stops_a_runaway_tool_loop() -> None:
+    from core.reasoning.response_gen import MAX_TOOL_STEPS, ResponseGenerator
+    from core.tools.registry import ToolContext, ToolSpec
+
+    class ReadDispatcher:
+        def tools_for(self, context: object) -> list[ToolSpec]:
+            return [ToolSpec(id="lookup", description="read tool", type="readonly")]
+
+        async def dispatch(self, call: Any, context: object, *, confirmed: bool = False) -> Any:
+            from core.tools.dispatcher import ToolResult
+
+            return ToolResult(tool_id="lookup", output={"n": call.args.get("n")}, elapsed_ms=1.0)
+
+    def _tool_turn(n: int) -> str:
+        return json.dumps(
+            {
+                "draft_response": f"draft {n}",
+                "judgment": {
+                    "intent_confidence": 0.9,
+                    "novelty_score": 0.2,
+                    "emotional_salience": 0.3,
+                    "ambiguity": 0.1,
+                    "complexity_tier": "simple",
+                    "capability_boundary_flag": None,
+                },
+                "tool_request": {"tool_id": "lookup", "args": {"n": n}},  # distinct args → no dedup
+            }
+        )
+
+    # The model would loop forever (always requests another tool). FakeLLM bills
+    # ~0.0002/call; a tiny cap stops the loop after ~2 calls, well under MAX steps.
+    h = Harness([_tool_turn(i) for i in range(MAX_TOOL_STEPS + 3)])
+    await h.seed()
+    gen = ResponseGenerator(
+        h.llm, h.self_model, h.registry, self_reflect=False, max_turn_cost_usd=0.00025
+    )
+    result = await gen.generate(
+        _prompt("keep looking"), ReadDispatcher(), ToolContext(user_id=USER, session_id="s1")
+    )
+
+    # The loop stopped early on cost (fewer LLM calls than the step cap allows).
+    assert len(h.llm.calls) < MAX_TOOL_STEPS, (
+        f"cost ceiling didn't cap the loop: {len(h.llm.calls)}"
+    )
+    # And the turn still completed with a real reply (never a hang/crash).
+    assert result.final_text and result.action == "respond"

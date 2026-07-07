@@ -258,3 +258,22 @@ async def test_recent_turns_render_in_order_before_utterance(harness: Harness) -
     roles = [m["role"] for m in result.messages]
     assert roles == ["system", "user", "assistant", "user"]
     assert result.messages[1]["content"] == "first message"
+
+
+# Acceptance (§10 graceful degradation): a memory store being down drops that
+# context layer but the turn's prompt still assembles — no crash.
+async def test_assembly_degrades_when_a_memory_store_is_down() -> None:
+    h = Harness()
+    await h.seed()
+
+    async def boom(*a, **k):
+        raise RuntimeError("store down")
+
+    h.episodic.retrieve = boom  # type: ignore[method-assign]
+    h.semantic.facts_for = boom  # type: ignore[method-assign]
+
+    result = await h.assembler.assemble(USER, SESSION, "how's it going?")
+
+    assert isinstance(result, AssembledPrompt)
+    assert result.system_prompt  # still produced a usable prompt
+    assert result.messages[-1]["content"] == "how's it going?"  # utterance preserved

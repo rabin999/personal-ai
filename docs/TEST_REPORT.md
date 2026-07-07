@@ -552,3 +552,45 @@ log to retrieval, so the window is negligible and never a hard gap.
   not a response-path defect.
 
 ---
+
+---
+
+## Item 10 — Remaining edge cases (spec §10)
+
+**App-goal verified:** the hardening edges — graceful degradation, cost-ceiling enforcement,
+ambiguity guardrail, capability regression, feedback↔trace.
+
+### Cost-ceiling enforcement (NEW)
+`settings.max_turn_cost_usd` (default $0.50) + a per-turn `_CostBudget` threaded through the
+reasoning/tool loop: `_call_llm` accumulates each call's `cost_usd`; before each loop step the
+loop checks the budget and, if crossed, emits a `cost_ceiling` (warn) span and answers with what
+it has — a runaway loop can't burn the budget (on top of the fixed step cap).
+- Unit (`test_response_gen.py::test_cost_ceiling_stops_a_runaway_tool_loop`): a model that would
+  loop forever is capped after ~2 calls (< MAX_TOOL_STEPS) and still returns a real reply.
+
+### Graceful degradation (NEW)
+Prompt-assembly memory reads (episodic/semantic/procedural/preferences/self-model) are wrapped in
+`_safe()` — a store outage drops that context layer but the turn still assembles.
+- Real: simulated a Qdrant outage (`episodic.retrieve` raises) → `assemble()` still produced an
+  8745-char prompt. Unit: `test_assembly_degrades_when_a_memory_store_is_down` (episodic + semantic
+  both raising → prompt still assembles, utterance preserved).
+- Tool-dependency degradation was already proven in Item 5 (web_search raising → turn completes).
+
+### Capability-awareness regression (verified, real)
+- "I feel kind of lonely today" → warm empathy, **no spurious search**.
+- "what is Zorptango?" (nonsense) → **searched** and honestly reported "I'm not finding anything
+  about Zorptango" — no false "I've never heard of it" refusal.
+
+### Ambiguity guardrail (verified)
+`assemble()` returns a `DisambiguationRequest` when two entity candidates are too close (covered by
+`test_ambiguous_entities_halt_with_disambiguation_request`) — the companion disambiguates rather
+than silently guessing wrong.
+
+### Feedback ↔ trace linkage
+Feedback is keyed by `session_id` + `turn_id` (→ the turn's trace); Item 7's attribution joins them
+by prompt_version. The Traces page shows per-turn feedback controls.
+
+### Barge-in continuity
+Proven in Item 1 (interrupt then same-topic follow-up keeps the working-memory thread).
+
+**Full non-paid suite 356 passed; mypy (42 files) + lint-imports clean.**

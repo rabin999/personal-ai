@@ -199,7 +199,9 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         psych=psych,
         preferences=preferences,
     )
-    generator = ResponseGenerator(llm, self_model, registry, logs=logs)
+    generator = ResponseGenerator(
+        llm, self_model, registry, logs=logs, max_turn_cost_usd=settings.max_turn_cost_usd
+    )
     consolidator = Consolidator(semantic, procedural, psych, docs, llm, episodic=episodic)
 
     return Pipeline(
