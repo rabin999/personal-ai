@@ -280,3 +280,45 @@ store + `/api/conversations` · R10 voice preview.
 - Full Langfuse / Pipecat-LiveKit adoption: see the framework-decision table above.
 - Response-tone final wording (§7): human-tuned by design; the mechanism (detector +
   reflection) is in and the config-guard prevents regressions.
+
+---
+
+## Audit pass 2 (post-task correction) — R13–R16
+
+Each verified BROKEN by a real chat turn first, then fixed and re-verified by a real
+conversation (no mocks). Bundle commit references audit Parts 1.4/1.5/1.6/8.8/8.13.
+
+- **R13 Capability awareness (§8.8/§1.3/§1.6).** Root cause: the identity/system prompt
+  never stated the companion CAN search the web, so the fast tier fell back to "I don't
+  have access to real-time data" / "never heard of that", and even when it did request
+  `web_search` the tool is *background* → enqueued → no in-turn answer. Fix (three layers):
+  (1) explicit "what you can actually do" capability block in `_identity_section`
+  forbidding the false-refusal class; (2) the response loop resolves a `web_search` request
+  INLINE within the turn (`ToolDispatcher.run_inline`, bounded 8s, falls back to the
+  background/waiter path on timeout) so it answers with real data now; (3) a deterministic
+  backstop (`_is_live_info_query` + `_needs_capability_repair`) that force-searches
+  live-info/refusal/hollow-promise turns and re-answers. Verified live: "weather in
+  Kathmandu" → real temp+forecast with a Serper call in the trace; "what is Herak?" → real
+  search results; emotional turns ("I feel lonely today") do NOT spuriously search.
+  **Design deviation (logged per contract §1):** spec §8.6/§15 says search is ALWAYS a
+  background task (voice-latency reason). For explicit current-info questions we now resolve
+  it inline within the turn (bounded) so the companion answers instead of promising a result
+  that never arrives — this is what a human judges correct (§8.8/§8.11). The background/
+  waiter path is retained as the timeout fallback and for the voice runtime.
+
+- **R14 TTS tags leaking into chat (§1.4).** `GenerationResult` now carries clean
+  `final_text` (ALL delivery tags stripped — chat UI + stored memory) and `voice_text`
+  (whitelisted tags kept — TTS + raw in trace). `chat.py`/`voice/session.py` updated so TTS
+  speaks `voice_text` (prosody preserved) while the chat reply and the trace `response` span
+  show clean text + tagged text respectively. Verified: chat reply had no `[warm]`; trace
+  `voice_text` kept `[warm]`.
+
+- **R15 Transient state stored as durable fact (§1.5/§8.13).** Extraction prompt now
+  explicitly separates durable facts/preferences/routines from transient current states, and
+  a deterministic guard (`_looks_transient`) demotes any transient "fact" to episodic-only.
+  Verified: "I have a headache right now" → 1 event, 0 facts; "I run every morning at 6am" →
+  still a semantic fact.
+
+- **R16 Not-broken, re-verified.** Graphiti semantic retrieval (§1.1) is NOT broken — the
+  live prompt contained "user takes blood-pressure medication daily around 8pm" retrieved
+  from the graph. The audit's suspicion was stale.
