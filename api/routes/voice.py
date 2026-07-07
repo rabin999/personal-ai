@@ -12,7 +12,7 @@ import asyncio
 import json
 import logging
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -58,10 +58,17 @@ def _endpointer(user: UserRecord) -> SemanticEndpointer:
 class _Conversation:
     """Streams the current conversation's frames in and trace+audio out."""
 
-    def __init__(self, ws: WebSocket, session: VoiceSession, trace: TraceEmitter) -> None:
+    def __init__(
+        self,
+        ws: WebSocket,
+        session: VoiceSession,
+        trace: TraceEmitter,
+        on_event: Callable[[dict[str, object]], Awaitable[None]] | None = None,
+    ) -> None:
         self._ws = ws
         self.session = session
         self._trace = trace
+        self._on_event = on_event
         self._frames: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._buffer = bytearray()
         self.task = asyncio.create_task(self._run())
@@ -86,7 +93,7 @@ class _Conversation:
     async def _run(self) -> None:
         try:
             async for kind, payload in merge_conversation(
-                self._trace, self.session, self._frame_iter()
+                self._trace, self.session, self._frame_iter(), self._on_event
             ):
                 if kind == "json":
                     await self._ws.send_json(payload)
@@ -126,7 +133,11 @@ def _start(
         delivery=pipeline.delivery,
         vocab=pipeline.vocab,
     )
-    return _Conversation(ws, session, trace)
+
+    async def persist(event: dict[str, object]) -> None:
+        await pipeline.traces.record(user.user_id, event)  # user-scoped (§0.5)
+
+    return _Conversation(ws, session, trace, persist)
 
 
 @router.websocket("/ws/voice")

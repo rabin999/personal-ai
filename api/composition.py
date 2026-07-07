@@ -34,6 +34,7 @@ from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
 from core.memory.vocab import VocabProvider
 from core.memory.working import WorkingMemory
+from core.observability import TraceStore
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectService
 from core.psych.consolidation import Consolidator
@@ -84,6 +85,7 @@ class Pipeline:
     delivery: DeliveryComposer
     consolidator: Consolidator
     vocab: VocabProvider
+    traces: TraceStore
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -151,11 +153,6 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         psych=psych,
     )
     generator = ResponseGenerator(llm, self_model, registry)
-
-    queue = RedisTaskQueue(settings)
-    dispatcher = ToolDispatcher(tool_registry, queue, ledger=ledger)
-    delivery = DeliveryComposer(queue, llm)
-    web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
     consolidator = Consolidator(semantic, procedural, psych, docs, llm)
 
     return Pipeline(
@@ -183,6 +180,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         delivery=delivery,
         consolidator=consolidator,
         vocab=VocabProvider(semantic, profiles),
+        traces=TraceStore(docs),
     )
 
 

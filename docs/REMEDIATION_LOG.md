@@ -18,4 +18,38 @@ Newest entries at the bottom of each section. Companion doc: `GAP_ANALYSIS.md`.
 
 ## Root causes found & fixed
 
-_(appended as work proceeds)_
+### R1 — First words clipped (§19 / brief §2.2) — FIXED
+**Root cause:** the VAD gate fires `speech_start` only after `START_FRAMES=3`
+consecutive speech frames, so the onset frames that opened the gate (and the quiet
+lead-in) precede the event; `VoiceSession._consume` then reset the capture buffer to
+`[]` at `speech_start`, discarding ~100ms of the first word.
+**Fix:** a rolling pre-roll ring (~320ms) of pre-speech frames, seeded into the buffer
+on `speech_start`. Trace reports `preroll_frames`. Regression test in
+`test_voice_session.py::test_preroll_recovers_onset_frames_the_gate_swallowed`.
+
+### R2 — "Top N shows the same item 2-3x" (§14 / brief §5.1, §5.4) — FIXED
+**Root cause:** `_deliver_pending` is called from both the idle poll and the start of
+every turn with no mutual exclusion; two concurrent pulls could return the same finished
+task before either marked it delivered → the same result spoken 2-3×.
+**Fix:** per-session `asyncio.Lock` around the pull→mark window + a `delivered_ids` guard
+so a result is spoken exactly once. Test
+`test_background_result_delivered_at_most_once`.
+
+### R3 — "Record my trade" doesn't persist (§16 / brief §6) — FIXED
+**Root cause:** `ProjectService.create()` existed but was never exposed as a tool or
+reachable from conversation; the finance `log_entry` action only registers once an
+instance exists — so there was no way to create the instance from voice, hence nothing
+to write to.
+**Fix:** `ProjectService.find_or_create()` + a first-class `record_trade` action tool
+(always available) that creates the user's `finance_portfolio` on first use, then logs
+the entry. Feeds P&L + prompt context. Tests in `test_projects.py`.
+
+### R4 — Traces were ephemeral (§1 observability) — FIXED
+**Root cause:** trace events streamed to the UI but were never persisted → not queryable
+after the fact, no inspection surface.
+**Fix:** `core/observability/TraceStore` appends every event to a user-scoped
+`turn_traces` Mongo collection; `merge_conversation` gained a fire-and-forget `on_event`
+sink (never blocks the WS send path); `GET /debug/traces` + `/debug/traces/{session}`
+expose a user's own traces (auth'd, isolation-scoped). Tests in `test_trace_store.py`
+(ordering + two-user isolation). Also removed a duplicate `queue/dispatcher/delivery/
+web_search` construction block in the composition root (dead second instances).

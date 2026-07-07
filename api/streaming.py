@@ -8,7 +8,7 @@ slices the browser's audio into the fixed frame size the VAD expects.
 """
 
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
 from voice.session import VoiceSession
@@ -34,16 +34,31 @@ async def merge_conversation(
     trace: TraceEmitter,
     session: VoiceSession,
     frames: AsyncIterator[bytes],
+    on_event: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> AsyncIterator[OutItem]:
     """Yield trace events and TTS audio for a whole conversation as one ordered
     stream. Audio chunks are tagged with the current turn so the UI can group
-    and replay each reply's audio."""
+    and replay each reply's audio.
+
+    ``on_event`` (optional) receives every trace event for durable persistence
+    (brief §1). It is fired-and-forgotten so it never blocks the WS send path.
+    """
     out: asyncio.Queue[OutItem | None] = asyncio.Queue()
     live = 2  # trace producer + audio producer
+    sink_tasks: set[asyncio.Task[None]] = set()
+
+    async def _persist(payload: dict[str, Any]) -> None:
+        assert on_event is not None
+        await on_event(payload)
 
     async def forward_trace() -> None:
         async for event in trace.events():
-            await out.put(("json", {"type": "trace", **event.model_dump()}))
+            payload = event.model_dump()
+            if on_event is not None:  # durable persistence, off the send path
+                task: asyncio.Task[None] = asyncio.create_task(_persist(payload))
+                sink_tasks.add(task)
+                task.add_done_callback(sink_tasks.discard)
+            await out.put(("json", {"type": "trace", **payload}))
         await out.put(None)
 
     async def drive_audio() -> None:
@@ -66,3 +81,6 @@ async def merge_conversation(
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        # Let in-flight persistence writes finish (don't drop the last events).
+        if sink_tasks:
+            await asyncio.gather(*sink_tasks, return_exceptions=True)
