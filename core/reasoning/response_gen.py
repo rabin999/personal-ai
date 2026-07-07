@@ -21,6 +21,7 @@ from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
 
+from core.observability.logger import StructuredLogger
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
@@ -202,11 +203,13 @@ class ResponseGenerator:
         registry: TraitRegistry,
         *,
         self_reflect: bool = True,
+        logs: StructuredLogger | None = None,
     ) -> None:
         self._llm = llm
         self._self_model = self_model
         self._registry = registry
         self._self_reflect = self_reflect
+        self._logs = logs
         # Action tools awaiting the user's yes/no, keyed by session (§8.3).
         self._pending: dict[str, ConfirmRequest] = {}
 
@@ -315,6 +318,16 @@ class ResponseGenerator:
 
     async def _finalize(self, prompt: AssembledPrompt, turn: LLMTurn) -> GenerationResult:
         """Apply the behavior gates to a final draft, then log + return (§9/§12)."""
+        # Judgment span (trace §1.10): the model's own read of the turn.
+        self._span(
+            "judgment",
+            intent=turn.judgment.intent_confidence,
+            novelty=turn.judgment.novelty_score,
+            salience=turn.judgment.emotional_salience,
+            ambiguity=turn.judgment.ambiguity,
+            complexity=turn.judgment.complexity_tier,
+            boundary_flag=turn.judgment.capability_boundary_flag,
+        )
         action = await self._curiosity_gate(prompt, turn.judgment)
         text = turn.draft_response
 
@@ -333,15 +346,30 @@ class ResponseGenerator:
         # Self-reflection (§9.3): if the draft slipped into assistant-speak, have
         # the model re-say it in-voice once. Mechanism only — tone stays human-tuned.
         if self._self_reflect and find_forbidden(text):
+            flags_before = find_forbidden(text)
             text = await self._rewrite_assistant_speak(prompt, text)
             # Deterministic safety net: if the rewrite still carries a banned
             # shape, drop the offending sentence(s) — but only if something
             # natural remains (never ship an empty reply).
+            scrubbed_used = False
             if find_forbidden(text):
                 scrubbed = scrub_forbidden(text)
                 if scrubbed:
                     text = scrubbed
+                    scrubbed_used = True
+            # Self-reflection span (trace §1.12): its own step, not just an llm.call.
+            self._span(
+                "reflection",
+                triggered_by=flags_before,
+                scrubbed=scrubbed_used,
+                clean_after=not find_forbidden(text),
+            )
         return await self._finish(prompt, text, action, turn.judgment)
+
+    def _span(self, event: str, **fields: Any) -> None:
+        """Emit a reasoning span into the current turn's trace (via the logger)."""
+        if self._logs is not None:
+            self._logs.log("info", event, stage=event, **fields)
 
     async def _rewrite_assistant_speak(self, prompt: AssembledPrompt, text: str) -> str:
         """One bounded rewrite pass to strip service-desk phrasing; keep the
