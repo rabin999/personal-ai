@@ -128,6 +128,24 @@ class FakeVectorStore:
             for score, doc in scored[:k]
         ]
 
+    async def list_by_user(self, collection: str, *, user_id: str, limit: int = 100) -> list[Any]:
+        from ports.vector_store import VectorHit
+
+        out = [
+            VectorHit(id=doc["id"], score=0.0, payload=dict(doc["payload"]))
+            for doc in self.docs.values()
+            if doc["collection"] == collection and doc["payload"].get("user_id") == user_id
+        ]
+        return out[:limit]
+
+    async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
+        key = f"{collection}:{doc_id}"
+        doc = self.docs.get(key)
+        if doc is None or doc["payload"].get("user_id") != user_id:
+            return False
+        del self.docs[key]
+        return True
+
 
 def _tokens(text: str) -> set[str]:
     return {w.strip(".,!?:;'\"()").lower() for w in text.split() if len(w) > 2}

@@ -85,6 +85,67 @@ class FakeConversations:
         return [{"user_id": user_id, "session_id": session_id, "turn_index": 1, "user_text": "hi"}]
 
 
+class FakeFeedback:
+    def __init__(self) -> None:
+        self.records: list[dict[str, object]] = []
+
+    async def record(self, *, user_id, session_id, rating, turn_id=None, trace_id=None, note=""):  # type: ignore[no-untyped-def]
+        rec = {"user_id": user_id, "session_id": session_id, "rating": rating, "note": note}
+        self.records.append(rec)
+        return SimpleNamespace(id="fb_1", rating=rating)
+
+    async def list_for_user(self, user_id, *, offset=0, limit=50, rating=None):  # type: ignore[no-untyped-def]
+        rows = [r for r in self.records if r["user_id"] == user_id]
+        return rows[offset : offset + limit], len(rows)
+
+
+class _Fact:
+    def __init__(self, fact: str) -> None:
+        self.fact = fact
+        self.valid_from = None
+        self.valid_to = None
+
+
+class FakeSemantic:
+    async def profile_facts(self, user_id, limit=50):  # type: ignore[no-untyped-def]
+        return [_Fact("takes meds at 8pm")]
+
+
+class _EpiHit:
+    def __init__(self, mid: str) -> None:
+        self.id = mid
+        self.text = "bought 10 SYPNL"
+        self.timestamp = "2026-07-07"
+        self.session_id = "s1"
+
+
+class FakeEpisodicMem(FakeEpisodic):
+    def __init__(self) -> None:
+        super().__init__()
+        self.deleted: list[str] = []
+
+    async def list_recent(self, user_id, limit=50):  # type: ignore[no-untyped-def]
+        return [_EpiHit("m1"), _EpiHit("m2")]
+
+    async def delete(self, user_id, memory_id):  # type: ignore[no-untyped-def]
+        self.deleted.append(memory_id)
+        return memory_id == "m1"
+
+
+class _Rule:
+    id = "r1"
+    rule_text = "greet warmly"
+    trigger = "session_start"
+    confidence = 0.7
+    evidence_count = 3
+    updated_at = "2026-07-07"
+
+
+class FakeProcedural:
+    async def rules_for(self, user_id, context=None):  # type: ignore[no-untyped-def]
+        return [_Rule()]
+
+
 @pytest.fixture
 def client() -> TestClient:
     app = create_app(wire_adapters=False)
@@ -99,9 +160,12 @@ def client() -> TestClient:
         delivery=FakeDelivery(),
         tts=FakeTTS(),
         conversations=FakeConversations(),
-        episodic=FakeEpisodic(),
+        episodic=FakeEpisodicMem(),
         extractor=FakeExtractor(),
         logs=StructuredLogger([]),
+        feedback=FakeFeedback(),
+        semantic=FakeSemantic(),
+        procedural=FakeProcedural(),
     )
     return TestClient(app)
 
@@ -168,3 +232,32 @@ def test_voice_ws_rejects_unauthorized(client: TestClient) -> None:
     with client.websocket_connect("/ws/voice") as ws:
         ws.send_json({"type": "auth", "token": "nope"})
         assert ws.receive_json() == {"type": "error", "message": "unauthorized"}
+
+
+def test_feedback_submit_and_list(client: TestClient) -> None:
+    assert (
+        client.post("/api/feedback", json={"session_id": "s1", "rating": "down"}).status_code == 401
+    )
+    r = client.post(
+        "/api/feedback",
+        json={"session_id": "s1", "rating": "down", "note": "wrong"},
+        headers=_auth(),
+    )
+    assert r.status_code == 200 and r.json()["rating"] == "down"
+    listed = client.get("/api/feedback", headers=_auth()).json()
+    assert listed["total"] == 1 and listed["feedback"][0]["rating"] == "down"
+
+
+def test_memories_grouped_by_type(client: TestClient) -> None:
+    assert client.get("/api/memories/semantic").status_code == 401
+    sem = client.get("/api/memories/semantic", headers=_auth()).json()
+    assert sem["type"] == "semantic" and "8pm" in sem["items"][0]["fact"]
+    epi = client.get("/api/memories/episodic", headers=_auth()).json()
+    assert epi["type"] == "episodic" and len(epi["items"]) == 2
+    proc = client.get("/api/memories/procedural", headers=_auth()).json()
+    assert proc["items"][0]["confidence"] == 0.7
+
+
+def test_delete_episodic_memory(client: TestClient) -> None:
+    assert client.delete("/api/memories/episodic/m1", headers=_auth()).status_code == 200
+    assert client.delete("/api/memories/episodic/nope", headers=_auth()).status_code == 404

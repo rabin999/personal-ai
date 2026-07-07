@@ -32,3 +32,13 @@ class VectorStore(Protocol):
     ) -> list[VectorHit]:
         """Dense + BM25 sub-queries fused with RRF, filtered to ``user_id``."""
         ...
+
+    async def list_by_user(
+        self, collection: str, *, user_id: str, limit: int = 100
+    ) -> list[VectorHit]:
+        """Scroll a user's stored docs (no query) — for the /memories view."""
+        ...
+
+    async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
+        """Delete one of THIS user's docs by id (user-scoped). Returns True if removed."""
+        ...

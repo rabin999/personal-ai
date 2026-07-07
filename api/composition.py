@@ -30,6 +30,7 @@ from adapters.user_context.static import StaticUserContext
 from adapters.vector.qdrant import QdrantVectorStore
 from config.settings import Settings
 from core.cost import CostLedger
+from core.feedback import FeedbackStore
 from core.memory.conversation_store import ConversationStore
 from core.memory.entities import EntityResolver
 from core.memory.episodic import EpisodicMemory
@@ -98,6 +99,7 @@ class Pipeline:
     extractor: MemoryExtractor
     preferences: Mem0PreferenceMemory | None
     logs: StructuredLogger
+    feedback: FeedbackStore
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -207,6 +209,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         extractor=MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences),
         preferences=preferences,
         logs=StructuredLogger(build_log_sinks(settings)),
+        feedback=FeedbackStore(docs),
     )
 
 

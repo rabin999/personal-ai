@@ -91,6 +91,40 @@ class QdrantVectorStore:
             for point in response.points
         ]
 
+    async def list_by_user(
+        self, collection: str, *, user_id: str, limit: int = 100
+    ) -> list[VectorHit]:
+        user_filter = models.Filter(
+            must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchValue(value=user_id))]
+        )
+        points, _ = await self._db.qdrant().scroll(
+            collection_name=collection,
+            scroll_filter=user_filter,
+            limit=limit,
+            with_payload=True,
+        )
+        return [VectorHit(id=str(p.id), score=0.0, payload=dict(p.payload or {})) for p in points]
+
+    async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
+        # User-scoped: only delete the point if it belongs to this user (§0.5).
+        user_filter = models.Filter(
+            must=[
+                models.HasIdCondition(has_id=[doc_id]),
+                models.FieldCondition(key=USER_ID_FIELD, match=models.MatchValue(value=user_id)),
+            ]
+        )
+        existing, _ = await self._db.qdrant().scroll(
+            collection_name=collection, scroll_filter=user_filter, limit=1
+        )
+        if not existing:
+            return False
+        await self._db.qdrant().delete(
+            collection_name=collection,
+            points_selector=models.FilterSelector(filter=user_filter),
+            wait=True,
+        )
+        return True
+
     def _embed_documents(self, texts: list[str]) -> tuple[list[list[float]], list[SparseEmbedding]]:
         dense = [vector.tolist() for vector in self._dense.embed(texts)]
         sparse = list(self._sparse.embed(texts))

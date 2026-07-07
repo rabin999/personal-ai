@@ -34,6 +34,7 @@ class EpisodicHit(BaseModel):
     timestamp: str | None = None
     score: float
     emotion: dict[str, Any] | None = None
+    id: str | None = None  # vector-store point id (for delete from /memories)
 
 
 class EpisodicMemory:
@@ -61,6 +62,27 @@ class EpisodicMemory:
                 payload["emotion"] = meta["emotion"]
             docs.append(VectorDoc(id=str(uuid.uuid4()), text=chunk, payload=payload))
         await self._vectors.upsert_texts(EPISODIC_COLLECTION, docs)
+
+    async def list_recent(self, user_id: str, limit: int = 50) -> list[EpisodicHit]:
+        """All of a user's stored episodic memories, newest first (for /memories)."""
+        hits = await self._vectors.list_by_user(EPISODIC_COLLECTION, user_id=user_id, limit=limit)
+        items = [
+            EpisodicHit(
+                text=str(h.payload.get("text", "")),
+                session_id=h.payload.get("session_id"),
+                timestamp=h.payload.get("timestamp"),
+                score=0.0,
+                emotion=h.payload.get("emotion"),
+                id=h.id,
+            )
+            for h in hits
+        ]
+        items.sort(key=lambda e: e.timestamp or "", reverse=True)
+        return items
+
+    async def delete(self, user_id: str, memory_id: str) -> bool:
+        """Delete one of this user's episodic memories (the 'forget this' right)."""
+        return await self._vectors.delete(EPISODIC_COLLECTION, memory_id, user_id=user_id)
 
     async def retrieve(self, user_id: str, query_text: str, k: int = 6) -> list[EpisodicHit]:
         """Hybrid RRF retrieval (adapter) + recency weighting, user-scoped."""
