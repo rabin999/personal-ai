@@ -281,3 +281,50 @@ async def test_interrupt_then_continue_same_topic_keeps_context() -> None:
     assert gen.turns_started >= 2
     assert any("black holes" in t for t in texts), f"lost the topic thread: {texts}"
     assert any("how big" in t for t in texts), f"follow-up missing: {texts}"
+
+
+# ── A4: multi-utterance accumulate/merge ──────────────────────────────────
+
+
+class DelayedGenerator:
+    """Delays before speaking so a quick second utterance can fold in (A4)."""
+
+    def __init__(self, delay_s: float = 0.15) -> None:
+        self.delay_s = delay_s
+        self.transcripts: list[str] = []
+
+    async def generate_spoken(self, prompt, dispatcher, context, speak) -> GenerationResult:
+        self.transcripts.append(prompt.utterance)
+        try:
+            await asyncio.sleep(self.delay_s)  # "reasoning" before any speech
+        except asyncio.CancelledError:
+            raise
+        await speak(f"reply to: {prompt.utterance}")
+        return GenerationResult(final_text="ok", voice_text="ok", action="respond", turn_id="t")
+
+
+@pytest.mark.asyncio
+async def test_quick_continuation_folds_into_one_turn() -> None:
+    # Utterance 1, then a quick "and also…" BEFORE the reply speaks → one combined
+    # turn, not two. The first (uncombined) turn is cancelled.
+    stt = ScriptedSTT(["let's plan a trip.", "and also book a hotel"])
+    tts = SlowTTS(chunks=6, gap_s=0.02)
+    gen = DelayedGenerator(delay_s=1.0)  # turn 1 is still reasoning (not speaking)
+    session, _ = _session(stt, tts, gen)  # type: ignore[arg-type]
+
+    frames: list[tuple[bytes, float]] = []
+    frames += [(SPEECH, 0.0)] * 6 + [(SILENCE, 0.0)] * 8  # utterance 1 → endpoint → turn 1
+    frames += [(SILENCE, 0.02)]  # tiny gap; turn 1 is reasoning, not speaking yet
+    # utterance 2 while turn 1 hasn't spoken: >= _BARGE_IN_FRAMES so it registers as
+    # an addition, cancelling the not-yet-spoken turn 1.
+    frames += [(SPEECH, 0.004)] * 12 + [(SILENCE, 0.0)] * 8  # → endpoint → classify
+    frames += [(SILENCE, 0.05)] * 10  # let the combined turn finish
+
+    _ = [c async for c in session.converse(_script(frames))]
+    stages = [(e.stage, e.data.get("decision")) for e in session._trace.recorded]  # type: ignore[attr-defined]
+
+    # A multi-utterance decision was made and logged.
+    assert any(s == "endpoint" and d in ("accumulate", "merge") for s, d in stages), stages
+    # The FINAL turn the generator ran carried BOTH utterances combined.
+    assert gen.transcripts, "generator never ran"
+    assert any("plan a trip" in t and "hotel" in t for t in gen.transcripts), gen.transcripts

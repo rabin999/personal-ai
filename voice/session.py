@@ -14,6 +14,7 @@ can show the whole pipeline and replay each reply's audio.
 
 import asyncio
 import logging
+import time
 from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
@@ -30,6 +31,7 @@ from ports.stt import STT
 from ports.tts import TTS
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
+from voice.multiutterance import classify_utterance, combine
 from voice.pipeline import AudioInputPipeline, PipelineConfig, VADModel
 from voice.trace import TraceEmitter
 
@@ -119,6 +121,10 @@ class VoiceSession:
         # before either marks it delivered, the same result gets spoken 2-3x (§14).
         self._delivery_lock = asyncio.Lock()
         self._delivered_ids: set[str] = set()
+        # A4 multi-utterance: the previous endpointed (transcript, monotonic ms) and
+        # whether the in-flight turn has begun speaking (→ an addition is a barge-in).
+        self._prev_endpoint: tuple[str, float] | None = None
+        self._turn_spoke = False
 
     async def converse(self, frames: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """Run a whole conversation over a continuous frame stream.
@@ -237,6 +243,35 @@ class VoiceSession:
                 )
                 utterance = b"".join(buffer)
                 capturing, buffer, silence_ms = False, [], 0.0
+                # A4: is this a fresh turn, or a quick addition to the one just
+                # said? If the previous turn hasn't started speaking yet and this
+                # continues it, fold them into ONE turn instead of two.
+                now_ms = time.monotonic() * 1000
+                if self._prev_endpoint is not None:
+                    prev_text, prev_ms = self._prev_endpoint
+                    dec = classify_utterance(
+                        prev_text,
+                        transcript,
+                        now_ms - prev_ms,
+                        response_started=self._turn_spoke,
+                    )
+                    self._trace.emit(
+                        "endpoint",
+                        f"multi-utterance: {dec.decision}",
+                        decision=dec.decision,
+                        reason=dec.reason,
+                        gap_ms=round(dec.gap_ms),
+                    )
+                    if dec.decision in ("accumulate", "merge"):
+                        # Fold into ONE turn. The prior turn (if it hadn't yet
+                        # spoken) is cancelled — by barge-in already, or here.
+                        if turn is not None and not turn.done():
+                            turn.cancel()
+                            await asyncio.gather(turn, return_exceptions=True)
+                            self._drain(out)
+                        transcript = combine(prev_text, transcript, dec.decision)
+                self._prev_endpoint = (transcript, now_ms)
+                self._turn_spoke = False
                 turn = asyncio.create_task(self._run_turn(transcript, utterance, out))
         except asyncio.CancelledError:
             if turn is not None:
@@ -299,6 +334,7 @@ class VoiceSession:
             self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)
 
             async def speak(text: str) -> None:
+                self._turn_spoke = True  # A4: once speaking, a new utterance is a barge-in
                 async for chunk in self._tts.speak(
                     text, self._voice, user_id=self._user_id, session_id=self._session_id
                 ):

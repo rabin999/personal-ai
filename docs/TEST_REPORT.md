@@ -733,3 +733,27 @@ T1 weather → T2 "wait, what was that temperature again?" → recalls it (no "w
   follow-up reasons over carried info without re-searching (context step logs
   `suppress_live_search`); the `resolve_context` node is logged in the trace.
 - Full non-paid suite 357; ruff/mypy/lint-imports clean.
+
+---
+
+## A4 — Multi-utterance accumulate / merge / split
+
+**App-goal verified:** rapid successive utterances are reasoned about — one thought (accumulate),
+a connected addition (merge), or a separate turn (split) — not blindly concatenated nor each
+treated as its own turn.
+
+- `voice/multiutterance.py::classify_utterance` decides from timing (gap vs a continuation window),
+  semantic continuity (previous trailed off incomplete → accumulate; new starts with a continuation
+  cue "and/oh/actually/wait…" → merge), and state (companion already speaking → split, it's a
+  barge-in/addition handled by §24). `combine()` joins per the decision. Every decision is
+  explainable + logged in the trace.
+- **Integration** (`VoiceSession`): when a new utterance endpoints, it's classified against the
+  previous; on accumulate/merge, the not-yet-spoken prior turn is cancelled and the transcripts are
+  folded into ONE turn. `_turn_spoke` distinguishes an addition (turn still reasoning) from a real
+  barge-in (turn already speaking).
+- **Verification:** unit (`test_multiutterance.py`, 6): accumulate/merge/split across
+  timing+continuity+state + combine. Engine E2E (`test_barge_in_engine.py`): "let's plan a trip." +
+  a quick "and also book a hotel" (before the reply speaks) fold into ONE turn — the generator runs
+  once with the combined transcript; barge-in tests still pass (spoke → split).
+- **Blocked:** the live audio timing of successive real utterances needs a mic; the decision logic +
+  loop integration are engine-verified. Non-paid suite 364.
