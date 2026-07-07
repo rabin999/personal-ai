@@ -150,6 +150,7 @@ def _start(
         vocab=pipeline.vocab,
         conversations=pipeline.conversations,
         extractor=pipeline.extractor,
+        defer_routing=pipeline.settings.defer_memory_routing,
     )
 
     async def persist(event: dict[str, object]) -> None:

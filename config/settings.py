@@ -103,6 +103,14 @@ class Settings(BaseSettings):
     # pause before we summarize-and-offer instead of dumping them (anti-machine-gun).
     delivery_max_interjections: int = 2
 
+    # Deferred memory routing (Item 9): when True (default), the live turn only
+    # writes the raw log; the episodic/semantic/procedural routing is done by the
+    # background worker via the raw-log cursor (kills double-writes, off the latency
+    # path). False = legacy inline extraction on the live path.
+    defer_memory_routing: bool = True
+    # How often the worker polls the raw log for unrouted turns (seconds).
+    memory_routing_poll_s: float = 2.0
+
     # Welcome-email SMTP (fastapi-mail via Gmail). Gmail requires an APP PASSWORD
     # (2FA enabled) — the normal account password will NOT work. Empty MAIL_*
     # disables sending; the outbox still records (worker marks it skipped).

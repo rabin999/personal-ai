@@ -179,6 +179,8 @@ def _build_app(*, authed: bool) -> "object":
         semantic=FakeSemantic(),
         procedural=FakeProcedural(),
         traces=FakeTraces(),
+        # Item 9: the chat route checks this to decide inline vs deferred routing.
+        settings=SimpleNamespace(defer_memory_routing=False),
     )
     if authed:
         # Real auth is session-based (§26); tests inject the authenticated user

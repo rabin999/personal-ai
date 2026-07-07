@@ -48,10 +48,28 @@ async def main() -> None:
         [TOOL_TASK_TYPE, WEB_SEARCH_TASK_TYPE, CONSOLIDATION_TASK_TYPE],
     )
     try:
-        # Queue worker + outbox poller run concurrently in the worker process.
-        await asyncio.gather(worker.run_forever(), outbox_worker.run_forever())
+        # Queue worker + outbox poller + memory-routing poller run concurrently.
+        await asyncio.gather(
+            worker.run_forever(),
+            outbox_worker.run_forever(),
+            _route_memory_forever(pipeline),
+        )
     finally:
         await pipeline.aclose()
+
+
+async def _route_memory_forever(pipeline: Pipeline) -> None:
+    """Poll the raw log for unrouted turns and route them to long-term memory via
+    the cursor (Item 9) — off the conversation path, exactly once per turn."""
+    poll_s = pipeline.settings.memory_routing_poll_s
+    while True:
+        try:
+            n = await pipeline.memory_router.route_pending()
+            if n:
+                logger.info("routed %d raw turn(s) to long-term memory", n)
+        except Exception:  # never let the router loop die
+            logger.exception("memory routing poll failed")
+        await asyncio.sleep(poll_s)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ from core.memory.entities import EntityResolver
 from core.memory.episodic import EpisodicMemory
 from core.memory.extraction import MemoryExtractor
 from core.memory.procedural import ProceduralMemory
+from core.memory.routing import MemoryRouter
 from core.memory.semantic import SemanticMemory
 from core.memory.vocab import VocabProvider
 from core.memory.working import WorkingMemory
@@ -103,6 +104,7 @@ class Pipeline:
     traces: TraceStore
     conversations: ConversationStore
     extractor: MemoryExtractor
+    memory_router: MemoryRouter
     preferences: Mem0PreferenceMemory | None
     logs: StructuredLogger
     feedback: FeedbackStore
@@ -167,6 +169,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         tool_registry, queue, ledger=ledger, results=tool_results, logs=logs
     )
     delivery = DeliveryComposer(queue, llm, max_interjections=settings.delivery_max_interjections)
+    conversations = ConversationStore(docs)
     web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
     register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act
         tool_registry,
@@ -181,6 +184,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     # §2 Mem0 preference memory (fast personalization layer). Guarded init:
     # a failure degrades to None and the app still runs without it.
     preferences = Mem0PreferenceMemory(settings) if settings.preference_memory_enabled else None
+    extractor = MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences)
 
     assembler = PromptAssembler(
         profiles,
@@ -229,8 +233,9 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         consolidator=consolidator,
         vocab=VocabProvider(semantic, profiles),
         traces=traces,
-        conversations=ConversationStore(docs),
-        extractor=MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences),
+        conversations=conversations,
+        extractor=extractor,
+        memory_router=MemoryRouter(conversations, extractor, logs=logs),
         preferences=preferences,
         logs=logs,
         feedback=FeedbackStore(docs),

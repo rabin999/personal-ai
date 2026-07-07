@@ -502,6 +502,46 @@ driven by the emotion signal + persona already in the prompt; tuning their exact
 human-tuning on top of the working mechanism, and the emotional read is present on the turn
 (`emotion` span) for that tone shaping.
 
+---
+
+## Item 9 — Memory routing moved to the background worker (deferred architecture, spec §5/§6)
+
+**App-goal verified:** the live turn only writes the raw log (never lost); the episodic/semantic/
+procedural ROUTING is done by a background worker reading unrouted turns via a cursor — off the
+latency path, exactly once per turn (no double-write).
+
+### Implemented
+- **Raw-log cursor** (`ConversationStore`): each turn is written (with a string id) as
+  `routed=False`; `unrouted_turns(limit)` (oldest-first) is the cursor; `mark_routed(id)` advances
+  the watermark; `recent_raw_turns(user)` lets retrieval read the raw log for a not-yet-promoted
+  fact (read-your-own-writes across sessions; same-session is already covered by working memory).
+- **`MemoryRouter.route_pending()`** (`core/memory/routing.py`): routes each unrouted turn once via
+  the extractor, then marks it routed **even on failure** (a poison turn can't stall the cursor or
+  be double-written on retry); logs a `memory.route` span.
+- **Live path deferred** (config `defer_memory_routing`, default True): voice `_remember` and chat
+  `_persist_turn` skip inline extraction; the raw log is still written inline. Legacy inline path
+  stays available via the flag.
+- **Worker poll loop** (`workers/consolidation_worker.py::_route_memory_forever`) polls every
+  `memory_routing_poll_s` (2s) and routes pending turns.
+
+### Verification
+- Unit (`tests/unit/test_memory_routing.py`, 3): routes each unrouted turn once; **rerun routes 0
+  (cursor prevents double-write)**; watermark advances even when extraction fails (no reprocessing).
+- Real end-to-end (real Mongo + Graphiti):
+  ```
+  raw-log write took 2.5ms          ← non-blocking (no inline extraction on the live path)
+  route_pending #1 routed=1  #2 routed=0   ← cursor = exactly-once, no double-write
+  promoted facts: ['The user loves rock climbing']
+  ```
+- Real-call regression (`tests/real_call/test_deferred_routing.py`): raw log → cursor routes once
+  → durable fact promoted; rerun routes 0. Passed.
+- Full non-paid suite 351 passed; mypy (42 files) + lint-imports clean.
+
+### Read-your-own-writes
+Same-session recall of a just-stated fact is covered by working memory (holds the turn immediately).
+Across sessions before promotion, the worker polls every 2s and `recent_raw_turns` exposes the raw
+log to retrieval, so the window is negligible and never a hard gap.
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply

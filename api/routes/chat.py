@@ -187,24 +187,25 @@ async def _persist_turn(
     trace: TraceEmitter,
     turn_no: int,
 ) -> None:
-    """Run the memory-extraction write step + the durable conversation log (§1/§6)."""
-    try:
-        # §1 WRITE step: an explicit extraction decides what/where to persist
-        # (episodic events, distilled semantic facts, trades) — not a blind dump.
-        extracted = await pipeline.extractor.extract_and_store(
-            user_id, session_id, user_text, assistant_text
-        )
-        if extracted.episodic_written or extracted.semantic_written or extracted.trades_written:
-            trace.emit(
-                "memory",
-                f"stored {extracted.episodic_written} event(s), "
-                f"{extracted.semantic_written} fact(s), {extracted.trades_written} trade(s)",
-                episodic=extracted.events,
-                semantic=extracted.facts,
-                trades=extracted.trades_written,
+    """Write the durable raw log (§6) and, unless routing is deferred to the
+    background worker (Item 9), run the §1 extraction inline."""
+    if not pipeline.settings.defer_memory_routing:
+        try:
+            # Legacy inline WRITE step: extraction decides what/where to persist.
+            extracted = await pipeline.extractor.extract_and_store(
+                user_id, session_id, user_text, assistant_text
             )
-    except Exception:
-        logger.exception("memory extraction failed (text turn)")
+            if extracted.episodic_written or extracted.semantic_written or extracted.trades_written:
+                trace.emit(
+                    "memory",
+                    f"stored {extracted.episodic_written} event(s), "
+                    f"{extracted.semantic_written} fact(s), {extracted.trades_written} trade(s)",
+                    episodic=extracted.events,
+                    semantic=extracted.facts,
+                    trades=extracted.trades_written,
+                )
+        except Exception:
+            logger.exception("memory extraction failed (text turn)")
     try:
         await pipeline.conversations.record_turn(
             user_id=user_id,

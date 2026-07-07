@@ -88,6 +88,7 @@ class VoiceSession:
         vocab: VocabProvider | None = None,
         conversations: ConversationStore | None = None,
         extractor: MemoryExtractor | None = None,
+        defer_routing: bool = True,
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -108,6 +109,7 @@ class VoiceSession:
         self._vocab = vocab
         self._conversations = conversations
         self._extractor = extractor
+        self._defer_routing = defer_routing
         self._turn_index = 0  # verbatim conversation-log turn counter (§6)
         self._vocab_terms: list[str] | None = None  # resolved once per session
         # Serialize background delivery: the idle poll and each turn both call
@@ -429,9 +431,13 @@ class VoiceSession:
                 await self._synthesize(line, out)
 
     def _remember(self, user_text: str, assistant_text: str) -> None:
-        """WRITE step (§1): run the memory-extraction consolidation off the latency
-        path — it decides what to persist (episodic events / semantic facts / trades)
-        and where, rather than dumping every turn verbatim (the raw log covers that)."""
+        """WRITE step (§1): decide what to persist (episodic / semantic / trades).
+
+        Deferred by default (Item 9): the raw log is written by ``_log_conversation``
+        and the background worker routes it via the cursor — nothing extra runs on
+        the live path. Only the legacy inline path runs when routing isn't deferred."""
+        if self._defer_routing:
+            return  # routing is the worker's job (raw log already persisted)
         if self._extractor is not None:
             task = asyncio.create_task(self._extract(user_text, assistant_text))
             task.add_done_callback(lambda t: t.exception())  # swallow; best-effort

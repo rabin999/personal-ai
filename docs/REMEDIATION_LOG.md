@@ -556,3 +556,19 @@ idle-is-free) and closed two concrete gaps:
   the working-memory transcript. Verified end-to-end (real queue+worker+Graphiti): learned "Momo is
   a golden retriever" / "user adopted a puppy named Momo".
 Non-paid suite 351.
+
+---
+
+## Autonomous backlog run — Item 9: Deferred memory routing (2026-07-07)
+
+Moved episodic/semantic/procedural routing off the live path into a cursor-based background worker:
+- ConversationStore: turns written (string id) with routed=False; unrouted_turns (cursor),
+  mark_routed (watermark), recent_raw_turns (read-your-own-writes). Switched insert→put so the
+  watermark works on real Mongo (insert's ObjectId can't be get/put by string).
+- MemoryRouter.route_pending: routes each unrouted turn once, marks routed even on failure (poison
+  turns can't stall the cursor or double-write).
+- Live path deferred behind config defer_memory_routing (default True): voice/_remember +
+  chat/_persist_turn skip inline extraction; raw log still written inline. Worker poll loop added.
+- Proven: unit (rerun routes 0 = no double-write; watermark advances on failure) + real e2e (raw-log
+  write 2.5ms non-blocking; #1 routed=1 #2 routed=0; fact promoted) + real_call regression.
+Non-paid suite 351.

@@ -15,6 +15,7 @@ client-side date math.
 
 import logging
 import time
+import uuid
 from datetime import UTC, datetime
 from typing import Any
 
@@ -41,11 +42,21 @@ class ConversationStore:
         trace_turn: int | None = None,
         emotion: dict[str, Any] | None = None,
     ) -> None:
-        """Append one exchange (user + assistant) and upsert the session header."""
+        """Append one exchange (user + assistant) and upsert the session header.
+
+        Each turn is written with ``routed=False``: the raw log is the durable,
+        never-lost record (spec §6), and the episodic/semantic/procedural ROUTING
+        decision is made LATER by the background memory-routing worker reading
+        unrouted turns via this cursor (Item 9) — so routing never blocks the reply
+        and a turn is routed exactly once (no double-write)."""
         now = time.time()
         try:
-            await self._docs.insert(
+            # String id (not insert's ObjectId) so the routing worker can advance
+            # the watermark via get/put on both Mongo and the in-memory fake.
+            turn_uid = uuid.uuid4().hex
+            await self._docs.put(
                 CONVERSATION_TURNS_COLLECTION,
+                turn_uid,
                 {
                     "user_id": user_id,
                     "session_id": session_id,
@@ -56,11 +67,40 @@ class ConversationStore:
                     "emotion": emotion,
                     "ts": now,
                     "created_at": datetime.now(UTC).isoformat(),
+                    "routed": False,  # memory-routing worker will set True (Item 9)
                 },
             )
             await self._touch_session(user_id, session_id, now)
         except Exception:  # durability is best-effort; never break the turn
             logger.exception("conversation persistence failed")
+
+    async def unrouted_turns(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        """Oldest-first turns not yet routed to long-term memory (the cursor).
+
+        The routing worker claims these, routes each once, and marks them routed —
+        so re-processing is impossible and double-writes can't happen (Item 9)."""
+        docs = await self._docs.find(CONVERSATION_TURNS_COLLECTION, {"routed": False}, limit=100000)
+        docs.sort(key=lambda d: d.get("ts", 0.0))
+        return docs[:limit]
+
+    async def mark_routed(self, turn_id: str) -> None:
+        """Mark one raw-log turn as routed (idempotent watermark advance)."""
+        doc = await self._docs.get(CONVERSATION_TURNS_COLLECTION, turn_id)
+        if doc is not None:
+            doc["routed"] = True
+            await self._docs.put(CONVERSATION_TURNS_COLLECTION, turn_id, doc)
+
+    async def recent_raw_turns(self, user_id: str, *, limit: int = 10) -> list[dict[str, Any]]:
+        """This user's most-recent raw turns across sessions (newest first).
+
+        Retrieval consults this so a fact from a just-ended session is recallable
+        BEFORE the routing worker has promoted it — closing the read-your-own-
+        writes gap (Item 9)."""
+        docs = await self._docs.find(
+            CONVERSATION_TURNS_COLLECTION, {"user_id": user_id}, limit=100000
+        )
+        docs.sort(key=lambda d: d.get("ts", 0.0), reverse=True)
+        return [_jsonable(d) for d in docs[:limit]]
 
     async def _touch_session(self, user_id: str, session_id: str, now: float) -> None:
         existing = await self._docs.get(CONVERSATIONS_COLLECTION, session_id)
