@@ -132,7 +132,9 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
             level="warn",
             style_flags=result.style_flags,
         )
-    trace.emit("response", result.final_text)
+    # Chat UI shows the clean reply (tags stripped); the trace keeps the raw
+    # tagged voice text so the intended prosody is inspectable (brief §1.4/§5.10).
+    trace.emit("response", result.final_text, voice_text=result.voice_text or result.final_text)
     pipeline.working.append(body.session_id, Turn(role="assistant", text=result.final_text))
 
     # Memory parity with the voice runtime: the text path also persists the turn

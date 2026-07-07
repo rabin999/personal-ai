@@ -132,11 +132,21 @@ async def test_gs3_case(case: dict[str, Any]) -> None:
         for phrase in _OVERCLAIM_PHRASES:
             assert phrase not in final, f"{case['id']}: overclaim phrase survived: {phrase!r}"
 
+    # Corrected tag contract (brief §1.4): the chat-facing ``final_text`` is fully
+    # clean (NO delivery tags at all); the real delivery tags survive only in
+    # ``voice_text`` (fed to TTS + shown raw in the trace). Stray tokens appear in
+    # neither.
+    voice = (result.voice_text or result.final_text).lower()
     for stray in expect.get("no_stray_tags", []):
-        assert stray.lower() not in final, f"{case['id']}: stray tag survived to TTS: {stray!r}"
+        assert stray.lower() not in final, f"{case['id']}: stray tag in chat text: {stray!r}"
+        assert stray.lower() not in voice, f"{case['id']}: stray tag survived to TTS: {stray!r}"
     if "keeps_tag" in expect:
-        assert expect["keeps_tag"].lower() in final, (
-            f"{case['id']}: a real delivery tag was wrongly stripped: {expect['keeps_tag']!r}"
+        tag = expect["keeps_tag"].lower()
+        assert tag in voice, (
+            f"{case['id']}: a real delivery tag was wrongly stripped from voice_text: {tag!r}"
+        )
+        assert tag not in final, (
+            f"{case['id']}: a delivery tag leaked into the clean chat text: {tag!r}"
         )
 
 

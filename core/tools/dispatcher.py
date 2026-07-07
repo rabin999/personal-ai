@@ -143,6 +143,35 @@ class ToolDispatcher:
         """Tools available in this context (core + the referenced project's)."""
         return self._registry.tools_for_context(context.project_type)
 
+    async def run_inline(
+        self, call: ToolCall, context: ToolContext, *, timeout_s: float = 8.0
+    ) -> ToolResult:
+        """Execute a tool synchronously in-turn, ignoring its latency class.
+
+        Used by the response loop's capability backstop (brief §8.8/§8.11) to
+        answer a live-info question in the SAME turn instead of the background/
+        waiter path — bounded by ``timeout_s`` so one slow provider can't stall
+        the reply. Still logs the tool span, cost, and persists the result.
+        """
+        spec, handler = self._registry.get(call.tool_id)
+        started = time.perf_counter()
+        output = await asyncio.wait_for(handler(call.args, context), timeout=timeout_s)
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        self._log(spec, context)
+        if self._logs is not None:
+            self._logs.log(
+                "info",
+                "tool.call",
+                stage="tool",
+                tool=spec.id,
+                tool_type=f"{spec.type}:inline",
+                args=call.args,
+                latency_ms=round(elapsed_ms, 1),
+                result=json.dumps(output)[:300],
+            )
+        await self._persist_result(spec.id, call.args, output, context)
+        return ToolResult(tool_id=spec.id, output=output, elapsed_ms=elapsed_ms)
+
     async def loop(self, prompt: AssembledPrompt, llm: LLM, context: ToolContext) -> LoopOutcome:
         """ReAct-style loop: tools until a direct answer (or a confirmation gate)."""
         tools = self._registry.tools_for_context(context.project_type)

@@ -294,11 +294,15 @@ class VoiceSession:
                     level="warn",
                     style_flags=result.style_flags,
                 )
-            self._trace.emit("response", result.final_text, text=result.final_text)
+            # TTS speaks the tagged text so the voice performs the prosody; the
+            # trace keeps that raw tagged text, while working memory + the durable
+            # stores get the clean, tag-free text (brief §1.4/§5.10).
+            voice_text = result.voice_text or result.final_text
+            self._trace.emit("response", result.final_text, voice_text=voice_text)
             self._working.append(self._session_id, Turn(role="assistant", text=result.final_text))
             self._remember(transcript, result.final_text)
             self._log_conversation(transcript, result.final_text, emotion)
-            await self._synthesize(result.final_text, out)
+            await self._synthesize(voice_text, out)
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled")
             raise

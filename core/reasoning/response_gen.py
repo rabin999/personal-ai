@@ -47,6 +47,8 @@ class ToolDispatch(Protocol):
         self, call: ToolCall, context: ToolContext, *, confirmed: bool = False
     ) -> Any: ...
 
+    async def run_inline(self, call: ToolCall, context: ToolContext) -> Any: ...
+
 
 # Default gate thresholds; overridden by curiosity_policy trait params.
 DEFAULT_GATE_PARAMS = {"T_intent": 0.55, "T_novel": 0.7, "T_emotion": 0.6, "T_ambig": 0.65}
@@ -179,7 +181,12 @@ class LLMTurn(BaseModel):
 
 
 class GenerationResult(BaseModel):
+    # User-facing reply with ALL inline delivery tags stripped (brief §1.4): the
+    # chat UI and stored memory get clean prose — tags never appear as text.
     final_text: str
+    # The same reply WITH whitelisted delivery tags intact — fed to TTS so the
+    # voice actually performs the prosody, and shown raw in the trace (§1.4/§5.10).
+    voice_text: str = ""
     action: Action
     judgment: Judgment | None = None
     turn_id: str | None = None
@@ -287,7 +294,60 @@ class ResponseGenerator:
                 continue  # let the model phrase the confirmation question in-voice
             tool_notes.append(note)
         assert turn is not None
+        # Capability backstop (brief §8.8): when the model ran no tool but the turn
+        # needs live info — either the user's query is about the current world
+        # (weather/news/time/price…) or the draft is a false refusal ("can't access
+        # real-time…") / hollow promise ("just a moment while I get those") — run a
+        # real web_search and answer in-turn. The companion never says it "can't"
+        # or guesses when a search could ground the answer.
+        needs_search = (
+            can_use_tools
+            and not seen_calls
+            and (
+                _is_live_info_query(prompt.utterance)
+                or _needs_capability_repair(turn.draft_response)
+            )
+        )
+        if needs_search:
+            repaired = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]
+            if repaired:
+                turn.draft_response = repaired
         return await self._finalize(prompt, turn)
+
+    async def _capability_repair(
+        self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
+    ) -> str | None:
+        """Force a real web_search for a live-info/unknown query the model tried to
+        refuse, then re-answer with the result (brief §8.8/§8.11). Inline + bounded
+        so it answers this turn; the background/waiter path stays for voice latency."""
+        if not any(t.id == "web_search" for t in dispatcher.tools_for(context)):
+            return None
+        try:
+            result = await dispatcher.run_inline(
+                ToolCall(tool_id="web_search", args={"query": prompt.utterance}), context
+            )
+        except Exception as exc:  # degrade gracefully — keep the model's own words
+            logger.warning("capability-repair search failed: %s", exc)
+            return None
+        output = getattr(result, "output", {}) or {}
+        summary = str(output.get("summary") or "").strip()
+        if not summary or not output.get("found"):
+            return None
+        self._span("tool", tool="web_search", mode="capability_repair", result=summary[:300])
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [
+                    {"role": "system", "content": _REPAIR_INSTRUCTIONS + summary},
+                    {"role": "user", "content": prompt.utterance},
+                ],
+                "simple",
+                session_id=prompt.session_id,
+            )
+        except LLMUnavailable:
+            return summary  # at least hand them the real facts
+        answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        return answer or summary
 
     async def _resolve_confirmation(
         self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
@@ -398,10 +458,26 @@ class ResponseGenerator:
     async def _dispatch_tool(
         self, dispatcher: "ToolDispatch", context: "ToolContext", req: ToolRequest
     ) -> "str | ConfirmRequest":
-        """Run one tool per §8; return a note for the model, honest about failures."""
+        """Run one tool per §8; return a note for the model, honest about failures.
+
+        Live-info background tools (web_search) are resolved IN-TURN when they're
+        quick (brief §8.8/§8.11) so the model answers now with real data instead of
+        promising a result that only arrives later; a genuinely slow search falls
+        back to the background/waiter path (§14).
+        """
         call = ToolCall(tool_id=req.tool_id, args=req.args)
+        spec = next((t for t in dispatcher.tools_for(context) if t.id == req.tool_id), None)
+        is_background = spec is not None and (
+            spec.type == "background" or spec.latency_class == "slow"
+        )
         try:
-            outcome = await dispatcher.dispatch(call, context)
+            if is_background:
+                try:
+                    outcome = await dispatcher.run_inline(call, context)
+                except TimeoutError:  # too slow to block on → hand it to the queue
+                    outcome = await dispatcher.dispatch(call, context)
+            else:
+                outcome = await dispatcher.dispatch(call, context)
         except UnknownTool:
             return f"(tool '{req.tool_id}' is not available — do NOT claim you used it)"
         except Exception as exc:  # surface failures honestly (never pretend it worked)
@@ -511,6 +587,10 @@ class ResponseGenerator:
         action: Action,
         judgment: Judgment | None,
     ) -> GenerationResult:
+        # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
+        # and stored memory get the tag-free version (brief §1.4).
+        voice_text = text
+        clean_text = _strip_all_tags(text)
         # Rule 6: every turn logs to the self-model (cost is logged by §11).
         record = TurnRecord(
             user_id=prompt.user_id,
@@ -519,12 +599,13 @@ class ResponseGenerator:
             novel_claim=bool(judgment and judgment.novelty_score > 0.7),
             capability_boundary_flag=judgment.capability_boundary_flag if judgment else None,
         )
-        await self._self_model.log(record, statement_text=text)
-        style_flags = find_forbidden(text)
+        await self._self_model.log(record, statement_text=clean_text)
+        style_flags = find_forbidden(clean_text)
         if style_flags:
             logger.warning("response contains forbidden assistant-speak: %s", style_flags)
         return GenerationResult(
-            final_text=text,
+            final_text=clean_text,
+            voice_text=voice_text,
             action=action,
             judgment=judgment,
             turn_id=record.turn_id,
@@ -570,7 +651,11 @@ _BRACKET_TOKEN = re.compile(r"\[([^\[\]]{1,24})\]|<([^<>]{1,24})>")
 
 
 def _sanitize_tags(text: str) -> str:
-    """Drop bracket/angle tokens whose inner word is not a known delivery tag."""
+    """Drop bracket/angle tokens whose inner word is not a known delivery tag.
+
+    Keeps whitelisted delivery tags so the VOICE can perform them — this is the
+    text handed to TTS and shown raw in the trace.
+    """
 
     def keep(match: re.Match[str]) -> str:
         inner = (match.group(1) or match.group(2) or "").strip().lower()
@@ -581,6 +666,80 @@ def _sanitize_tags(text: str) -> str:
 
     cleaned = _BRACKET_TOKEN.sub(keep, text)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _strip_all_tags(text: str) -> str:
+    """Remove EVERY inline delivery token — whitelisted or not — for the
+    user-facing chat text (brief §1.4). Tags shape the voice only; they must
+    never render as literal text like "[gentle]" or "<pause>". The tagged form
+    is preserved separately (``voice_text``) for TTS and the trace.
+    """
+    cleaned = _BRACKET_TOKEN.sub("", text)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+# Capability-refusal detector (brief §8.8): the whole class of bug where a weak
+# fast model answers a live-info / unknown-term question with "I can't access
+# real-time data" / "never heard of that" instead of using web_search. When the
+# draft matches this AND the model ran no tool, the backstop forces a real search.
+_CAPABILITY_REFUSAL = re.compile(
+    r"don'?t have (access|the ability|live|real[- ]?time)"
+    r"|can'?t (access|look up|check the|browse|get) "
+    r"|no access to|not able to (access|look|check)"
+    r"|real[- ]?time (data|info|information)"
+    r"|drawing a blank"
+    r"|outside (my|of my) knowledge|my knowledge (base|cut)"
+    r"|(never|not) (heard|sure i'?ve heard) of"
+    r"|don'?t (recognize|know (of|what|who))"
+    r"|i'?m (just )?an ai",
+    re.IGNORECASE,
+)
+# Hollow-promise detector: the model SAYS it will look something up but never
+# dispatched a tool (observed on "top 2 news" → "just a moment while I get those"
+# → then empty items). Treated the same as a refusal: run the search for real.
+_HOLLOW_PROMISE = re.compile(
+    r"\bjust a (moment|sec|second)\b"
+    r"|\blet me (check|look|find|get|see|pull)\b"
+    r"|\bi'?ll (check|look|find|get|pull)\b"
+    r"|\bgive me a (moment|sec|second)\b"
+    r"|\bhang on\b|\bone (moment|sec)\b|\bwhile i (get|find|look)\b",
+    re.IGNORECASE,
+)
+
+
+def _needs_capability_repair(draft: str) -> bool:
+    return bool(_CAPABILITY_REFUSAL.search(draft) or _HOLLOW_PROMISE.search(draft))
+
+
+# Live-info INTENT in the user's own words (brief §8.8): these queries are about
+# the current world and must be grounded in a real web_search, not the model's
+# stale/guessed knowledge — regardless of how the draft is phrased. Kept to
+# concrete topic markers (weather/news/time/price/score…) so ordinary emotional
+# statements ("I'm stressed right now") never trip a search.
+_LIVE_INFO_QUERY = re.compile(
+    r"\b(weather|temperature|forecast"
+    r"|news|headlines?|"
+    r"scores?|who won"
+    r"|stock price|share price|exchange rate"
+    r"|current time|what(?:'s| is)? the time|time (?:in|right now)"
+    r"|today'?s date|what(?:'s| is)? the date|date (?:today|in)"
+    r"|what'?s happening (?:in|with|right now|today)|trending)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_live_info_query(utterance: str) -> bool:
+    return bool(_LIVE_INFO_QUERY.search(utterance))
+
+
+_REPAIR_INSTRUCTIONS = (
+    "You just searched the live web for the user's question. Using ONLY these "
+    "fresh search results, answer them directly, warmly, and briefly in your own "
+    "voice (one or two spoken sentences) — give the ACTUAL answer, never say you "
+    "can't find it or can't access it. If they asked for a set number of items "
+    "(e.g. 'top 2 news'), give exactly that many, each a distinct item. "
+    "Search results:\n"
+)
 
 
 def _render_tool_instructions(tools: list[ToolSpec], notes: list[str]) -> str:

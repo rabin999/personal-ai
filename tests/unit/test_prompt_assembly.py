@@ -163,8 +163,9 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     assert result.messages[-1]["content"] == "work is stressful again today"
     transcript = [m["content"] for m in result.messages]
     assert "yesterday was rough at work" in transcript
-    # Episodic gave way:
-    assert len(result.system_prompt) <= 3_400
+    # Episodic gave way (the ceiling accounts for the always-present, non-trimmable
+    # capability-awareness block in the identity section — brief §8.8):
+    assert len(result.system_prompt) <= 4_200
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

@@ -55,16 +55,68 @@ Rules:
   QUESTION, or the COMPANION is merely recalling/confirming something already
   known ("you bought 10 SYPNL", "you take your meds at 8pm"), that is NOT new —
   set store_nothing: true. Never re-store what is only being recalled.
+- CRITICAL — durable vs. transient. A semantic_fact is a STABLE, lasting truth
+  about the person: an identity fact, a preference, a routine, a relationship, a
+  standing health condition or goal ("takes blood-pressure medication daily around
+  8pm", "works at Xenon", "prefers directness", "has a younger sister named Mira").
+  A TRANSIENT state — how they feel or what's happening RIGHT NOW / today / this
+  moment ("has a headache right now", "is tired today", "was up late last night",
+  "is stressed about a deadline") — is NOT a durable fact. Put transient states in
+  episodic_events ONLY; NEVER as a semantic_fact. Do not turn "I have a headache
+  right now" into a permanent fact about the user.
+- Only what the USER stated about THEMSELVES becomes a fact. Never store the
+  companion's own suggestions or chatter as a fact (e.g. if the companion suggests
+  "rest in a dark room", that is NOT a fact about the user).
 - A concrete NEW event -> an episodic_event AND, if it implies a standing
   fact/routine, a distilled semantic_fact.
-- Preferences, relationships, routines, health facts, goals (newly shared) ->
-  semantic_facts (generalized, no "today").
 - An explicit NEW stock/share buy or sell the user just made -> a trades entry.
 - Greetings, thanks, chit-chat, questions, recall/confirmation ->
   store_nothing: true, empty lists.
 - Keep every string short and literal; never paraphrase the user into something
   they didn't say.
 """.strip()
+
+# Deterministic backstop (brief §8.13): even with the prompt above, a weak model
+# occasionally files a transient state as a durable fact. A "fact" that is clearly
+# about the current moment and carries no durability marker is demoted to episodic
+# only — it must never enter semantic memory as a permanent truth.
+_TRANSIENT_MARKERS = (
+    "right now",
+    "at the moment",
+    "today",
+    "tonight",
+    "this morning",
+    "this afternoon",
+    "this evening",
+    "currently",
+    "at present",
+    "just now",
+    "last night",
+)
+_DURABLE_MARKERS = (
+    "daily",
+    "every",
+    "always",
+    "usually",
+    "each ",
+    "prefers",
+    "works at",
+    "lives in",
+    "name is",
+    "named",
+    "routine",
+    "allergic",
+    "diagnosed",
+    "birthday",
+)
+
+
+def _looks_transient(fact: str) -> bool:
+    """True if a 'fact' describes the current moment with no durability marker."""
+    lowered = fact.lower()
+    if any(marker in lowered for marker in _DURABLE_MARKERS):
+        return False
+    return any(marker in lowered for marker in _TRANSIENT_MARKERS)
 
 
 class ExtractedTrade(BaseModel):
@@ -153,16 +205,25 @@ class MemoryExtractor:
     async def _store(
         self, user_id: str, session_id: str, extraction: Extraction
     ) -> ExtractionResult:
-        result = ExtractionResult(
-            facts=extraction.semantic_facts, events=extraction.episodic_events
-        )
-        for event in extraction.episodic_events:
+        # Deterministic guard (brief §8.13): demote any transient "fact" to an
+        # episodic event so a current state never becomes a permanent semantic truth.
+        durable_facts: list[str] = []
+        events = list(extraction.episodic_events)
+        for fact in extraction.semantic_facts:
+            if _looks_transient(fact):
+                logger.info("demoting transient 'fact' to episodic: %s", fact)
+                events.append(fact)
+            else:
+                durable_facts.append(fact)
+
+        result = ExtractionResult(facts=durable_facts, events=events)
+        for event in events:
             try:
                 await self._episodic.write(user_id, session_id, [event])
                 result.episodic_written += 1
             except Exception:
                 logger.exception("episodic write failed")
-        for fact in extraction.semantic_facts:
+        for fact in durable_facts:
             try:
                 # record_fact ensures the fact names the user so Graphiti attaches
                 # (and can retrieve) it — the fix for empty semantic retrieval.
