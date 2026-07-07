@@ -299,6 +299,7 @@ class ResponseGenerator:
         self_reflect: bool = True,
         logs: StructuredLogger | None = None,
         max_turn_cost_usd: float = 0.50,
+        reasoning_tier: Tier = "complex",
     ) -> None:
         self._llm = llm
         self._self_model = self_model
@@ -306,6 +307,9 @@ class ResponseGenerator:
         self._self_reflect = self_reflect
         self._logs = logs
         self._max_turn_cost_usd = max_turn_cost_usd
+        # A2: the main user-facing reasoning turn runs on this (mature) tier, not the
+        # flashy fast tier — quality of thought over speed.
+        self._reasoning_tier = reasoning_tier
         # Action tools awaiting the user's yes/no, keyed by session (§8.3).
         self._pending: dict[str, ConfirmRequest] = {}
 
@@ -664,7 +668,7 @@ class ResponseGenerator:
             completion = await self._llm.complete(
                 prompt.user_id,
                 [{"role": "user", "content": instr}],
-                _ESCALATE_TIER[prompt.complexity_hint],  # stronger than the routed tier
+                _ESCALATE_TIER[self._reasoning_tier],  # stronger than the routed tier
                 session_id=prompt.session_id,
                 max_tokens=200,
             )
@@ -764,10 +768,11 @@ class ResponseGenerator:
             {"role": "system", "content": instructions},
             prompt.messages[-1],
         ]
-        # Attempt 0: the routed tier (+ the user's fast-model choice). Attempt 1
-        # (only reached on failure): escalate a tier and drop the pinned fast model
-        # — the flaky fast model is usually what produced the bad JSON.
-        base = prompt.complexity_hint
+        # Attempt 0: the MATURE reasoning tier (A2) + the user's explicit fast-model
+        # choice if they opted into one. Attempt 1 (only on failure): escalate + drop
+        # the pinned model. The main turn defaults to the mature model, not the
+        # flashy fast tier — quality of thought over speed.
+        base = self._reasoning_tier
         attempts = [(base, prompt.model_override), (_ESCALATE_TIER[base], None)]
         for attempt, (tier, model) in enumerate(attempts):  # rule 1: validate; retry once
             try:
@@ -809,7 +814,7 @@ class ResponseGenerator:
             result = await self._llm.complete(
                 prompt.user_id,
                 messages,
-                _ESCALATE_TIER[prompt.complexity_hint],
+                _ESCALATE_TIER[self._reasoning_tier],
                 session_id=prompt.session_id,
                 max_tokens=400,
             )

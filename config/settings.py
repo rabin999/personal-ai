@@ -122,6 +122,13 @@ class Settings(BaseSettings):
     # "native" = the hand-rolled asyncio loop. Swapping engines is one wiring line.
     orchestrator: Literal["native", "langgraph"] = "langgraph"
 
+    # Reasoning-model policy (A2): the MAIN user-facing reasoning turn uses a MATURE,
+    # strong model — quality of thought over raw speed — instead of the flashy fast
+    # tier (which produced shallow, context-blind answers). Trivial sub-steps (context
+    # resolution, extraction, delivery, judge) keep their own faster tiers. Latency is
+    # managed by streaming/parallelism, not by dumbing down the model.
+    reasoning_tier: Literal["simple", "moderate", "complex"] = "complex"
+
     # Welcome-email SMTP (fastapi-mail via Gmail). Gmail requires an APP PASSWORD
     # (2FA enabled) — the normal account password will NOT work. Empty MAIL_*
     # disables sending; the outbox still records (worker marks it skipped).

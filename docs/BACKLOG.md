@@ -36,7 +36,7 @@ via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is pos
 - [x] **A1+A1.5** — LangGraph orchestrator behind a swappable Orchestrator port — graph
   (perceive→resolve_context(A3)→respond→reflect_log); core never imports langgraph (lint-imports
   clean = clean swap); A3 context carrying fixed ("that temperature"→prior weather); real_call tests
-- [ ] **A2** — Mature reasoning model for the core turn
+- [x] **A2** — Mature reasoning model — main turn now routes to claude-4.5-sonnet (settings.reasoning_tier=complex), recorded in trace; sub-steps keep faster tiers; noticeably more thoughtful (real capture); companion suite 8/8
 - [ ] **A3** — Context/working-memory (suppress re-search when answer carried) + more scenarios
 - [ ] **A4** — Multi-utterance accumulate/merge/split
 - [ ] **A5** — Deep traces incl why-not (extend across all nodes)

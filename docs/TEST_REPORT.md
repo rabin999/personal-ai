@@ -680,3 +680,24 @@ On a follow-up phrased like a live-info query ("is that normal for this time of 
 deterministic capability-search backstop can fire a fresh search that overrides the carried context.
 The context-resolution note is injected but doesn't yet SUPPRESS the re-search — addressed in the
 dedicated A3 item (suppress live-search when the answer is carried in context).
+
+---
+
+## A2 — Mature reasoning model for the core turn
+
+**App-goal verified:** the main user-facing reasoning turn uses a MATURE, strong model (quality of
+thought over speed), not the flashy fast tier that produced shallow, context-blind answers.
+
+- `settings.reasoning_tier` (default `complex`) threaded into `ResponseGenerator`; the main judgment
+  call (and its plain-reply / warm-disclosure fallbacks) now route to the mature tier
+  (`anthropic/claude-4.5-sonnet`) instead of `gemini-2.5-flash-lite`. The user's explicit §4
+  fast-model choice still wins if they opted in; sub-steps (context resolution, extraction, delivery,
+  judge) keep their own faster tiers. Recorded on the llm.call trace span (model + tier).
+- **Real capture** — the philosophical turn is now materially more thoughtful:
+  > "Yeah, I do. I think it's partly about the connections we make — the people who matter to us and
+  >  who we matter to. And partly about growing into something, whether that's building things,
+  >  understanding the world better…"
+  The llm span confirms `model=anthropic/claude-4.5-sonnet`.
+- Real companion-voice suite **8/8** pass with the mature model (no regression, better quality);
+  full non-paid suite 357. Latency is managed by streaming/parallelism (Item 12), not by dumbing
+  down the model.

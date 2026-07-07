@@ -202,7 +202,12 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         preferences=preferences,
     )
     generator = ResponseGenerator(
-        llm, self_model, registry, logs=logs, max_turn_cost_usd=settings.max_turn_cost_usd
+        llm,
+        self_model,
+        registry,
+        logs=logs,
+        max_turn_cost_usd=settings.max_turn_cost_usd,
+        reasoning_tier=settings.reasoning_tier,  # A2: mature model for the main turn
     )
     # A1/A1.5: the reasoning engine sits behind the Orchestrator port. LangGraph is
     # one adapter (imported only in adapters/), the native loop is the other —
