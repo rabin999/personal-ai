@@ -141,8 +141,10 @@ async def test_ambiguous_entities_halt_with_disambiguation_request(
 # Acceptance: over-budget trims episodic before utterance/working memory.
 async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns() -> None:
     # Budget just above the (non-trimmable) persona+traits floor so the 6 big
-    # episodic chunks still overflow and must be trimmed first (rule 9).
-    h = Harness(char_budget=3_400)
+    # episodic chunks still overflow and must be trimmed first (rule 9). The
+    # identity section carries the always-present capability + self-model blocks
+    # (~3.8k chars), so the floor sits near 5k — the budget tracks it.
+    h = Harness(char_budget=5_000)
     await h.seed()
     harness_turns = [
         Turn(role="user", text="yesterday was rough at work"),
@@ -163,9 +165,11 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     assert result.messages[-1]["content"] == "work is stressful again today"
     transcript = [m["content"] for m in result.messages]
     assert "yesterday was rough at work" in transcript
-    # Episodic gave way (the ceiling accounts for the always-present, non-trimmable
-    # capability-awareness block in the identity section — brief §8.8):
-    assert len(result.system_prompt) <= 4_200
+    # Episodic gave way: the real acceptance is that the 6 big episodic chunks were
+    # trimmed (not all 6 survive), while the persona floor + the non-trimmable
+    # capability/self blocks stay. The ceiling sits just above that floor and well
+    # below floor + all 6 chunks (~9.9k), proving episodic was dropped to fit.
+    assert len(result.system_prompt) <= 7_500
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

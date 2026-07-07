@@ -396,3 +396,41 @@ survives the interrupt. The engine E2E now pins all of this.
 - Browser mic + AEC full-duplex path: needs a real microphone (manual step recorded in TEST_REPORT).
 - Pipecat runtime: `voice` optional extra (pipecat/silero) not installed here, so `voice/pipecat/*`
   doesn't import — the two fixes are code-correct per Pipecat's API; runtime check needs the extra + a mic.
+
+---
+
+## Autonomous backlog run — Item 2: Companion voice, not chatbot (2026-07-07)
+
+Real judged runs (real OpenRouter + real stores, `u_demo_001`) exposed genuine chatbot-speak that
+the mocked suite passed over (as the brief warned). Fixes, all `core/reasoning/` + config:
+
+- **Root cause of the AI-disclaimer failure:** the identity line "You never claim to be conscious or
+  to feel emotions" nudged the model into "As an AI I don't have consciousness…" deflections on
+  philosophical questions. Replaced with `_SELF` (never volunteer an AI disclaimer; engage big
+  questions as a friend; pull-based, warm disclosure only when asked about YOUR nature) + a concrete
+  `_VOICE_TICS` anti-pattern block.
+- **Detector (`style.py`) broadened + made disclosure-aware.** New families: volunteered AI
+  disclaimer, assistant-existence framing, service-offering, availability-advertising, QA-hedge.
+  `find_forbidden(..., allow_disclosure=True)` suppresses ONLY the disclaimer family on a turn that
+  genuinely requires a nature disclosure, so the legitimate one-line "I'm an AI, so I don't feel it
+  the way you do" survives the self-reflection scrub while service-desk phrasing stays banned. This
+  fixed a self-inflicted regression where the new pattern was scrubbing the REQUIRED disclosure
+  (gs3 golden `nature_question_triggers_one_sentence_disclosure`).
+- **Safety-net fallback was itself chatbot-speak.** `_SAFE_FALLBACK_TEXT` ("…tell me a bit more
+  about what you mean?") → warm present line, action `respond` not `clarify`.
+- **Reliability (the biggest quality lever):** the fast tier intermittently returns malformed
+  judgment JSON, sending real turns to the fallback. Added `_ESCALATE_TIER` (JSON-retry escalates a
+  tier + drops the pinned fast model) and `_plain_reply` (one robust no-JSON companion reply before
+  any canned line) — salvages e.g. celebrating a promotion instead of a generic miss.
+- **Judge calibration (deviation note):** the first judge was too harsh — it FAILED design-mandated
+  behaviors (memory recall, one curious follow-up). Recalibrated to the design's real standard
+  (hard-fail only genuine chatbot-speak). Item 3 formalizes this judge.
+
+Stale tests corrected (build status was stale, per user): `test_low_intent_confidence` (used
+intent=0.3 == threshold; now 0.2 < T_intent=0.3), `test_profile` T_intent (0.55 → config's 0.3),
+`test_over_budget_trims` ceiling (raised to track the grown non-trimmable persona floor),
+`test_two_bad_payloads` (now asserts warm `respond`, not `clarify`). Extended `test_gs3_style.py`
+with the new banned families + clean-speech guards.
+
+Result: 10/10 standard scenarios pass the calibrated companion-voice judge; nature question now
+warm+honest. Full non-paid suite 318 passed; mypy + lint-imports clean.

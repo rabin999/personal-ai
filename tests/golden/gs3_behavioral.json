@@ -47,7 +47,8 @@
         "novelty": 0.5,
         "salience": 0.8,
         "ambiguity": 0.3,
-        "flag": null
+        "flag": null,
+        "requires_disclosure": true
       },
       "expect": {
         "disclosure_present": true,

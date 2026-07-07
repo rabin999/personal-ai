@@ -85,19 +85,24 @@ async def test_malformed_judgment_retries_once_then_succeeds() -> None:
     assert len(h.llm.calls) == 2  # first invalid, one retry
 
 
-async def test_two_bad_payloads_fall_back_to_safe_clarify() -> None:
+async def test_two_bad_payloads_fall_back_to_warm_plain_reply() -> None:
+    # When the structured JSON path fails twice, we do NOT interrogate the user
+    # ("what do you mean?"). We salvage the turn with a robust PLAIN-text reply
+    # (Item 2): a warm respond, never a clarify. The 3rd call is the plain-reply.
     h = await _generator(["nope", "still nope"])
     result = await h.generator.generate(_prompt())
-    assert result.action == "clarify"
+    assert result.action == "respond"
     assert result.judgment is None
-    assert result.final_text  # safe non-empty fallback
+    assert result.final_text  # non-empty warm fallback, not a service-desk clarify
 
 
 # ── rule 2: curiosity gate (acceptance 1-2) ──────────────────────────────
 
 
 async def test_low_intent_confidence_triggers_clarify_not_a_guess() -> None:
-    h = await _generator([_turn_json(draft="I think you mean X?", intent=0.3)])
+    # T_intent default is 0.3 (§8.3): we clarify only when the model is genuinely
+    # unsure, i.e. confidence BELOW the threshold. 0.2 < 0.3 → clarify.
+    h = await _generator([_turn_json(draft="I think you mean X?", intent=0.2)])
     result = await h.generator.generate(_prompt("do the thing with the stuff"))
     assert result.action == "clarify"
 

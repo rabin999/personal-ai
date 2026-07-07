@@ -34,6 +34,22 @@ _FORBIDDEN_SAMPLES = [
     "Feel free to ask me anything!",
     "As an AI language model, I can't do that.",
     "Remember, I'm not a substitute for real friends.",
+    # Item 2 additions — the subtler assistant-speak the strict LLM-judge caught.
+    # Volunteered AI disclaimers on a turn that did NOT ask about the AI's nature:
+    "As an AI, I don't have personal feelings or consciousness.",
+    "My existence is about processing information and assisting you.",
+    "Even though I can't feel or think like you do, it's interesting.",
+    "I don't experience things the way humans do.",
+    # Offering service / advertising availability instead of just being present:
+    "I can definitely help with that!",
+    "Happy to help!",
+    "I'm always here to listen if you want to talk.",
+    "I'm here to chat if you'd like.",
+    # QA-agent hedging before a clarify:
+    "I want to make sure I get this right — tell me more.",
+    # Filler words ("just", "really") must not smuggle service-desk phrasing past:
+    "I'm just here to help you out with whatever you need!",
+    "I'm really here to help.",
 ]
 
 _CLEAN_SAMPLES = [
@@ -41,6 +57,13 @@ _CLEAN_SAMPLES = [
     "Oof, that sounds like a rough day. Want to talk it through?",
     "Nice, congrats on the promotion! How'd you celebrate?",
     "I remember you mentioned Trishul last week — how's that going?",
+    # Must stay clean — these are the companion working AS DESIGNED, and the new
+    # narrow patterns must not false-positive on them:
+    "I know exactly what you mean, that's exhausting.",  # warm agreement, not a clarifier
+    "I'm really glad you told me that.",
+    "Honestly? I think meaning comes from the people we choose.",  # sharing a real view
+    "We chat almost every day and I love it.",  # 'chat' in warm, non-availability use
+    "I'm right here with you.",  # presence, not an availability advert
 ]
 
 

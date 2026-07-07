@@ -113,7 +113,7 @@ async def test_enabled_traits_returns_default_enabled_with_description_and_param
     assert "curiosity_policy" in by_id and "humor" in by_id
     curiosity = by_id["curiosity_policy"]
     assert curiosity.description
-    assert curiosity.params["T_intent"] == 0.55
+    assert curiosity.params["T_intent"] == 0.3  # §8.3: clarify only when very unsure
 
 
 async def test_per_user_override_disables_a_default_enabled_trait(

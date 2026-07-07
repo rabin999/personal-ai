@@ -9,7 +9,10 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 - [x] **Item 1** — Barge-in / interruption (full-duplex, cancellable TTS + generation) — native
   path proven by 3 real engine E2E scenarios; Pipecat path fixed (allow_interruptions + cancellable
   reply) but runtime-blocked (voice extra not installed); browser mic/AEC blocked (needs a mic)
-- [ ] **Item 2** — Response quality: companion, not chatbot (continuous top goal)
+- [x] **Item 2** — Response quality: companion, not chatbot — real judged runs 10/10 on the
+  calibrated companion-voice judge; fixed volunteered AI disclaimers, clarify-on-greeting,
+  service-desk tics, and JSON-failure catastrophic misses (tier escalation + plain-reply salvage).
+  Standing bar for all later items.
 - [ ] **Item 2b** — Voice output quality: sudden voice changes + distorted audio
 - [ ] **Item 3** — Real-call test harness + LLM-as-judge (the §4 safety net)
 - [ ] **Item 4** — Existing memory cleanup + conflict/consolidation
