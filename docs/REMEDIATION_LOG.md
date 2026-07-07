@@ -91,3 +91,12 @@ inline path AND its background `task_handler`, so both sync and queued tool resu
 Added a `recall_tool_result` core tool so the model can answer questions about a recent
 lookup from real stored output. Tests cover store ordering/isolation, dispatcher
 persistence, and the recall tool.
+
+### R8 — Fast model not user-selectable; post-speech wait slack (§4, §2.3) — FIXED
+**§4:** added `ModelPrefs.fast_model` to the profile, an optional `model` arg to
+`LLM.complete` (tried first, tier chain kept as fallback; unknown ids ignored),
+`OpenRouterLLM.fast_model_choices()` (simple+moderate, de-duped), assembly sets
+`model_override` on non-complex turns only (hard turns still hit the strong tier), and
+`GET/PATCH /api/models` so the frontend can list + select. Config-driven end to end.
+**§2.3:** tightened `endpoint_short_pause_ms` default 700 → 600 (config-driven, per-user).
+Tests: `test_model_selection.py` (choices, non-complex-only override).

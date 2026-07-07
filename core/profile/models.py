@@ -11,7 +11,10 @@ class AudioPrefs(BaseModel):
     vad_threshold: float = 0.6
     vad_min: float = 0.4
     vad_max: float = 0.8
-    endpoint_short_pause_ms: int = 700
+    # §21/brief §2.3: tightened from 700ms — start generating ~100ms sooner after
+    # a complete thought without cutting mid-sentence (the long pause still guards
+    # trailing "and…"/filler). Per-user tunable and learnable later (§18).
+    endpoint_short_pause_ms: int = 600
     endpoint_long_pause_ms: int = 2500
     aec: bool = True
     noise_suppress: bool = True
@@ -21,6 +24,14 @@ class AudioPrefs(BaseModel):
 class CommPrefs(BaseModel):
     directness: float = Field(default=0.5, ge=0.0, le=1.0)
     emotional_scaffolding: float = Field(default=0.5, ge=0.0, le=1.0)
+
+
+class ModelPrefs(BaseModel):
+    """Per-user LLM model choice (§4). ``fast_model`` is a user-selected fast/flash
+    model tried first on non-complex turns; None → default tier routing. The
+    router validates it against the configured catalog, so a stale id is ignored."""
+
+    fast_model: str | None = None
 
 
 class UserProfile(BaseModel):
@@ -35,6 +46,7 @@ class UserProfile(BaseModel):
     audio_prefs: AudioPrefs = Field(default_factory=AudioPrefs)
     traits_enabled: dict[str, bool] = Field(default_factory=dict)
     comm_prefs: CommPrefs = Field(default_factory=CommPrefs)
+    model_prefs: ModelPrefs = Field(default_factory=ModelPrefs)
     created_at: str
     onboarded: bool = False
 

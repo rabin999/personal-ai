@@ -173,6 +173,7 @@ class FakeLLM:
         response_format: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> Any:
         from ports.llm import CompletionResult
 
@@ -183,6 +184,7 @@ class FakeLLM:
                 "tier": tier,
                 "response_format": response_format,
                 "session_id": session_id,
+                "model": model,
             }
         )
         text = self.responses.pop(0) if self.responses else self.default_text
@@ -197,3 +199,6 @@ class FakeLLM:
 
     def route(self, complexity: str) -> str:
         return "fake/model"
+
+    def fast_model_choices(self) -> list[str]:
+        return ["fake/fast-a", "fake/fast-b"]

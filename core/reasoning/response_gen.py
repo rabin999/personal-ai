@@ -385,6 +385,7 @@ class ResponseGenerator:
                     prompt.complexity_hint,
                     response_format={"type": "json_object"},
                     session_id=prompt.session_id,
+                    model=prompt.model_override,  # §4 user fast-model choice
                 )
             except LLMUnavailable:
                 logger.warning("generation call failed (attempt %d)", attempt + 1)

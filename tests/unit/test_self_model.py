@@ -47,6 +47,7 @@ class FakeLLM:
         response_format: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> CompletionResult:
         self.calls.append(messages)
         if self.fail_times > 0:
@@ -55,6 +56,9 @@ class FakeLLM:
         return CompletionResult(
             text=self.text, model="fake", input_tokens=10, output_tokens=5, cost_usd=0.0001
         )
+
+    def fast_model_choices(self) -> list[str]:
+        return ["fake/model"]
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         return [[0.0] for _ in texts]

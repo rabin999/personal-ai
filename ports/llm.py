@@ -35,8 +35,17 @@ class LLM(Protocol):
         response_format: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> CompletionResult:
-        """Route to the tier's model chain; raise LLMUnavailable if all fail."""
+        """Route to the tier's model chain; raise LLMUnavailable if all fail.
+
+        ``model`` (a user-selected fast model, §4) is tried first when given,
+        with the tier chain kept as fallback.
+        """
+        ...
+
+    def fast_model_choices(self) -> list[str]:
+        """The user-selectable fast/flash models (simple+moderate tiers, §4)."""
         ...
 
     async def embed(self, texts: list[str]) -> list[list[float]]:

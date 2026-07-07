@@ -56,6 +56,9 @@ class AssembledPrompt(BaseModel):
     system_prompt: str
     messages: list[dict[str, str]]
     complexity_hint: Tier
+    # §4: user-selected fast model to try first (non-complex turns only); the
+    # router keeps the tier chain as fallback. None → default tier routing.
+    model_override: str | None = None
     emotion: dict[str, Any] | None = None
     cold_start: bool = False  # first conversation with this user (§3.1)
     resolved_entities: list[EntityCandidate] = Field(default_factory=list)
@@ -174,13 +177,20 @@ class PromptAssembler:
         messages.append({"role": "user", "content": utterance})
 
         # Step 10 — complexity hint + emotion signal travel with the prompt.
+        complexity_hint = _complexity_hint(utterance)
+        # §4: honor the user's fast-model choice on non-complex turns; hard turns
+        # still route to the strong tier.
+        model_override = (
+            profile.model_prefs.fast_model if complexity_hint != "complex" else None
+        )
         return AssembledPrompt(
             user_id=user_id,
             session_id=session_id,
             utterance=utterance,
             system_prompt=system_prompt,
             messages=messages,
-            complexity_hint=_complexity_hint(utterance),
+            complexity_hint=complexity_hint,
+            model_override=model_override,
             emotion=dict(emotion) if emotion else None,
             cold_start=cold_start,
             resolved_entities=candidates,

@@ -53,6 +53,15 @@ class OpenRouterLLM:
     def route(self, complexity: Tier) -> str:
         return self._tiers[complexity][0]
 
+    def fast_model_choices(self) -> list[str]:
+        """De-duped simple+moderate tier models — the user-selectable fast set (§4)."""
+        seen: list[str] = []
+        for tier in ("simple", "moderate"):
+            for model in self._tiers.get(tier, []):
+                if model not in seen:
+                    seen.append(model)
+        return seen
+
     async def verify_models(self) -> dict[str, list[str]]:
         """Check configured tier models against the live OpenRouter catalog.
 
@@ -84,14 +93,20 @@ class OpenRouterLLM:
         response_format: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         max_tokens: int | None = None,
+        model: str | None = None,
     ) -> CompletionResult:
         errors: list[str] = []
-        for model in self._tiers[tier]:
+        chain = list(self._tiers[tier])
+        # §4: a valid user-selected fast model is tried first; tier chain remains
+        # the fallback. Ignore an unknown id rather than trusting it blindly.
+        if model and model in self.fast_model_choices():
+            chain = [model, *[m for m in chain if m != model]]
+        for model_id in chain:
             try:
-                result = await self._call(model, messages, response_format, max_tokens)
+                result = await self._call(model_id, messages, response_format, max_tokens)
             except Exception as exc:
-                errors.append(f"{model}: {type(exc).__name__}: {exc}")
-                logger.warning("LLM call failed on %s, trying fallback: %s", model, exc)
+                errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
+                logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
                 continue
             self._log_cost(user_id, result, session_id)
             return result
