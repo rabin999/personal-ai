@@ -198,6 +198,13 @@ export class AudioPlayer {
   private sources = new Set<AudioBufferSourceNode>();
   private rate = 24_000;
   private remainder = new Uint8Array(0); // odd trailing byte carried to next chunk
+  // Playback lead (§2b): schedule the first buffer of a reply — and rebuild the
+  // cushion after any underrun — this far in the future. TTS arrives as many
+  // small, jittery network chunks; scheduling them with zero lead means a slow
+  // chunk lets playback catch up to the write cursor, and the next buffer starts
+  // *after* a gap → an audible click/garble between clauses. An ~120ms cushion
+  // absorbs the jitter so playback stays gapless.
+  private static readonly LEAD_S = 0.12;
 
   constructor(
     private onLevel: (level: number) => void,
@@ -238,7 +245,12 @@ export class AudioPlayer {
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
-    const startAt = Math.max(this.ctx.currentTime, this.cursor);
+    // If the write cursor has fallen to/behind playback (session start, or an
+    // underrun after a slow network chunk), restart it a lead ahead of "now" so
+    // this and following buffers schedule gaplessly; otherwise keep it seamless.
+    const now = this.ctx.currentTime;
+    const startAt =
+      this.cursor <= now ? now + AudioPlayer.LEAD_S : this.cursor;
     src.start(startAt);
     this.cursor = startAt + buffer.duration;
     this.sources.add(src);

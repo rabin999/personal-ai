@@ -48,7 +48,13 @@ async def voice_pipecat_ws(ws: WebSocket) -> None:
         return
 
     session_id = f"pc_{uuid.uuid4().hex[:8]}"
-    await ws.send_json({"type": "ready", "session_id": session_id, "user_id": user.user_id})
+    # Pin the voice once for the session (spec §2b), same as the native path.
+    from adapters.tts.grok import resolve_voice
+
+    voice = resolve_voice(auth.get("voice"))
+    await ws.send_json(
+        {"type": "ready", "session_id": session_id, "user_id": user.user_id, "voice": voice}
+    )
 
     transport = build_transport(ws)
     graph = build_pipeline(
@@ -56,7 +62,7 @@ async def voice_pipecat_ws(ws: WebSocket) -> None:
         user_id=user.user_id,
         session_id=session_id,
         pipeline=pipeline,
-        voice=auth.get("voice"),
+        voice=voice,
     )
     try:
         await run_pipeline(graph)

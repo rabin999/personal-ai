@@ -160,6 +160,55 @@ passed; mypy + lint-imports clean.
 ### Standing bar
 This companion-voice standard (rubric #1) stays active in every subsequent item's judging.
 
+---
+
+## Item 2b — Voice output quality: sudden voice changes + distorted audio (spec §2b)
+
+**App-goal verified:** consistent voice per session (no mid-response voice change), clean
+(non-garbled) audio, and the voice recorded in the trace.
+
+### Diagnosis (real xAI Grok /tts probe + code audit)
+- **Server bytes are NOT the garble source.** Probed the real xAI TTS endpoint with single- and
+  multi-clause replies: output is **raw PCM16, byte-aligned, with no WAV/RIFF container** at any
+  chunk boundary (ruled out the "44-byte header injected mid-stream" hypothesis). Captured:
+  `total bytes: 454600 even(PCM16-aligned): True container markers: NONE`.
+- **Each clause is synthesized by a separate, stateless `/tts` call** with leading+trailing
+  silence padding. Concatenating them stacks inter-clause silence and resets prosody per clause —
+  the plausible source of the "sudden voice change" feel (intonation/energy differs per clause),
+  though not garble.
+- **The voice was consistent but invisible + not normalized once.** It flowed from the client's
+  first message to every `speak()` call, but was re-resolved per call (silent "eve" fallback on a
+  bad value) and never recorded in the trace, so a change would be undetectable.
+- **Plausible client-side garble:** `AudioPlayer.enqueue` scheduled each of ~100 jittery network
+  chunks as its own buffer with zero playback lead — a slow chunk lets playback catch the write
+  cursor and the next buffer starts after a gap → an audible click between clauses.
+
+### Fixes
+- **Pin + normalize the voice ONCE per session** (`adapters/tts/grok.py::resolve_voice`), applied at
+  BOTH voice edges (`api/routes/voice.py`, `api/routes/voice_pipecat.py`): the client's choice is
+  normalized to one valid id, returned in the `ready` message, and used for the whole session.
+- **Record the voice in the trace** (`voice/session.py`): on the `session` start span and every
+  `tts` span, so a mid-session voice change is now visible.
+- **Client playback cushion** (`web/src/lib/audio.ts`): schedule the first buffer of a reply (and
+  rebuild after any underrun) ~120ms ahead so jittery network chunks stay gapless — removes the
+  inter-clause click/garble.
+
+### Verification (`tests/e2e/test_voice_output.py`, 8 tests pass)
+- `resolve_voice` normalizes leo/LEO/None/""/nonsense/sal → exactly one valid id.
+- Engine run through the REAL `VoiceSession`: every TTS call in the session used the one pinned
+  voice (`all(v == "leo")`), and the voice is recorded on the `session` + `tts` trace spans.
+- Web client typechecks clean (`tsc --noEmit`) after the audio change.
+
+### Blocked (needs a human ear / real device)
+- Whether the audio actually **sounds** clean and the voice never audibly shifts requires listening
+  on a real device. Manual step: start a voice conversation, request a long multi-sentence reply,
+  and confirm (a) one consistent voice start-to-finish, (b) no clicks/garble between clauses, (c) a
+  reply right after a barge-in is clean. The pipeline-correctness pieces above are implemented +
+  unit/engine-verified; the Pipecat path's voice pinning is code-only (voice extra not installed).
+- If clause-boundary prosody resets are still audible after a human listen, the follow-up is to
+  raise `MAX_CHUNK_CHARS` (fewer independent synthesis calls) — traded against first-audio latency
+  in Item 12.
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply

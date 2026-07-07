@@ -434,3 +434,23 @@ with the new banned families + clean-speech guards.
 
 Result: 10/10 standard scenarios pass the calibrated companion-voice judge; nature question now
 warm+honest. Full non-paid suite 318 passed; mypy + lint-imports clean.
+
+---
+
+## Autonomous backlog run — Item 2b: Voice output quality (2026-07-07)
+
+Real xAI /tts probe + code audit. Findings + fixes:
+- **Ruled out** the "WAV header injected between chunks" garble theory — the real endpoint returns
+  raw, byte-aligned PCM16 with no RIFF/WAVE markers at any boundary.
+- **Voice pinning:** `resolve_voice()` normalizes the requested voice to one valid id ONCE at both
+  WS edges (native + pipecat), returned in `ready` and used all session — no silent per-call "eve"
+  fallback, no mid-session change. Recorded on the `session` + `tts` trace spans for detectability.
+- **Client audio cushion:** `AudioPlayer.enqueue` now schedules the first buffer (and rebuilds after
+  an underrun) ~120ms ahead so jittery TTS network chunks stay gapless — the plausible inter-clause
+  click/garble source.
+- Diagnosed but deferred: each clause is a separate stateless synthesis call (prosody resets per
+  clause); if audible after a human listen, raise MAX_CHUNK_CHARS (latency trade → Item 12).
+
+Verified: `tests/e2e/test_voice_output.py` (8) — resolve_voice normalization + engine run proving
+one pinned voice across all TTS calls + voice recorded in trace; web tsc clean. Blocked on a human
+ear for actual audio cleanliness and on the uninstalled voice extra for the Pipecat runtime.

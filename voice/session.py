@@ -139,7 +139,11 @@ class VoiceSession:
     async def _consume(
         self, frames: AsyncIterator[bytes], out: asyncio.Queue[bytes | None]
     ) -> None:
-        self._trace.emit("session", "conversation started", user_id=self._user_id)
+        # Record the pinned voice on the session span (spec §2b): one voice for the
+        # whole session, visible in the trace so a voice change would be detectable.
+        self._trace.emit(
+            "session", "conversation started", user_id=self._user_id, voice=self._voice
+        )
         buffer: list[bytes] = []
         # Pre-roll ring of the most recent pre-speech frames (§19 first-word fix).
         preroll: deque[bytes] = deque(maxlen=_PREROLL_FRAMES)
@@ -284,7 +288,7 @@ class VoiceSession:
             # sentence starts synthesizing while the rest is still generating, so
             # the user hears audio far sooner. TTS speaks the tagged text (prosody);
             # a non-streamable turn (tool/live-info) falls back to one synth call.
-            self._trace.emit("tts", "synthesizing reply audio")
+            self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)
 
             async def speak(text: str) -> None:
                 async for chunk in self._tts.speak(
@@ -359,7 +363,7 @@ class VoiceSession:
         return read.model_dump()
 
     async def _synthesize(self, text: str, out: asyncio.Queue[bytes | None]) -> None:
-        self._trace.emit("tts", "synthesizing reply audio")
+        self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)
         total = 0
         async for chunk in self._tts.speak(
             text, self._voice, user_id=self._user_id, session_id=self._session_id

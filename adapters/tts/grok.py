@@ -27,6 +27,22 @@ _COST_PER_CHAR_USD = 4.20 / 1_000_000  # xAI Grok TTS pricing
 # Ordered public list (the voice sample-preview surface, §3.2 / brief §3.2).
 VOICES = ("ara", "eve", "leo", "rex", "sal")
 _VOICES = set(VOICES)
+DEFAULT_VOICE = "eve"
+
+
+def resolve_voice(voice: str | None, default: str = DEFAULT_VOICE) -> str:
+    """Normalize a requested voice to a valid xAI voice id, ONCE (spec §2b).
+
+    Pinning the voice at session start — instead of letting each `speak()` call
+    re-derive it and silently fall back — guarantees one consistent voice for the
+    whole session (no mid-session voice change) and gives the trace a concrete
+    value to record, so a voice change would be visible instead of silent. Always
+    returns a valid id even if both the request and the default are bad."""
+    for candidate in (voice, default, DEFAULT_VOICE):
+        if candidate and candidate.lower() in _VOICES:
+            return candidate.lower()
+    return DEFAULT_VOICE
+
 
 # Synthesis chunk budget: big enough for natural prosody within a clause,
 # small enough that the first audio arrives fast.
@@ -74,9 +90,10 @@ class GrokTTS:
         user_id: str,
         session_id: str | None = None,
     ) -> AsyncIterator[bytes]:
-        voice_id = (voice or self._settings.tts_voice).lower()
-        if voice_id not in _VOICES:
-            voice_id = "eve"
+        # The voice is normally already pinned at the session edge (§2b); resolve
+        # again here as the single source of truth so a direct caller can't slip an
+        # invalid id through, honoring the configured default.
+        voice_id = resolve_voice(voice, self._settings.tts_voice)
         spoken_chars = 0
         try:
             for chunk in chunk_for_synthesis(text_with_tags):

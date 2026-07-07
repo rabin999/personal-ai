@@ -186,7 +186,12 @@ async def voice_ws(ws: WebSocket) -> None:
         return
 
     session_id = f"ws_{uuid.uuid4().hex[:8]}"
-    voice = auth.get("voice")
+    # Pin the voice ONCE for the whole session (spec §2b): normalize the client's
+    # choice to a valid id here so every turn uses the same voice — no mid-session
+    # change, no silent per-call fallback — and the client + trace see the real id.
+    from adapters.tts.grok import resolve_voice
+
+    voice = resolve_voice(auth.get("voice"))
     config = _pipeline_config(user)
     await ws.send_json(
         {
@@ -195,6 +200,7 @@ async def voice_ws(ws: WebSocket) -> None:
             "user_id": user.user_id,
             "companion_name": user.companion_name,
             "sample_rate": TTS_SAMPLE_RATE,
+            "voice": voice,  # the pinned voice the client should expect all session
         }
     )
 

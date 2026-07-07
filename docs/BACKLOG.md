@@ -13,7 +13,9 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
   calibrated companion-voice judge; fixed volunteered AI disclaimers, clarify-on-greeting,
   service-desk tics, and JSON-failure catastrophic misses (tier escalation + plain-reply salvage).
   Standing bar for all later items.
-- [ ] **Item 2b** — Voice output quality: sudden voice changes + distorted audio
+- [x] **Item 2b** — Voice output quality — voice pinned+normalized once per session + recorded in
+  trace; client playback cushion removes inter-clause click; server bytes verified clean raw PCM.
+  Audio-by-ear + Pipecat runtime blocked (needs device / voice extra).
 - [ ] **Item 3** — Real-call test harness + LLM-as-judge (the §4 safety net)
 - [ ] **Item 4** — Existing memory cleanup + conflict/consolidation
 - [ ] **Item 5** — Unified structured RESULT envelope
