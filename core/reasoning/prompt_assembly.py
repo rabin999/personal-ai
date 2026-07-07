@@ -93,6 +93,10 @@ class AssembledPrompt(BaseModel):
     model_override: str | None = None
     emotion: dict[str, Any] | None = None
     cold_start: bool = False  # first conversation with this user (§3.1)
+    # A3: set by the context-resolution step when this turn is a follow-up whose
+    # answer is already carried in the conversation, so the live-info search
+    # backstop does NOT fire a fresh (irrelevant) search over the carried context.
+    suppress_live_search: bool = False
     resolved_entities: list[EntityCandidate] = Field(default_factory=list)
     # Section name → rendered text, pre-trim; kept for tests and debugging.
     sections: dict[str, str] = Field(default_factory=dict)

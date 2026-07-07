@@ -701,3 +701,35 @@ thought over speed), not the flashy fast tier that produced shallow, context-bli
 - Real companion-voice suite **8/8** pass with the mature model (no regression, better quality);
   full non-paid suite 357. Latency is managed by streaming/parallelism (Item 12), not by dumbing
   down the model.
+
+---
+
+## A3 — Context & working-memory carrying (dedicated)
+
+**App-goal verified:** follow-up references resolve to the right prior context, and a follow-up
+whose answer is CARRIED does not fire a fresh, irrelevant live-search.
+
+### The search-override defect (found in A1) — FIXED
+A follow-up phrased like a live-info query ("is that normal for this time of year?") used to trip the
+deterministic web-search backstop, which searched again and derailed the answer with unrelated
+results. Fix: `AssembledPrompt.suppress_live_search`; the context-resolution node sets it when the
+turn is a follow-up/continuation/correction whose answer is carried (has a resolution note), and the
+search backstop is gated on `not prompt.suppress_live_search`. The `_respond` node also injects
+"answer from this — do NOT search the web again."
+
+### Real captures (mature model + context carrying + no re-search)
+```
+T1 "what is the weather in Kathmandu right now?"  → "…81°F right now, feels like 87, thunderstorms…"
+T2 "is that hot or normal for this time of year?"
+   → "That's actually quite warm for Kathmandu — running about 10–15° above normal. Usually this
+      time of year you'd see highs in the mid-60s, not the low 80s."   ← reasons over CARRIED 81°F
+```
+```
+T1 weather → T2 "wait, what was that temperature again?" → recalls it (no "which temperature?").
+```
+
+### Verification
+- Real-call (`tests/real_call/test_context_carrying.py`, 3 pass): back-reference recall;
+  follow-up reasons over carried info without re-searching (context step logs
+  `suppress_live_search`); the `resolve_context` node is logged in the trace.
+- Full non-paid suite 357; ruff/mypy/lint-imports clean.

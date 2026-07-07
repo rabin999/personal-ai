@@ -411,6 +411,7 @@ class ResponseGenerator:
         needs_search = (
             can_use_tools
             and not seen_calls
+            and not prompt.suppress_live_search  # A3: answer carried in context → no re-search
             and (
                 _is_live_info_query(prompt.utterance)
                 or _needs_capability_repair(turn.draft_response)

@@ -54,6 +54,7 @@ class _TurnState(TypedDict, total=False):
     dispatcher: ToolDispatch | None
     context: ToolContext | None
     context_note: str
+    suppress_search: bool
     result: GenerationResult
 
 
@@ -158,6 +159,10 @@ class LangGraphOrchestrator:
                 refers_to = ""
         else:
             refers_to = ""
+        # A3: if this is a follow-up/continuation whose answer is carried in the
+        # conversation (we have a resolution note), suppress the live-info search
+        # backstop so a fresh, irrelevant search doesn't override the carried info.
+        carried = relation in ("follow_up", "continuation", "correction") and bool(note)
         # A5: log what it connected to and WHY (and that there was nothing to when new).
         self._span(
             "reasoning",
@@ -166,8 +171,9 @@ class LangGraphOrchestrator:
             refers_to=refers_to,
             note=note
             or ("no prior context to connect to" if not history else "no clear reference"),
+            suppress_live_search=carried,
         )
-        return {"context_note": note}
+        return {"context_note": note, "suppress_search": carried}
 
     async def _respond(self, state: _TurnState) -> _TurnState:
         """Run the proven reasoning core (judgment → tools → gates → reflection),
@@ -176,9 +182,14 @@ class LangGraphOrchestrator:
         dispatcher = state.get("dispatcher")
         context = state.get("context")
         note = state.get("context_note", "")
-        turn_prompt = _augment(prompt, note) if note else prompt
+        suppress = state.get("suppress_search", False)
+        turn_prompt = _augment(prompt, note, suppress) if note else prompt
         self._span(
-            "reasoning", node="respond", model_tier=prompt.complexity_hint, context_used=bool(note)
+            "reasoning",
+            node="respond",
+            model_tier=prompt.complexity_hint,
+            context_used=bool(note),
+            live_search_suppressed=suppress,
         )
         result = await self._generator.generate(turn_prompt, dispatcher, context)
         return {"result": result}
@@ -213,14 +224,18 @@ class LangGraphOrchestrator:
             self._logs.log("info", "graph.node", stage=stage, **fields)
 
 
-def _augment(prompt: AssembledPrompt, note: str) -> AssembledPrompt:
-    """Inject the context-resolution note as a system hint before the utterance."""
+def _augment(prompt: AssembledPrompt, note: str, suppress_search: bool = False) -> AssembledPrompt:
+    """Inject the context-resolution note as a system hint before the utterance, and
+    flag whether the live-info search backstop should be suppressed (A3)."""
+    hint = f"Context: {note}"
+    if suppress_search:
+        hint += " Answer from this and the conversation above — do NOT search the web again."
     messages = [
         *prompt.messages[:-1],
-        {"role": "system", "content": f"Context: {note}"},
+        {"role": "system", "content": hint},
         prompt.messages[-1],
     ]
-    return prompt.model_copy(update={"messages": messages})
+    return prompt.model_copy(update={"messages": messages, "suppress_live_search": suppress_search})
 
 
 def _strip(text: str) -> str:

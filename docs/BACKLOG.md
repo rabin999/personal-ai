@@ -37,7 +37,7 @@ via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is pos
   (perceive→resolve_context(A3)→respond→reflect_log); core never imports langgraph (lint-imports
   clean = clean swap); A3 context carrying fixed ("that temperature"→prior weather); real_call tests
 - [x] **A2** — Mature reasoning model — main turn now routes to claude-4.5-sonnet (settings.reasoning_tier=complex), recorded in trace; sub-steps keep faster tiers; noticeably more thoughtful (real capture); companion suite 8/8
-- [ ] **A3** — Context/working-memory (suppress re-search when answer carried) + more scenarios
+- [x] **A3** — Context/working-memory — suppress_live_search flag set by the context node on a follow-up (no irrelevant re-search); reasons over carried info (real captures); 3 real_call scenarios pass
 - [ ] **A4** — Multi-utterance accumulate/merge/split
 - [ ] **A5** — Deep traces incl why-not (extend across all nodes)
 - [ ] **A8** — Consolidate on Langfuse (self-hosted) for prompt mgmt/evals/traces
