@@ -81,3 +81,13 @@ now passes **5/5** with reflection on — the model's `"How can I help you today
 re-said as e.g. a warm greeting. Unit tests cover rewrite-applied, rewrite-rejected-if-not-
 cleaner, and reflection-off. This directly fixes the reported #1 issue at the mechanism
 level; wording of the rewrite instruction remains human-tunable.
+
+### R7 — Tool results weren't persisted; "what was that news?" couldn't resolve (§5.2) — FIXED
+**Root cause:** tool outputs (esp. web_search/news) were used in-turn and discarded — no
+store, so a later "what was that news?" had nothing to resolve against.
+**Fix:** `core/tools/results.py` `ToolResultStore` persists every result to a user-scoped
+`tool_results` collection (keyed by user + ts + tool + query). Wired into the dispatcher's
+inline path AND its background `task_handler`, so both sync and queued tool results persist.
+Added a `recall_tool_result` core tool so the model can answer questions about a recent
+lookup from real stored output. Tests cover store ordering/isolation, dispatcher
+persistence, and the recall tool.

@@ -21,6 +21,7 @@ from pydantic import BaseModel, ValidationError
 from core.cost import CostEntry, CostLedger, CostMetadata
 from core.reasoning.prompt_assembly import AssembledPrompt
 from core.tools.registry import ToolContext, ToolRegistry, ToolSpec
+from core.tools.results import ToolResultStore
 from ports.llm import LLM, LLMUnavailable
 from ports.queue import QueuedTask, TaskQueue
 
@@ -78,11 +79,13 @@ class ToolDispatcher:
         queue: TaskQueue,
         ledger: CostLedger | None = None,
         variable_budget_s: float = VARIABLE_BUDGET_S,
+        results: ToolResultStore | None = None,
     ) -> None:
         self._registry = registry
         self._queue = queue
         self._ledger = ledger
         self._variable_budget_s = variable_budget_s
+        self._results = results
 
     async def dispatch(
         self, call: ToolCall, context: ToolContext, *, confirmed: bool = False
@@ -117,6 +120,7 @@ class ToolDispatcher:
 
         elapsed_ms = (time.perf_counter() - started) * 1000
         self._log(spec, context)
+        await self._persist_result(spec.id, call.args, output, context)
         return ToolResult(tool_id=spec.id, output=output, elapsed_ms=elapsed_ms)
 
     def tools_for(self, context: ToolContext) -> list[ToolSpec]:
@@ -195,6 +199,7 @@ class ToolDispatcher:
             spec, handler = self._registry.get(call.tool_id)
             output = await handler(call.args, context)
             self._log(spec, context)
+            await self._persist_result(spec.id, call.args, output, context)
             return output
 
         return handle
@@ -229,6 +234,20 @@ class ToolDispatcher:
             except (LLMUnavailable, ValidationError, ValueError):
                 continue
         return None
+
+    async def _persist_result(
+        self, tool_id: str, args: dict[str, Any], output: dict[str, Any], context: ToolContext
+    ) -> None:
+        """Store the result so 'what was that news?' resolves later (§5.2)."""
+        if self._results is None:
+            return
+        await self._results.record(
+            user_id=context.user_id,
+            session_id=context.session_id,
+            tool_id=tool_id,
+            args=args,
+            output=output,
+        )
 
     def _log(self, spec: ToolSpec, context: ToolContext) -> None:
         if self._ledger is None:

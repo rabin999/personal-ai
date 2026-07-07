@@ -19,6 +19,7 @@ from core.memory.semantic import SemanticMemory
 from core.profile import ProfileService
 from core.projects.service import ProjectService
 from core.tools.registry import ToolContext, ToolRegistry, ToolSpec
+from core.tools.results import ToolResultStore
 from core.tools.web_search import WebSearch
 
 # VAD nudge per "you're too sensitive" style request (§11.3); clamped in §2.
@@ -35,6 +36,7 @@ def register_core_tools(
     web_search: WebSearch,
     profiles: ProfileService,
     projects: ProjectService,
+    results: ToolResultStore | None = None,
 ) -> None:
     async def search_memory(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         hits = await episodic.retrieve(ctx.user_id, str(args.get("query", "")), k=5)
@@ -149,6 +151,33 @@ def register_core_tools(
         ),
         record_trade,
     )
+
+    if results is not None:
+
+        async def recall_tool_result(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+            # §5.2: "what was that news / the last search result?" — resolve against
+            # the stored tool results for THIS user, never a hallucination.
+            tool = str(args.get("tool") or "").strip() or None
+            stored = await results.latest(ctx.user_id, tool=tool, limit=3)
+            return {
+                "results": [
+                    {"tool": d.get("tool"), "query": d.get("query"), "output": d.get("output")}
+                    for d in stored
+                ]
+            }
+
+        registry.register(
+            ToolSpec(
+                id="recall_tool_result",
+                description="Recall the result of a recent tool call the user is asking "
+                "back about ('what was that news?', 'what did that search find?', 'the "
+                'last result you looked up\'). args: {"tool": str (optional, e.g. '
+                '"web_search")}',
+                type="readonly",
+                latency_class="fast",
+            ),
+            recall_tool_result,
+        )
 
     async def update_audio_prefs(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         profile = await profiles.get(ctx.user_id)
