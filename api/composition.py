@@ -19,6 +19,7 @@ from adapters.db import Database
 from adapters.graph.graphiti import GraphitiGraphStore
 from adapters.llm.openrouter import OpenRouterLLM
 from adapters.logging.factory import build_log_sinks
+from adapters.logging.trace_sink import TraceStoreLogSink
 from adapters.preference.mem0_adapter import Mem0PreferenceMemory
 from adapters.queue.redis import RedisTaskQueue
 from adapters.search.brave import BraveSearch
@@ -118,13 +119,19 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     docs = MongoDocStore(db)
     ledger = CostLedger(docs)
 
+    # Observability wired early so per-LLM-call spans reach the trace (§1/§5):
+    # structured logs fan to the configured sinks + a trace-store sink that maps
+    # correlation-bound records into the durable per-turn trace.
+    traces = TraceStore(docs)
+    logs = StructuredLogger([*build_log_sinks(settings), TraceStoreLogSink(traces)])
+
     profiles = ProfileService(docs)
     registry = TraitRegistry(docs, profiles)
     await registry.seed_defaults(DEFAULTS_DIR)  # traits + project types + provider config
 
     tiers = await _load_tiers(docs)
     pricing = await _load_pricing(docs)
-    llm = OpenRouterLLM(settings, ledger=ledger, tiers=tiers)
+    llm = OpenRouterLLM(settings, ledger=ledger, tiers=tiers, logs=logs)
     await llm.verify_models()  # list/verify configured models against the live catalog
 
     vectors = QdrantVectorStore(db, settings.embedding_model)
@@ -204,11 +211,11 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         delivery=delivery,
         consolidator=consolidator,
         vocab=VocabProvider(semantic, profiles),
-        traces=TraceStore(docs),
+        traces=traces,
         conversations=ConversationStore(docs),
         extractor=MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences),
         preferences=preferences,
-        logs=StructuredLogger(build_log_sinks(settings)),
+        logs=logs,
         feedback=FeedbackStore(docs),
     )
 

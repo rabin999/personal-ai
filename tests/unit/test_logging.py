@@ -81,3 +81,39 @@ def test_factory_builds_configured_sinks() -> None:
     assert names == {"FileLogSink", "StdoutLogSink"}
     for s in sinks:
         s.close()
+
+
+async def test_trace_store_sink_maps_correlated_records_to_trace_events() -> None:
+    from adapters.logging.trace_sink import TraceStoreLogSink
+    from core.observability import TraceStore
+    from tests.fakes import FakeDocStore
+
+    docs = FakeDocStore()
+    store = TraceStore(docs)
+    log = StructuredLogger([TraceStoreLogSink(store)])
+
+    # A correlated llm.call record becomes a per-turn trace event.
+    with log.bind(trace_id="s1", turn_id=2, user_id="u_demo_001"):
+        log.info("llm.call", stage="llm", model="m", cost_usd=0.001, latency_ms=50)
+    import asyncio as _a
+
+    await _a.sleep(0.05)  # let the fire-and-forget trace write land
+
+    events = await store.traces_for("u_demo_001", "s1")
+    assert len(events) == 1
+    assert events[0]["stage"] == "llm" and events[0]["turn"] == 2
+    assert events[0]["data"]["model"] == "m" and events[0]["data"]["cost_usd"] == 0.001
+
+
+async def test_trace_store_sink_skips_uncorrelated_records() -> None:
+    from adapters.logging.trace_sink import TraceStoreLogSink
+    from core.observability import TraceStore
+    from tests.fakes import FakeDocStore
+
+    store = TraceStore(FakeDocStore())
+    log = StructuredLogger([TraceStoreLogSink(store)])
+    log.info("boot", stage="system")  # no correlation → not a per-turn record
+    import asyncio as _a
+
+    await _a.sleep(0.05)
+    assert await store.traces_for("u_demo_001", "s1") == []

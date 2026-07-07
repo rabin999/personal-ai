@@ -8,6 +8,7 @@ to the Cost Ledger fire-and-forget after the call resolves (rule 3).
 
 import asyncio
 import logging
+import time
 from collections.abc import Mapping, Sequence
 from functools import cached_property
 from typing import Any
@@ -17,6 +18,7 @@ from openai import AsyncOpenAI
 
 from config.settings import Settings
 from core.cost import CostEntry, CostLedger, CostMetadata
+from core.observability.logger import StructuredLogger
 from ports.llm import CompletionResult, LLMUnavailable, Tier
 
 logger = logging.getLogger(__name__)
@@ -35,9 +37,11 @@ class OpenRouterLLM:
         settings: Settings,
         ledger: CostLedger | None = None,
         tiers: Mapping[str, list[str]] | None = None,
+        logs: StructuredLogger | None = None,
     ) -> None:
         self._settings = settings
         self._ledger = ledger
+        self._logs = logs
         self._tiers = {**DEFAULT_TIERS, **dict(tiers or {})}
         self._client = AsyncOpenAI(
             api_key=settings.open_router_api_key,
@@ -102,6 +106,7 @@ class OpenRouterLLM:
         if model and model in self.fast_model_choices():
             chain = [model, *[m for m in chain if m != model]]
         for model_id in chain:
+            started = time.perf_counter()
             try:
                 result = await self._call(model_id, messages, response_format, max_tokens)
             except Exception as exc:
@@ -109,6 +114,9 @@ class OpenRouterLLM:
                 logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
                 continue
             self._log_cost(user_id, result, session_id)
+            # Per-LLM-call span (CLAUDE.md §5): model / tokens / cost / latency,
+            # correlation-bound to the current turn so it lands in the trace.
+            self._log_call(result, tier, (time.perf_counter() - started) * 1000)
             return result
         raise LLMUnavailable(f"all models failed for tier '{tier}': {'; '.join(errors)}")
 
@@ -146,6 +154,21 @@ class OpenRouterLLM:
             input_tokens=usage.prompt_tokens if usage else 0,
             output_tokens=usage.completion_tokens if usage else 0,
             cost_usd=cost,
+        )
+
+    def _log_call(self, result: CompletionResult, tier: Tier, latency_ms: float) -> None:
+        if self._logs is None:
+            return
+        self._logs.log(
+            "info",
+            "llm.call",
+            stage="llm",
+            model=result.model,
+            tier=tier,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cost_usd=result.cost_usd,
+            latency_ms=round(latency_ms, 1),
         )
 
     def _log_cost(self, user_id: str, result: CompletionResult, session_id: str | None) -> None:

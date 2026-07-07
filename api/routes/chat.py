@@ -69,14 +69,13 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
         )
         trace.emit("router", f"routing to {prompt.complexity_hint} tier")
 
+    # Bind correlation ids around the WHOLE turn so every LLM call inside
+    # generation/extraction emits a per-call span into this turn's trace (§5).
     with pipeline.logs.bind(
         trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
     ):
         pipeline.logs.info("turn.request", text=body.text)
-    result = await pipeline.generator.generate(prompt, pipeline.dispatcher, context)
-    with pipeline.logs.bind(
-        trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
-    ):
+        result = await pipeline.generator.generate(prompt, pipeline.dispatcher, context)
         pipeline.logs.info(
             "turn.response",
             action=result.action,
@@ -97,9 +96,12 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     # Memory parity with the voice runtime: the text path also persists the turn
     # to episodic memory (§5, cross-session recall) and the durable conversation
     # log (§6), best-effort so it never blocks the reply.
-    await _persist_turn(
-        pipeline, user.user_id, body.session_id, body.text, result.final_text, trace
-    )
+    with pipeline.logs.bind(
+        trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
+    ):
+        await _persist_turn(
+            pipeline, user.user_id, body.session_id, body.text, result.final_text, trace
+        )
 
     # Any background result that landed during this turn is prepended to the reply.
     reply = " ".join([*(d.line for d in deliveries), result.final_text]).strip()
