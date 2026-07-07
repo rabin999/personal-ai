@@ -41,6 +41,12 @@ class Settings(BaseSettings):
     # Per-request timeout for LLM calls; fallback chain handles failures.
     llm_timeout_s: float = 60.0
 
+    # Preference memory (Mem0, brief §2): fast personalization layer. Its own
+    # extraction runs on this cheap model; embeddings are local fastembed and the
+    # store is our Qdrant. Disable to run without it.
+    preference_memory_enabled: bool = True
+    preference_model: str = "google/gemini-2.5-flash-lite"
+
     # Speech synthesis (§23): Grok Voice TTS via the xAI TTS API
     # (https://api.x.ai/v1/tts) — the spec's chosen voice. Inline delivery
     # tags supported; ~$4.20 / 1M chars. Key env var is ``X-AI-API``.

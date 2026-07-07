@@ -81,3 +81,47 @@ async def test_invalid_extraction_json_stores_nothing() -> None:
     result = await ex.extract_and_store(user, "s1", "whatever", "ok")
     assert result.episodic_written == 0 and result.semantic_written == 0
     assert [e for e in graph.episodes if e["user_id"] == user] == []
+
+
+async def test_same_trade_is_not_relogged_on_recall() -> None:
+    # Audit fix: restating a past trade must NOT create a second ledger entry.
+    trade = {"ticker": "SYPNL", "side": "buy", "qty": 10, "price": 230}
+    ex, _, projects, user = await _build([_extraction(trades=[trade]), _extraction(trades=[trade])])
+    r1 = await ex.extract_and_store(user, "s1", "I bought 10 SYPNL at 230", "Got it.")
+    r2 = await ex.extract_and_store(user, "s2", "what did I buy?", "You bought 10 SYPNL at 230.")
+    assert r1.trades_written == 1
+    assert r2.trades_written == 0  # duplicate guard skipped the re-log
+    project = await projects.find_or_create(user, "finance_portfolio", "My portfolio")
+    state = await projects.state(project.id, user)
+    assert state.metrics["entry_count"] == 1  # exactly one entry
+
+
+class _FakePreferences:
+    def __init__(self) -> None:
+        self.added: list[tuple[str, list[dict[str, str]]]] = []
+
+    async def add(self, user_id: str, messages: list[dict[str, str]]) -> None:
+        self.added.append((user_id, messages))
+
+    async def search(self, user_id: str, query: str, limit: int = 5) -> list[str]:
+        return []
+
+
+async def test_preference_layer_receives_the_exchange() -> None:
+    from core.memory.episodic import EpisodicMemory as _E
+    from core.memory.semantic import SemanticMemory as _S
+    from core.projects.service import ProjectService as _P
+
+    docs = FakeDocStore()
+    vectors = FakeVectorStore()
+    prefs = _FakePreferences()
+    ex = MemoryExtractor(
+        FakeLLM([_extraction(store_nothing=True)]),
+        _E(vectors),
+        _S(FakeGraphStore()),
+        _P(docs, EntityResolver(vectors)),
+        preferences=prefs,
+    )
+    await ex.extract_and_store(USER, "s1", "I love hiking", "nice!")
+    assert prefs.added and prefs.added[0][0] == USER
+    assert any("hiking" in m["content"] for m in prefs.added[0][1])

@@ -29,6 +29,7 @@ from core.memory.episodic import EpisodicMemory
 from core.memory.semantic import SemanticMemory
 from core.projects.service import ProjectService
 from ports.llm import LLM, LLMUnavailable
+from ports.preference_memory import PreferenceMemory
 
 logger = logging.getLogger(__name__)
 
@@ -50,13 +51,16 @@ Respond with ONLY a JSON object of this exact shape:
  "store_nothing": true if this was just small talk / nothing memorable}
 
 Rules:
-- A concrete event -> an episodic_event AND, if it implies a standing
+- Extract ONLY NEW information the USER just stated. If the USER is asking a
+  QUESTION, or the COMPANION is merely recalling/confirming something already
+  known ("you bought 10 SYPNL", "you take your meds at 8pm"), that is NOT new —
+  set store_nothing: true. Never re-store what is only being recalled.
+- A concrete NEW event -> an episodic_event AND, if it implies a standing
   fact/routine, a distilled semantic_fact.
-- Preferences, relationships, routines, health facts, goals -> semantic_facts
-  (generalized, no "today").
-- An explicit stock/share buy or sell -> a trades entry (also fine to add an
-  episodic_event).
-- Greetings, thanks, chit-chat, questions with no new info about the user ->
+- Preferences, relationships, routines, health facts, goals (newly shared) ->
+  semantic_facts (generalized, no "today").
+- An explicit NEW stock/share buy or sell the user just made -> a trades entry.
+- Greetings, thanks, chit-chat, questions, recall/confirmation ->
   store_nothing: true, empty lists.
 - Keep every string short and literal; never paraphrase the user into something
   they didn't say.
@@ -94,16 +98,28 @@ class MemoryExtractor:
         episodic: EpisodicMemory,
         semantic: SemanticMemory,
         projects: ProjectService,
+        preferences: PreferenceMemory | None = None,
     ) -> None:
         self._llm = llm
         self._episodic = episodic
         self._semantic = semantic
         self._projects = projects
+        self._preferences = preferences
 
     async def extract_and_store(
         self, user_id: str, session_id: str, user_text: str, assistant_text: str
     ) -> ExtractionResult:
         """Decide what to persist from this exchange, then write it. Best-effort."""
+        # Mem0 preference layer (§2): let it extract + store preferences from the
+        # raw exchange (its own extraction; best-effort, never blocks).
+        if self._preferences is not None:
+            await self._preferences.add(
+                user_id,
+                [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": assistant_text},
+                ],
+            )
         extraction = await self._extract(user_id, session_id, user_text, assistant_text)
         if extraction is None or extraction.store_nothing:
             return ExtractionResult()
@@ -155,11 +171,35 @@ class MemoryExtractor:
         for trade in extraction.trades:
             try:
                 project = await self._projects.find_or_create(user_id, FINANCE_TYPE, "My portfolio")
+                if await self._is_duplicate_trade(project.id, user_id, trade):
+                    logger.info("skipping duplicate trade write: %s", trade.model_dump())
+                    continue
                 await self._projects.log_entry(project.id, user_id, trade.model_dump())
                 result.trades_written += 1
             except Exception:
                 logger.exception("ledger write failed")
         return result
+
+    async def _is_duplicate_trade(
+        self, project_id: str, user_id: str, trade: ExtractedTrade
+    ) -> bool:
+        """Guard against re-logging the SAME trade (e.g. when it's being recalled).
+        Deterministic backstop behind the prompt's 'don't re-store recall' rule."""
+        try:
+            state = await self._projects.state(project_id, user_id)
+        except Exception:
+            return False
+        want = trade.model_dump()
+        for entry in state.recent_entries:
+            data = entry.data
+            if (
+                str(data.get("ticker", "")).upper() == want["ticker"].upper()
+                and str(data.get("side", "")).lower() == want["side"]
+                and float(data.get("qty", 0)) == want["qty"]
+                and float(data.get("price", 0)) == want["price"]
+            ):
+                return True
+        return False
 
 
 def _strip_fences(text: str) -> str:

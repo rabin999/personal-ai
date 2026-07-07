@@ -21,6 +21,7 @@ from core.memory.working import Turn, WorkingMemory
 from core.profile import ProfileService, TraitRegistry
 from core.reasoning.self_model import SelfModel
 from ports.llm import Tier
+from ports.preference_memory import PreferenceMemory
 
 # Character budget for the assembled prompt (~6k tokens at 4 chars/token).
 # Deployment-tunable; the trim ORDER is the invariant, not the number.
@@ -88,6 +89,7 @@ class PromptAssembler:
         self_model: SelfModel,
         projects: ProjectContextProvider | None = None,
         psych: PsychProvider | None = None,
+        preferences: PreferenceMemory | None = None,
         char_budget: int = DEFAULT_CHAR_BUDGET,
     ) -> None:
         self._profiles = profiles
@@ -100,6 +102,7 @@ class PromptAssembler:
         self._self_model = self_model
         self._projects = projects
         self._psych = psych
+        self._preferences = preferences
         self._budget = char_budget
 
     async def assemble(
@@ -126,6 +129,9 @@ class PromptAssembler:
         entity_facts = await self._semantic.facts_for(user_id, entity_names, limit=FACTS_LIMIT)
         profile_facts = await self._semantic.profile_facts(user_id, limit=FACTS_LIMIT)
         rules = await self._procedural.rules_for(user_id, context=utterance)
+        preferences = (
+            await self._preferences.search(user_id, utterance) if self._preferences else []
+        )
         profile = await self._profiles.first_run_sync(user_id)
         traits = await self._registry.enabled_traits(user_id)
         prior_statements = await self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K)
@@ -166,6 +172,8 @@ class PromptAssembler:
             for f in [*entity_facts, *profile_facts]
         )
         sections["self_statements"] = "\n".join(f"- {s.text}" for s in prior_statements)
+        # §2 Mem0 preference layer: what we know about this person, relevant now.
+        sections["preferences"] = "\n".join(f"- {p}" for p in preferences)
         sections["episodic"] = "\n\n".join(h.text for h in episodic_hits)
 
         system_prompt = _render_system_prompt(
@@ -207,11 +215,12 @@ _SECTION_TITLES: dict[str, str] = {
     "rules": "Learned rules for this user",
     "entities": "Entities referenced in this message",
     "project": "Project context",
+    "preferences": "What you know about this person",
     "facts": "Known facts (with validity)",
     "self_statements": "Your own relevant prior statements",
     "episodic": "Relevant conversation memories",
 }
-_TRIM_ORDER = ("episodic", "facts", "self_statements", "psych", "project", "rules")
+_TRIM_ORDER = ("episodic", "facts", "self_statements", "psych", "project", "rules", "preferences")
 
 
 def _render_system_prompt(sections: Mapping[str, str], *, budget: int, reserved: int) -> str:

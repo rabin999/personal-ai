@@ -36,6 +36,36 @@ Newest entries at the bottom of each section. Companion doc: `GAP_ANALYSIS.md`.
   fact recall, no assistant-speak across a conversation, and cross-user isolation. All pass
   against live datastores + real model.
 
+## Third pass — Mem0 wired + memory-correctness bugs from the audit (2026-07-07)
+
+### R11 — Mem0 preference memory ADOPTED + wired (brief §2)
+Installed `mem0ai` and wired it as the fast personalization/preference layer, configured to
+OUR stack (no OpenAI key): LLM via OpenRouter, embedder via local `fastembed` (same bge-small
+model), vector store in our Qdrant (`mem0_preferences` collection). Port
+`ports/preference_memory.py`, adapter `adapters/preference/mem0_adapter.py` (guarded init +
+best-effort calls, blocking client run in a thread). Wired: WRITE in the extraction step
+(`MemoryExtractor` calls `preferences.add`), READ in prompt assembly (a "What you know about
+this person" section, `preferences.search`). Config-gated by `preference_memory_enabled`.
+Complements Graphiti (temporal facts) — see the two-engine note below.
+
+### R12 — Extraction re-stored recalled info (double-write) — FIXED
+**Root cause (found by the audit conversation):** when the user asked *"what did I buy?"* and
+the companion restated *"you bought 10 SYPNL"*, the extractor treated the restatement as a new
+statement and logged the trade AGAIN (ledger doubled to 2 entries / 4600).
+**Fix:** (1) strengthened the extraction prompt to store ONLY genuinely NEW user statements —
+questions and companion recall/confirmation → `store_nothing`; (2) a deterministic
+duplicate-trade guard in `_store` that skips a trade already in the ledger. Verified live: the
+recall turn now `WROTE -> nothing` and the ledger stays at `entry_count: 1 / 2300`. Tests:
+`test_extraction.py::test_same_trade_is_not_relogged_on_recall`.
+
+### Note on Graphiti semantic retrieval
+The audit run showed `profile_facts` returning `(none)`; the follow-up run (after wiring)
+returned the fact correctly (`'user takes blood-pressure prescription daily at 8pm'`). It
+appears timing/indexing-sensitive rather than fully broken; Mem0 now also backstops
+preference/fact recall. A residual Graphiti warning (`Source entity not found in nodes for
+edge relation`) remains and is logged for follow-up. Recall is currently robust via episodic +
+Mem0 even when Graphiti lags.
+
 ## Framework decisions (adopt / reject + why)
 
 | Area | Decision | Rationale |

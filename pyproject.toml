@@ -9,6 +9,7 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "graphiti-core>=0.29.2",
     "httpx>=0.28.1",
+    "mem0ai>=2.0.11",
     "neo4j>=6.2.0",
     "numpy>=2.4.6",
     "pydantic>=2.13.4",

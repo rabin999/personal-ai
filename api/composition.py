@@ -18,6 +18,7 @@ from typing import Any
 from adapters.db import Database
 from adapters.graph.graphiti import GraphitiGraphStore
 from adapters.llm.openrouter import OpenRouterLLM
+from adapters.preference.mem0_adapter import Mem0PreferenceMemory
 from adapters.queue.redis import RedisTaskQueue
 from adapters.search.brave import BraveSearch
 from adapters.search.serper import SerperSearch
@@ -72,6 +73,8 @@ class Pipeline:
     user_context: StaticUserContext
     working: WorkingMemory
     episodic: EpisodicMemory
+    semantic: SemanticMemory
+    procedural: ProceduralMemory
     llm: OpenRouterLLM
     assembler: PromptAssembler
     generator: ResponseGenerator
@@ -91,6 +94,7 @@ class Pipeline:
     traces: TraceStore
     conversations: ConversationStore
     extractor: MemoryExtractor
+    preferences: Mem0PreferenceMemory | None
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -147,6 +151,10 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         results=tool_results,
     )
 
+    # §2 Mem0 preference memory (fast personalization layer). Guarded init:
+    # a failure degrades to None and the app still runs without it.
+    preferences = Mem0PreferenceMemory(settings) if settings.preference_memory_enabled else None
+
     assembler = PromptAssembler(
         profiles,
         registry,
@@ -158,6 +166,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         self_model,
         projects=projects,
         psych=psych,
+        preferences=preferences,
     )
     generator = ResponseGenerator(llm, self_model, registry)
     consolidator = Consolidator(semantic, procedural, psych, docs, llm)
@@ -171,6 +180,8 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         user_context=StaticUserContext.from_defaults(DEFAULTS_DIR, profiles),
         working=working,
         episodic=episodic,
+        semantic=semantic,
+        procedural=procedural,
         llm=llm,
         assembler=assembler,
         generator=generator,
@@ -189,7 +200,8 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         vocab=VocabProvider(semantic, profiles),
         traces=TraceStore(docs),
         conversations=ConversationStore(docs),
-        extractor=MemoryExtractor(llm, episodic, semantic, projects),
+        extractor=MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences),
+        preferences=preferences,
     )
 
 
