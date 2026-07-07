@@ -32,6 +32,60 @@ async def list_trace_sessions(user: CurrentUser, request: Request) -> dict[str, 
 
 @router.get("/traces/{session_id}")
 async def get_session_trace(session_id: str, user: CurrentUser, request: Request) -> dict[str, Any]:
-    """The full A→Z per-turn trace for one of this user's sessions."""
+    """The full A→Z per-turn trace for one of this user's sessions, plus a per-turn
+    totals roll-up (§3.12: end-to-end latency + total tokens/cost) so a turn can be
+    reconstructed AND its cost/latency read at a glance from the trace alone."""
     events = await _trace_store(request).traces_for(user.user_id, session_id)
-    return {"user_id": user.user_id, "session_id": session_id, "events": events}
+    return {
+        "user_id": user.user_id,
+        "session_id": session_id,
+        "events": events,
+        "turns": _turn_totals(events),
+    }
+
+
+def _num(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _turn_totals(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Roll up per-turn cost/latency/step-counts from the raw spans."""
+    by_turn: dict[int, dict[str, Any]] = {}
+    for e in events:
+        turn = int(e.get("turn", 0))
+        data = e.get("data", {}) or {}
+        t = by_turn.setdefault(
+            turn,
+            {
+                "turn": turn,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "cost_usd": 0.0,
+                "llm_calls": 0,
+                "tool_calls": 0,
+                "failures": 0,
+                "total_ms": 0.0,
+                "reflected": False,
+            },
+        )
+        # LLM-call spans carry input_tokens/output_tokens/cost_usd (either the
+        # unified StepResult names or the OpenRouter span names).
+        t["tokens_in"] += int(_num(data.get("tokens_in") or data.get("input_tokens")))
+        t["tokens_out"] += int(_num(data.get("tokens_out") or data.get("output_tokens")))
+        t["cost_usd"] += _num(data.get("usd") or data.get("cost_usd"))
+        if e.get("stage") == "llm":
+            t["llm_calls"] += 1
+        if e.get("stage") == "tool":
+            t["tool_calls"] += 1
+            if data.get("status") in ("failure", "timeout"):
+                t["failures"] += 1
+        if e.get("stage") == "reflection":
+            t["reflected"] = True
+        if "total_ms" in data:  # the per-turn summary span
+            t["total_ms"] = _num(data.get("total_ms"))
+    for t in by_turn.values():
+        t["cost_usd"] = round(t["cost_usd"], 6)
+    return [by_turn[k] for k in sorted(by_turn)]

@@ -512,3 +512,17 @@ idempotent + real-Graphiti supersession). Full non-paid suite 331 passed.
   blank" reply, no crash/hang/fabrication).
 - Scope: envelope adopted at the tool boundary (main failure surface); LLM/memory/search spans already
   carry cost/latency and can migrate to the identical shape mechanically (tracked for trace items 6-7).
+
+---
+
+## Autonomous backlog run — Item 6: Full trace view (2026-07-07)
+
+Verified (real run) the persisted trace already reconstructs a turn richly; closed two gaps:
+- Self-reflection span now emits EVERY turn (ran/checked/revised/clean_after), not only on a catch.
+- `/debug/traces/{session}` returns a per-turn totals roll-up (`_turn_totals`): tokens_in/out,
+  cost_usd, llm/tool/failure counts, total_ms, reflected — tolerant of unified + OpenRouter span
+  field names.
+- Minimal UI: per-turn totals strip + collapsible "technical trace" showing each raw span
+  (model/tokens/cost/latency/status/action + raw voice_text). Data-complete, low-pixel per the plan.
+Proven: real_call trace-reconstruction test + `_turn_totals` unit tests; web tsc+build clean;
+non-paid suite 344.

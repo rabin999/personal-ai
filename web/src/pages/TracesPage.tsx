@@ -4,6 +4,7 @@ import {
   listTraceSessions,
   sendFeedback,
   type TraceEvent,
+  type TurnTotals,
 } from "../lib/api";
 
 // A READABLE, user-facing view of what happened each turn — what they said, what
@@ -15,6 +16,7 @@ export default function TracesPage() {
   const [sessions, setSessions] = useState<{ session_id: string; last_ts: number }[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [events, setEvents] = useState<TraceEvent[]>([]);
+  const [totals, setTotals] = useState<TurnTotals[]>([]);
 
   useEffect(() => {
     void listTraceSessions().then((r) => {
@@ -25,10 +27,21 @@ export default function TracesPage() {
 
   useEffect(() => {
     if (!selected) return;
-    void getSessionTrace(selected).then((r) => setEvents(r.events)).catch(() => setEvents([]));
+    void getSessionTrace(selected)
+      .then((r) => { setEvents(r.events); setTotals(r.turns ?? []); })
+      .catch(() => { setEvents([]); setTotals([]); });
   }, [selected]);
 
   const turns = useMemo(() => groupByTurn(events), [events]);
+  const totalsByTurn = useMemo(
+    () => new Map(totals.map((t) => [t.turn, t])),
+    [totals],
+  );
+  const spansByTurn = useMemo(() => {
+    const m = new Map<number, TraceEvent[]>();
+    for (const e of events) m.set(e.turn, [...(m.get(e.turn) ?? []), e]);
+    return m;
+  }, [events]);
 
   return (
     <section>
@@ -49,7 +62,13 @@ export default function TracesPage() {
 
       <div className="space-y-3">
         {turns.map((t) => (
-          <TurnView key={t.turn} sessionId={selected!} turn={t} />
+          <TurnView
+            key={t.turn}
+            sessionId={selected!}
+            turn={t}
+            totals={totalsByTurn.get(t.turn)}
+            spans={spansByTurn.get(t.turn) ?? []}
+          />
         ))}
       </div>
     </section>
@@ -81,7 +100,10 @@ function groupByTurn(events: TraceEvent[]): Turn[] {
   return [...map.values()].filter((t) => t.turn > 0).sort((a, b) => a.turn - b.turn);
 }
 
-function TurnView({ sessionId, turn }: { sessionId: string; turn: Turn }) {
+function TurnView({
+  sessionId, turn, totals, spans,
+}: { sessionId: string; turn: Turn; totals?: TurnTotals; spans: TraceEvent[] }) {
+  const [showRaw, setShowRaw] = useState(false);
   return (
     <div className="rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
       {turn.said && <Line label="You said" value={turn.said} />}
@@ -89,7 +111,63 @@ function TurnView({ sessionId, turn }: { sessionId: string; turn: Turn }) {
       {turn.lookedUp.length > 0 && <Line label="Looked up" value={turn.lookedUp.join("; ")} />}
       {turn.stored && <Line label="Stored" value={turn.stored} />}
       {turn.reply && <Line label="Replied" value={turn.reply} strong />}
+
+      {totals && (
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-neutral-500">
+          <span>{totals.total_ms ? `${Math.round(totals.total_ms)} ms` : "—"}</span>
+          <span>{totals.tokens_in + totals.tokens_out} tok</span>
+          <span>${totals.cost_usd.toFixed(5)}</span>
+          <span>{totals.llm_calls} LLM · {totals.tool_calls} tool</span>
+          {totals.failures > 0 && <span className="text-red-500">{totals.failures} failed</span>}
+          {totals.reflected && <span>self-reflected</span>}
+        </div>
+      )}
+
+      <button
+        onClick={() => setShowRaw((v) => !v)}
+        className="mt-2 text-xs text-neutral-500 underline"
+      >
+        {showRaw ? "hide" : "show"} technical trace ({spans.length} steps)
+      </button>
+      {showRaw && (
+        <div className="mt-2 max-h-80 overflow-auto rounded bg-neutral-50 p-2 dark:bg-neutral-900">
+          {spans.map((e, i) => (
+            <SpanRow key={i} event={e} />
+          ))}
+        </div>
+      )}
+
       <Feedback sessionId={sessionId} turn={turn.turn} />
+    </div>
+  );
+}
+
+// One raw pipeline step: stage + message + the key engineering fields
+// (model/tokens/cost/latency/status) so a turn is fully reconstructable (§3).
+function SpanRow({ event }: { event: TraceEvent }) {
+  const d = event.data ?? {};
+  const bits: string[] = [];
+  const push = (k: string, label = k) => {
+    if (d[k] !== undefined && d[k] !== null && d[k] !== "") bits.push(`${label}=${d[k]}`);
+  };
+  push("model");
+  push("tier");
+  if (d.input_tokens ?? d.tokens_in) bits.push(`in=${d.input_tokens ?? d.tokens_in}`);
+  if (d.output_tokens ?? d.tokens_out) bits.push(`out=${d.output_tokens ?? d.tokens_out}`);
+  if (d.cost_usd ?? d.usd) bits.push(`$${d.cost_usd ?? d.usd}`);
+  push("latency_ms", "ms");
+  push("tool");
+  push("tool_type", "type");
+  push("status");
+  push("action");
+  const voice = str(d.voice_text);
+  return (
+    <div className="border-b border-neutral-100 py-1 font-mono text-[11px] last:border-0 dark:border-neutral-800">
+      <span className="font-semibold text-neutral-700 dark:text-neutral-300">{event.stage}</span>
+      {event.level === "warn" && <span className="ml-1 text-amber-500">⚠</span>}
+      {event.message && <span className="ml-2 text-neutral-500">{event.message.slice(0, 80)}</span>}
+      {bits.length > 0 && <span className="ml-2 text-neutral-400">{bits.join(" · ")}</span>}
+      {voice && <div className="text-neutral-400">voice: {voice.slice(0, 120)}</div>}
     </div>
   );
 }

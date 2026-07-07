@@ -88,10 +88,17 @@ export interface TraceEvent {
   turn: number; stage: string; message: string; level?: string; ts?: number;
   data?: Record<string, unknown>;
 }
+export interface TurnTotals {
+  turn: number; tokens_in: number; tokens_out: number; cost_usd: number;
+  llm_calls: number; tool_calls: number; failures: number; total_ms: number;
+  reflected: boolean;
+}
 export function listTraceSessions(): Promise<{ sessions: { session_id: string; last_ts: number }[] }> {
   return authed("/debug/traces");
 }
-export function getSessionTrace(sessionId: string): Promise<{ events: TraceEvent[] }> {
+export function getSessionTrace(
+  sessionId: string,
+): Promise<{ events: TraceEvent[]; turns: TurnTotals[] }> {
   return authed(`/debug/traces/${encodeURIComponent(sessionId)}`);
 }
 

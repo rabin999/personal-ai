@@ -360,6 +360,58 @@ memory writes log stored-counts; migrating those and the search/reasoning/self-r
 the identical `StepResult` shape is a mechanical follow-up (the model + wrapper now exist for it) and
 is tracked for the trace items (6–7).
 
+---
+
+## Item 6 — Full trace view: list → click → detail (spec §3)
+
+**App-goal verified:** from the persisted trace ALONE a turn is fully reconstructable — every
+pipeline stage, each model call (tokens/cost/latency/model), the tool envelope (status/ok), a
+self-reflection span, the response (+ raw tagged voice_text), and a per-turn totals roll-up. A
+minimal list→detail UI surfaces all of it.
+
+### Reconstruction from the trace (captured real turn — "weather in Kathmandu?")
+```
+[session ]  text turn
+[retrieval] memory read
+[assembly ] prompt assembled            complexity=simple
+[router   ] tier simple                 tier=simple
+[llm      ] llm.call  in=3610 out=115  $0.000407  3481ms  google/gemini-2.5-flash-lite
+[llm      ] llm.call  in=822  out=53   $0.000103  2666ms  google/gemini-2.5-flash-lite
+[tool     ] tool.call web_search  status=success ok=True  4712ms  type=background:inline
+[llm      ] llm.call  in=3812 out=154  $0.000443  3112ms  google/gemini-2.5-flash-lite
+[llm      ] llm.call  in=3840 out=160  $0.001552  2048ms  google/gemini-2.5-flash   ← Item-2 tier escalation
+[judgment ] judgment                    complexity=simple
+[reflection] reflection ran=True checked=forbidden-assistant-speak revised=False clean_after=True
+[generation] action=respond             style_flags=[]
+[response ] "Right now in Kathmandu…"   voice_text="…<pause>… [chuckle]"   ← raw tags preserved
+[session  ] turn complete               total_ms=20893.7
+```
+
+### Fixes for completeness
+- **Self-reflection span now emits EVERY turn** (`response_gen.py`): `ran / checked / triggered_by /
+  revised / scrubbed / clean_after` — previously it only appeared when it caught something, so the
+  trace couldn't show that self-reflection ran on a clean turn (§3.8).
+- **Per-turn totals roll-up** (`api/routes/debug.py::_turn_totals`): the `/debug/traces/{session}`
+  detail now returns a `turns` summary (tokens_in/out, cost_usd, llm_calls, tool_calls, failures,
+  total_ms, reflected) tolerant of both the unified and OpenRouter span field names (§3.12).
+- **Minimal UI** (`web/src/pages/TracesPage.tsx`): each turn shows a totals strip (ms · tokens · $ ·
+  N LLM/tool · failures · self-reflected) and a collapsible "technical trace" listing every raw span
+  with model/tokens/cost/latency/status/action and the raw voice_text — data-complete, low-pixel.
+
+### Verification
+- Real-call (`tests/real_call/test_trace_reconstruction.py`): a real turn's trace contains every
+  core stage + a rich llm span (tokens+model+latency) + reflection + response-with-voice_text, and
+  the totals roll up cost>0/tokens>0/reflected. Passed.
+- Unit (`tests/unit/test_trace_totals.py`, 3): totals sum tokens/cost, count LLM/tool/failure steps,
+  group by turn in order, and tolerate missing/bad numbers.
+- Web `tsc --noEmit` + `vite build` clean; full non-paid suite 344 passed.
+
+### Still deferred
+- **Prompt VERSION id** on the assembly span → Item 7.
+- **Judge score + user feedback** attached to the turn's trace: the judge runs test-side today and
+  feedback lands in a separate `feedback` store keyed by session+turn; joining them onto the trace
+  view is a small follow-up (feedback UI already exists on the page).
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply

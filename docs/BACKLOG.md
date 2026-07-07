@@ -21,7 +21,7 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
   passes warm replies); real companion suite 8/8; caught+fixed a cold-disclosure regression.
 - [x] **Item 4** — Memory cleanup + conflict/consolidation — live store deduped (SYPNL 3→1, headache 2→1); dedup wired into consolidation; Graphiti supersession verified (old superseded, new current, history kept); unit + real_call tests
 - [x] **Item 5** — Unified structured RESULT envelope — StepResult + run_step wrapper; tool dispatch produces clean failure/timeout envelopes (never raises); real forced-failure turn completes gracefully; unit + real e2e
-- [ ] **Item 6** — Full trace view: list → click → detail (backend-complete; UI minimal)
+- [x] **Item 6** — Full trace view — turn fully reconstructable from the trace (all stages, LLM tokens/cost/latency, tool envelope, self-reflection span every turn, raw voice_text, per-turn totals roll-up); minimal list→detail UI with a technical-trace breakdown. real_call + unit tests
 - [ ] **Item 7** — Prompt versioning + performance attribution + caching
 - [ ] **Item 8** — Conversation behaviors (design §3.6 + §8.8)
 - [ ] **Item 9** — Memory routing moved to background worker (deferred architecture)

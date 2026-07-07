@@ -590,24 +590,31 @@ class ResponseGenerator:
         allow_disc = turn.judgment.requires_nature_disclosure
         if allow_disc:
             text = await self._warm_disclosure(prompt, text)
-        # Self-reflection (§9.3): if the draft slipped into assistant-speak, have
-        # the model re-say it in-voice once. Mechanism only — tone stays human-tuned.
-        if self._self_reflect and find_forbidden(text, allow_disclosure=allow_disc):
-            flags_before = find_forbidden(text, allow_disclosure=allow_disc)
+        # Self-reflection (§9.3): critique the draft against the response standard.
+        # If it slipped into assistant-speak, re-say it in-voice once. The span is
+        # emitted EVERY turn (trace §3.8) — ran/what-it-checked/whether-it-revised —
+        # so the trace shows self-reflection actually happened, not only on a catch.
+        flags_before = find_forbidden(text, allow_disclosure=allow_disc)
+        revised = False
+        scrubbed_used = False
+        if self._self_reflect and flags_before:
             text = await self._rewrite_assistant_speak(prompt, text)
+            revised = True
             # Deterministic safety net: if the rewrite still carries a banned
             # shape, drop the offending sentence(s) — but only if something
             # natural remains (never ship an empty reply).
-            scrubbed_used = False
             if find_forbidden(text, allow_disclosure=allow_disc):
                 scrubbed = scrub_forbidden(text, allow_disclosure=allow_disc)
                 if scrubbed:
                     text = scrubbed
                     scrubbed_used = True
-            # Self-reflection span (trace §1.12): its own step, not just an llm.call.
+        if self._self_reflect:
             self._span(
                 "reflection",
+                ran=True,
+                checked="forbidden-assistant-speak",
                 triggered_by=flags_before,
+                revised=revised,
                 scrubbed=scrubbed_used,
                 clean_after=not find_forbidden(text, allow_disclosure=allow_disc),
             )

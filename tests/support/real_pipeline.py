@@ -92,9 +92,20 @@ class RealTurns:
             "router", f"routing to {prompt.complexity_hint} tier", tier=prompt.complexity_hint
         )
         ctx = ToolContext(user_id=self._user, session_id=session_id, project_id=None)
-        result = await self._p.generator.generate(prompt, self._p.dispatcher, ctx)
+        # Bind the logs so the generator's per-LLM-call / reflection spans persist
+        # under this turn (mirrors api/routes/chat.py) — the trace then reconstructs
+        # the whole pipeline, not just the stage headers we emit here.
+        with self._p.logs.bind(trace_id=session_id, turn_id=1, user_id=self._user):
+            result = await self._p.generator.generate(prompt, self._p.dispatcher, ctx)
         trace.emit("generation", f"action={result.action}", action=result.action)
-        trace.emit("response", result.final_text, style_flags=result.style_flags)
+        trace.emit("response", result.final_text, voice_text=result.voice_text or result.final_text)
+        trace.emit("session", "turn complete", total_ms=0.0)
+        # Persist every span to the durable trace store so a test can reconstruct
+        # the turn from the trace alone (Item 6).
+        for e in trace.recorded:
+            span = e.model_dump()
+            span["turn"] = 1
+            await self._p.traces.record(self._user, span)
         self._p.working.append(session_id, Turn(role="assistant", text=result.final_text))
         return TurnResult(
             reply=result.final_text,
@@ -114,6 +125,10 @@ class RealTurns:
     @property
     def semantic(self):
         return self._p.semantic
+
+    @property
+    def traces(self):
+        return self._p.traces
 
     async def aclose(self) -> None:
         await self._p.aclose()
