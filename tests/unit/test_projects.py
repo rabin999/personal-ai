@@ -5,15 +5,11 @@ from pathlib import Path
 import pytest
 
 from core.memory.entities import EntityResolver
-from core.memory.episodic import EpisodicMemory
-from core.memory.semantic import SemanticMemory
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectNotFound, ProjectService
-from core.tools.builtin.core_tools import register_core_tools
 from core.tools.registry import ToolContext, ToolRegistry
-from core.tools.web_search import WebSearch
 from ports.search import SearchResult
-from tests.fakes import FakeDocStore, FakeGraphStore, FakeLLM, FakeVectorStore
+from tests.fakes import FakeDocStore, FakeVectorStore
 
 
 class _StubSearchProvider:
@@ -24,6 +20,7 @@ class _StubSearchProvider:
         self, query: str, max_results: int = 5
     ) -> list[SearchResult]:  # pragma: no cover - unused here
         return []
+
 
 DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
 USER = "u_demo_001"
@@ -87,47 +84,14 @@ async def test_find_or_create_is_idempotent_per_user_and_type(h: Harness) -> Non
     assert other.id != first.id
 
 
-async def test_record_trade_tool_persists_from_a_cold_account(h: Harness) -> None:
-    # Root-cause fix (§16 / brief §6): "record my trade" must persist even when no
-    # portfolio exists yet — the tool creates the instance then logs the entry.
-    register_core_tools(
-        h.registry,
-        episodic=EpisodicMemory(h.vectors),
-        semantic=SemanticMemory(FakeGraphStore()),
-        web_search=WebSearch(h.docs, FakeLLM(), _StubSearchProvider()),
-        profiles=ProfileService(h.docs),
-        projects=h.service,
-    )
-    _, handler = h.registry.get("record_trade")
-    ctx = ToolContext(user_id=USER, session_id="s1")
-
-    result = await handler({"ticker": "aapl", "side": "buy", "qty": 10, "price": 150}, ctx)
-    assert result["recorded"] and result["ticker"] == "AAPL"
-
-    state = await h.service.state(result["project_id"], USER)
+async def test_find_or_create_then_log_entry_persists(h: Harness) -> None:
+    # Trades are persisted by the memory-extraction step (brief §1), not a chat
+    # tool. This covers the service path it uses: find-or-create then log_entry.
+    project = await h.service.find_or_create(USER, "finance_portfolio", "My portfolio")
+    await h.service.log_entry(project.id, USER, _trade("AAPL", "buy", 10, 150))
+    state = await h.service.state(project.id, USER)
     assert state.metrics["entry_count"] == 1
     assert state.metrics["net_invested"] == 1500.0
-
-    # A second trade appends to the SAME portfolio (no duplicate instance).
-    again = await handler({"ticker": "aapl", "side": "buy", "qty": 5, "price": 160}, ctx)
-    assert again["project_id"] == result["project_id"]
-    state = await h.service.state(result["project_id"], USER)
-    assert state.metrics["entry_count"] == 2
-
-
-async def test_record_trade_rejects_bad_input(h: Harness) -> None:
-    register_core_tools(
-        h.registry,
-        episodic=EpisodicMemory(h.vectors),
-        semantic=SemanticMemory(FakeGraphStore()),
-        web_search=WebSearch(h.docs, FakeLLM(), _StubSearchProvider()),
-        profiles=ProfileService(h.docs),
-        projects=h.service,
-    )
-    _, handler = h.registry.get("record_trade")
-    ctx = ToolContext(user_id=USER, session_id="s1")
-    assert "error" in await handler({"ticker": "", "side": "buy"}, ctx)
-    assert "error" in await handler({"ticker": "AAPL", "side": "hold"}, ctx)
 
 
 # Acceptance: logging a sell computes updated P&L from the ledger.

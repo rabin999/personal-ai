@@ -233,20 +233,23 @@ async def test_self_reflection_rewrites_assistant_speak_draft() -> None:
     # §9.3: a draft that slipped into service-desk phrasing is re-said in-voice.
     # LLM sequence: turn JSON (assistant-speak draft) → clean rewrite line.
     clean = "Hey! Really good to hear your voice — how've you been?"
-    h = await Harness(
-        [_turn_json(draft="Hello! How can I help you today?"), clean]
-    ).seed()
+    h = await Harness([_turn_json(draft="Hello! How can I help you today?"), clean]).seed()
     result = await h.generator.generate(_prompt("hi"))
     assert result.final_text == clean
     assert result.style_flags == []  # post-rewrite it's clean
 
 
-async def test_self_reflection_keeps_original_if_rewrite_not_cleaner() -> None:
-    # A rewrite that is still assistant-speak (or empty) is rejected; original kept.
+async def test_reflection_scrubs_when_rewrite_still_dirty() -> None:
+    # If the model's rewrite is STILL assistant-speak, the deterministic scrub
+    # drops the offending sentence so no banned shape ever ships (§7 safety net).
     draft = "Hi there! How can I help you today?"
     h = await Harness([_turn_json(draft=draft), "What can I do for you today?"]).seed()
     result = await h.generator.generate(_prompt("hi"))
-    assert result.final_text == draft  # rewrite was not cleaner → original retained
+    from core.reasoning.style import find_forbidden
+
+    assert find_forbidden(result.final_text) == []  # guaranteed clean
+    assert result.final_text == "Hi there!"  # only the offending sentence removed
+    assert result.style_flags == []
 
 
 async def test_self_reflection_off_leaves_draft_untouched() -> None:
@@ -255,3 +258,51 @@ async def test_self_reflection_off_leaves_draft_untouched() -> None:
     result = await h.generator.generate(_prompt("hi"))
     assert result.final_text == draft
     assert result.style_flags  # still flagged for the trace, just not rewritten
+
+
+async def test_duplicate_action_tool_call_runs_once_per_turn() -> None:
+    # §5.1: the model re-issuing the SAME tool call (e.g. logging a trade 4x)
+    # must dispatch only once, then be told it's done.
+    from core.tools.registry import ToolContext, ToolSpec
+
+    calls: list[dict[str, Any]] = []
+
+    class OneShotDispatcher:
+        def tools_for(self, context: object) -> list[ToolSpec]:
+            return [ToolSpec(id="record_trade", description="log a trade", type="action")]
+
+        async def dispatch(self, call: Any, context: object, *, confirmed: bool = False) -> Any:
+            from core.tools.dispatcher import ToolResult
+
+            calls.append(call.args)
+            return ToolResult(tool_id="record_trade", output={"recorded": True}, elapsed_ms=1.0)
+
+    def _with_tool(draft: str, tool_id: str | None) -> str:
+        obj: dict[str, Any] = {
+            "draft_response": draft,
+            "judgment": {
+                "intent_confidence": 0.9,
+                "novelty_score": 0.2,
+                "emotional_salience": 0.3,
+                "ambiguity": 0.1,
+                "complexity_tier": "simple",
+                "capability_boundary_flag": None,
+            },
+            "tool_request": (
+                {"tool_id": tool_id, "args": {"ticker": "AAPL", "qty": 10}} if tool_id else None
+            ),
+        }
+        return json.dumps(obj)
+
+    # The model requests the identical call twice, then answers.
+    scripted = [
+        _with_tool("logging it", "record_trade"),
+        _with_tool("still logging", "record_trade"),
+        _with_tool("Done — logged your 10 AAPL.", None),
+    ]
+    h = await _generator(scripted)
+    result = await h.generator.generate(
+        _prompt("log 10 AAPL"), OneShotDispatcher(), ToolContext(user_id=USER, session_id="s1")
+    )
+    assert len(calls) == 1, f"action tool ran {len(calls)}x, expected once"
+    assert "logged" in result.final_text.lower()

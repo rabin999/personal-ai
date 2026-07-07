@@ -180,9 +180,7 @@ class PromptAssembler:
         complexity_hint = _complexity_hint(utterance)
         # §4: honor the user's fast-model choice on non-complex turns; hard turns
         # still route to the strong tier.
-        model_override = (
-            profile.model_prefs.fast_model if complexity_hint != "complex" else None
-        )
+        model_override = profile.model_prefs.fast_model if complexity_hint != "complex" else None
         return AssembledPrompt(
             user_id=user_id,
             session_id=session_id,

@@ -111,9 +111,7 @@ async def _faithful_system_prompt(registry: TraitRegistry) -> str:
 # ARE the gating regression tests.
 @pytest.mark.paid
 @pytest.mark.xfail(reason="§7 tone is human-tuned; real-model diagnostic, not a gate", strict=False)
-@pytest.mark.skipif(
-    not os.getenv("OPEN_ROUTER_API_KEY"), reason="needs OPEN_ROUTER_API_KEY (paid)"
-)
+@pytest.mark.skipif(not os.getenv("OPEN_ROUTER_API_KEY"), reason="needs OPEN_ROUTER_API_KEY (paid)")
 @pytest.mark.parametrize("opener", _TEMPTING_OPENERS)
 async def test_real_model_never_talks_like_a_service_desk(opener: str) -> None:
     from adapters.llm.openrouter import OpenRouterLLM
@@ -134,3 +132,28 @@ async def test_real_model_never_talks_like_a_service_desk(opener: str) -> None:
         f"real model emitted assistant-speak on {opener!r}: "
         f"{result.style_flags} — {result.final_text!r}"
     )
+
+
+@pytest.mark.parametrize(
+    "text,expected_clean",
+    [
+        (
+            "I'm doing well, thanks! How about you? What's on your mind today?",
+            "What's on your mind",
+        ),
+        ("Hey! How can I help you today?", "How can I help you"),
+    ],
+)
+def test_scrub_drops_the_offending_sentence_only(text: str, expected_clean: str) -> None:
+    from core.reasoning.style import scrub_forbidden
+
+    cleaned = scrub_forbidden(text)
+    assert find_forbidden(cleaned) == []  # banned shape removed
+    assert expected_clean.lower() not in cleaned.lower()
+
+
+def test_scrub_returns_empty_when_whole_reply_is_banned() -> None:
+    # Caller keeps the best non-empty candidate rather than shipping "".
+    from core.reasoning.style import scrub_forbidden
+
+    assert scrub_forbidden("How can I help you today?") == ""

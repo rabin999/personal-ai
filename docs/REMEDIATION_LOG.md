@@ -5,6 +5,37 @@ Newest entries at the bottom of each section. Companion doc: `GAP_ANALYSIS.md`.
 
 ---
 
+## Second pass — memory triggers, extraction loop, faster CI (2026-07-07)
+
+### Doc overrides (made to make the app actually work; per instruction)
+- **Memory has a single explicit WRITE step.** Implemented the read → reason → WRITE loop:
+  after responding, an LLM-driven, Pydantic-validated **extraction step**
+  (`core/memory/extraction.py`) decides what to persist and WHERE — episodic *events*,
+  distilled *semantic facts* (time-stripped, e.g. "takes BP meds daily ~8pm"), and *trades*
+  — instead of dumping every turn verbatim (the raw `ConversationStore` still keeps the full
+  log). This overrides the previous "write the whole turn to episodic" behavior.
+- **Removed the `record_trade` conversational tool** (added earlier this session as R3).
+  Reason: it created a SECOND trade-write path, so a trade got logged twice (once by the
+  chat model calling the tool, once by extraction → net_invested doubled in the e2e). Trades
+  now persist ONLY through the extraction step — one writer, no double-write. `record_trade`
+  the tool is gone; `ProjectService.find_or_create` + `log_entry` remain (extraction uses them).
+- **Pre-commit is now fast (ruff only).** Heavy checks (mypy, full pytest, lint-imports) run
+  ONCE per bundle via `./scripts/check.sh`, not on every commit — per the instruction to stop
+  burning budget on per-commit suite runs.
+
+### Mechanisms added this pass
+- **Duplicate-action guard** in the agentic loop: an `action` tool runs at most once per turn
+  (dedup by id — the model jittered args when logging the same trade 3-4×). Read/background
+  tools still dedup by id+args. Fixes the "top N / same write repeated" class at the loop level.
+- **Deterministic style scrub** (`style.scrub_forbidden`): if the self-reflection rewrite is
+  still assistant-speak, drop the offending sentence so a banned shape can never ship (keeps
+  the rest; never empties the reply). Belt-and-suspenders behind the §9.3 rewrite.
+- **Core-engine e2e proof** (`tests/acceptance/test_core_engine_e2e.py`, paid+integration):
+  drives the real pipeline from the text boundary — trade record→recall, the medication
+  routine (extraction distills a semantic fact → recalled in a NEW session), cross-session
+  fact recall, no assistant-speak across a conversation, and cross-user isolation. All pass
+  against live datastores + real model.
+
 ## Framework decisions (adopt / reject + why)
 
 | Area | Decision | Rationale |

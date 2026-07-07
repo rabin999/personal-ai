@@ -1,29 +1,20 @@
-# Runs the full pre-merge check (lint, types, import boundary, tests) on every commit.
+# Pre-commit runs ONLY fast formatting/lint (ruff). Heavy checks — mypy, the full
+# pytest suite, and the import boundary — are intentionally NOT here: they run ONCE
+# per completed bundle of work via `./scripts/check.sh` (or CI), not on every commit.
+# Running the whole suite per commit burns time for no benefit.
 # Install once:  uv run pre-commit install
 repos:
   - repo: local
     hooks:
       - id: ruff-check
         name: ruff check
-        entry: uv run ruff check
+        entry: uv run ruff check --fix
         language: system
         types: [python]
         pass_filenames: false
-      - id: mypy
-        name: mypy
-        entry: uv run mypy .
-        language: system
-        types: [python]
-        pass_filenames: false
-      - id: lint-imports
-        name: import-linter (core must not import adapters)
-        entry: uv run lint-imports
-        language: system
-        types: [python]
-        pass_filenames: false
-      - id: pytest
-        name: pytest
-        entry: uv run pytest
+      - id: ruff-format
+        name: ruff format
+        entry: uv run ruff format
         language: system
         types: [python]
         pass_filenames: false

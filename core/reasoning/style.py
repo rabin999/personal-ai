@@ -45,3 +45,20 @@ def find_forbidden(text: str) -> list[str]:
 
 def is_assistant_speak(text: str) -> bool:
     return bool(find_forbidden(text))
+
+
+# Sentence splitter for the deterministic scrub — keeps terminal punctuation.
+_SENTENCE = re.compile(r"[^.!?]*[.!?]+|\S[^.!?]*$")
+
+
+def scrub_forbidden(text: str) -> str:
+    """Deterministic safety net: drop whole sentences that contain forbidden
+    phrasing, keeping the rest. Returns "" if that would empty the reply (caller
+    then keeps the best non-empty candidate). This removes banned *shapes*, not
+    tone — a last resort after the model's own rewrite (§7/§9.3)."""
+    sentences = _SENTENCE.findall(text)
+    if not sentences:
+        return ""
+    kept = [s for s in sentences if not find_forbidden(s)]
+    cleaned = " ".join(s.strip() for s in kept).strip()
+    return re.sub(r"\s{2,}", " ", cleaned)

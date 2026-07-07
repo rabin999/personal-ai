@@ -109,12 +109,24 @@ async def _persist_turn(
     assistant_text: str,
     trace: TraceEmitter,
 ) -> None:
-    """Write the turn to episodic + the durable conversation log (best-effort)."""
+    """Run the memory-extraction write step + the durable conversation log (§1/§6)."""
     try:
-        chunk = f"user: {user_text}\nassistant: {assistant_text}"
-        await pipeline.episodic.write(user_id, session_id, [chunk])
+        # §1 WRITE step: an explicit extraction decides what/where to persist
+        # (episodic events, distilled semantic facts, trades) — not a blind dump.
+        extracted = await pipeline.extractor.extract_and_store(
+            user_id, session_id, user_text, assistant_text
+        )
+        if extracted.episodic_written or extracted.semantic_written or extracted.trades_written:
+            trace.emit(
+                "memory",
+                f"stored {extracted.episodic_written} event(s), "
+                f"{extracted.semantic_written} fact(s), {extracted.trades_written} trade(s)",
+                episodic=extracted.events,
+                semantic=extracted.facts,
+                trades=extracted.trades_written,
+            )
     except Exception:
-        logger.exception("episodic write failed (text turn)")
+        logger.exception("memory extraction failed (text turn)")
     try:
         _turn_counters[session_id] = _turn_counters.get(session_id, 0) + 1
         await pipeline.conversations.record_turn(

@@ -31,6 +31,7 @@ from core.cost import CostLedger
 from core.memory.conversation_store import ConversationStore
 from core.memory.entities import EntityResolver
 from core.memory.episodic import EpisodicMemory
+from core.memory.extraction import MemoryExtractor
 from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
 from core.memory.vocab import VocabProvider
@@ -89,6 +90,7 @@ class Pipeline:
     vocab: VocabProvider
     traces: TraceStore
     conversations: ConversationStore
+    extractor: MemoryExtractor
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -187,6 +189,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         vocab=VocabProvider(semantic, profiles),
         traces=TraceStore(docs),
         conversations=ConversationStore(docs),
+        extractor=MemoryExtractor(llm, episodic, semantic, projects),
     )
 
 

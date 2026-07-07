@@ -50,8 +50,6 @@ async def voice_sample(voice: str, user: CurrentUser, request: Request) -> Respo
     ):
         pcm.extend(chunk)
     if not pcm:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY, detail="TTS returned no audio"
-        )
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="TTS returned no audio")
     wav = _pcm16_to_wav(bytes(pcm), SAMPLE_RATE)
     return Response(content=wav, media_type="audio/wav")

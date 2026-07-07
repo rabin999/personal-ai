@@ -20,6 +20,7 @@ from typing import Any, Protocol
 
 from core.memory.conversation_store import ConversationStore
 from core.memory.episodic import EpisodicMemory
+from core.memory.extraction import MemoryExtractor
 from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
@@ -81,6 +82,7 @@ class VoiceSession:
         delivery: "Delivery | None" = None,
         vocab: VocabProvider | None = None,
         conversations: ConversationStore | None = None,
+        extractor: MemoryExtractor | None = None,
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -100,6 +102,7 @@ class VoiceSession:
         self._delivery = delivery
         self._vocab = vocab
         self._conversations = conversations
+        self._extractor = extractor
         self._turn_index = 0  # verbatim conversation-log turn counter (§6)
         self._vocab_terms: list[str] | None = None  # resolved once per session
         # Serialize background delivery: the idle poll and each turn both call
@@ -383,12 +386,32 @@ class VoiceSession:
                 await self._synthesize(line, out)
 
     def _remember(self, user_text: str, assistant_text: str) -> None:
-        """Persist the turn to episodic memory (§5) for future recall; non-blocking."""
-        if self._episodic is None:
-            return
-        chunk = f"user: {user_text}\nassistant: {assistant_text}"
-        task = asyncio.create_task(self._episodic.write(self._user_id, self._session_id, [chunk]))
-        task.add_done_callback(lambda t: t.exception())  # swallow; write is best-effort
+        """WRITE step (§1): run the memory-extraction consolidation off the latency
+        path — it decides what to persist (episodic events / semantic facts / trades)
+        and where, rather than dumping every turn verbatim (the raw log covers that)."""
+        if self._extractor is not None:
+            task = asyncio.create_task(self._extract(user_text, assistant_text))
+            task.add_done_callback(lambda t: t.exception())  # swallow; best-effort
+        elif self._episodic is not None:  # fallback if no extractor wired
+            chunk = f"user: {user_text}\nassistant: {assistant_text}"
+            task = asyncio.create_task(
+                self._episodic.write(self._user_id, self._session_id, [chunk])
+            )
+            task.add_done_callback(lambda t: t.exception())
+
+    async def _extract(self, user_text: str, assistant_text: str) -> None:
+        assert self._extractor is not None
+        extracted = await self._extractor.extract_and_store(
+            self._user_id, self._session_id, user_text, assistant_text
+        )
+        if extracted.episodic_written or extracted.semantic_written or extracted.trades_written:
+            self._trace.emit(
+                "memory",
+                f"stored {extracted.episodic_written} event(s), "
+                f"{extracted.semantic_written} fact(s), {extracted.trades_written} trade(s)",
+                semantic=extracted.facts,
+                episodic=extracted.events,
+            )
 
     def _log_conversation(
         self, user_text: str, assistant_text: str, emotion: dict[str, Any] | None

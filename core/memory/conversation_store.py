@@ -70,9 +70,7 @@ class ConversationStore:
             "session_id": session_id,
             "started_at": existing.get("started_at", now) if existing else now,
             "started_at_iso": (
-                existing.get("started_at_iso")
-                if existing
-                else datetime.now(UTC).isoformat()
+                existing.get("started_at_iso") if existing else datetime.now(UTC).isoformat()
             ),
             "last_ts": now,
             "last_at_iso": datetime.now(UTC).isoformat(),

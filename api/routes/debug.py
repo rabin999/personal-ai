@@ -31,9 +31,7 @@ async def list_trace_sessions(user: CurrentUser, request: Request) -> dict[str, 
 
 
 @router.get("/traces/{session_id}")
-async def get_session_trace(
-    session_id: str, user: CurrentUser, request: Request
-) -> dict[str, Any]:
+async def get_session_trace(session_id: str, user: CurrentUser, request: Request) -> dict[str, Any]:
     """The full A→Z per-turn trace for one of this user's sessions."""
     events = await _trace_store(request).traces_for(user.user_id, session_id)
     return {"user_id": user.user_id, "session_id": session_id, "events": events}

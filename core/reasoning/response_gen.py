@@ -24,7 +24,7 @@ from pydantic import BaseModel, BeforeValidator, ValidationError
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
-from core.reasoning.style import find_forbidden
+from core.reasoning.style import find_forbidden, scrub_forbidden
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
@@ -232,8 +232,16 @@ class ResponseGenerator:
             if seed is not None:
                 tool_notes = [seed]
 
+        # Action tools that write must run at most ONCE per turn: the model can
+        # re-request the same write with jittered args (logging a trade 3-4x), so
+        # dedup those by id. Read/background tools dedup by id+args (queries differ).
+        action_ids: set[str] = set()
+        if can_use_tools and dispatcher is not None and context is not None:
+            action_ids = {t.id for t in dispatcher.tools_for(context) if t.type == "action"}
+
         last_draft = ""
         turn: LLMTurn | None = None
+        seen_calls: set[str] = set()  # dedup identical tool calls within the turn
         for _ in range(MAX_TOOL_STEPS if can_use_tools else 1):
             turn = await self._call_llm(prompt, dispatcher, context, tool_notes)
             if turn is None:  # both attempts failed validation / provider down
@@ -246,6 +254,20 @@ class ResponseGenerator:
             last_draft = turn.draft_response
             if turn.tool_request is None or not can_use_tools:
                 break
+            # An action tool runs at most once per turn (dedup by id, since the
+            # model jitters args); read/background dedup by id+args.
+            tid = turn.tool_request.tool_id
+            if tid in action_ids:
+                call_key = tid
+            else:
+                call_key = f"{tid}:{json.dumps(turn.tool_request.args, sort_keys=True)}"
+            if call_key in seen_calls:
+                tool_notes.append(
+                    f"(you already ran '{turn.tool_request.tool_id}' with those exact "
+                    "arguments this turn — do NOT call it again; answer the user now)"
+                )
+                continue
+            seen_calls.add(call_key)
             note = await self._dispatch_tool(dispatcher, context, turn.tool_request)  # type: ignore[arg-type]
             if isinstance(note, ConfirmRequest):  # §8.3: action needs confirmation
                 self._pending[prompt.session_id] = note  # resolved next turn
@@ -312,6 +334,13 @@ class ResponseGenerator:
         # the model re-say it in-voice once. Mechanism only — tone stays human-tuned.
         if self._self_reflect and find_forbidden(text):
             text = await self._rewrite_assistant_speak(prompt, text)
+            # Deterministic safety net: if the rewrite still carries a banned
+            # shape, drop the offending sentence(s) — but only if something
+            # natural remains (never ship an empty reply).
+            if find_forbidden(text):
+                scrubbed = scrub_forbidden(text)
+                if scrubbed:
+                    text = scrubbed
         return await self._finish(prompt, text, action, turn.judgment)
 
     async def _rewrite_assistant_speak(self, prompt: AssembledPrompt, text: str) -> str:

@@ -57,8 +57,7 @@ def test_assembly_sets_override_only_on_non_complex_turns() -> None:
         assert simple.model_override == "prov/nano"  # non-complex → honored
 
         heavy_utterance = (
-            "why should I compare these two strategies, walk me through "
-            "the tradeoffs and plan"
+            "why should I compare these two strategies, walk me through the tradeoffs and plan"
         )
         heavy = await assembler.assemble("u_demo_001", "s1", heavy_utterance)
         assert isinstance(heavy, AssembledPrompt)
