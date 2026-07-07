@@ -59,6 +59,14 @@ class FakeTTS:
         yield b"\x01\x00" * 240  # a little PCM16
 
 
+class FakeEpisodic:
+    def __init__(self) -> None:
+        self.writes: list[tuple[str, str, list[str]]] = []
+
+    async def write(self, user_id: str, session_id: str, chunks: list[str]) -> None:
+        self.writes.append((user_id, session_id, chunks))
+
+
 class FakeConversations:
     async def list_conversations(self, user_id, *, offset=0, limit=20, start_ts=None, end_ts=None):  # type: ignore[no-untyped-def]
         rows = [{"session_id": "s1", "user_id": user_id, "turn_count": 2, "last_ts": 100.0}]
@@ -82,6 +90,7 @@ def client() -> TestClient:
         delivery=FakeDelivery(),
         tts=FakeTTS(),
         conversations=FakeConversations(),
+        episodic=FakeEpisodic(),
     )
     return TestClient(app)
 

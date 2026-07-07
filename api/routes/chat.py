@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
+# Per-session verbatim turn counters for the durable conversation log (§6).
+_turn_counters: dict[str, int] = {}
+
 
 class ChatRequest(BaseModel):
     text: str
@@ -68,8 +71,22 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
 
     result = await pipeline.generator.generate(prompt, pipeline.dispatcher, context)
     trace.emit("generation", f"action={result.action}", action=result.action)
+    if result.style_flags:  # §7: tone regression is visible, not silent
+        trace.emit(
+            "generation",
+            f"style warning: forbidden assistant-speak {result.style_flags}",
+            level="warn",
+            style_flags=result.style_flags,
+        )
     trace.emit("response", result.final_text)
     pipeline.working.append(body.session_id, Turn(role="assistant", text=result.final_text))
+
+    # Memory parity with the voice runtime: the text path also persists the turn
+    # to episodic memory (§5, cross-session recall) and the durable conversation
+    # log (§6), best-effort so it never blocks the reply.
+    await _persist_turn(
+        pipeline, user.user_id, body.session_id, body.text, result.final_text, trace
+    )
 
     # Any background result that landed during this turn is prepended to the reply.
     reply = " ".join([*(d.line for d in deliveries), result.final_text]).strip()
@@ -82,6 +99,34 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
         turn_id=result.turn_id,
         trace=events,
     )
+
+
+async def _persist_turn(
+    pipeline: Pipeline,
+    user_id: str,
+    session_id: str,
+    user_text: str,
+    assistant_text: str,
+    trace: TraceEmitter,
+) -> None:
+    """Write the turn to episodic + the durable conversation log (best-effort)."""
+    try:
+        chunk = f"user: {user_text}\nassistant: {assistant_text}"
+        await pipeline.episodic.write(user_id, session_id, [chunk])
+    except Exception:
+        logger.exception("episodic write failed (text turn)")
+    try:
+        _turn_counters[session_id] = _turn_counters.get(session_id, 0) + 1
+        await pipeline.conversations.record_turn(
+            user_id=user_id,
+            session_id=session_id,
+            turn_index=_turn_counters[session_id],
+            user_text=user_text,
+            assistant_text=assistant_text,
+            trace_turn=trace.current_turn,
+        )
+    except Exception:
+        logger.exception("conversation persistence failed (text turn)")
 
 
 def _tool_context(user_id: str, session_id: str, prompt: object) -> ToolContext:
