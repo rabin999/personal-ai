@@ -112,3 +112,40 @@ episodic write, cross-referenced to the trace turn). `GET /api/conversations` (p
 + **server-side** ISO datetime-range filter) and `/api/conversations/{session}` expose a
 user's own history. Tests cover recording, pagination, server-side range filter, and
 two-user isolation. (Also lays the foundation the follow-up `/conversations` page needs.)
+
+### R10 — No voice sample preview (§3.2) — FIXED
+`GET /api/voices` lists the five Grok voices; `GET /api/voices/{voice}/sample` synthesizes
+a short line and returns a **playable WAV** (browsers can't play raw PCM16). Auth'd, cost
+logged by the TTS adapter. Tests: list, WAV RIFF header, unknown-voice 404.
+
+---
+
+## Definition-of-Done status (honest, at end of this pass)
+
+FULL CHECK green: `ruff` ✅ · `mypy .` (175 files) ✅ · `lint-imports` ✅ ·
+`pytest` ✅ (unit + integration against live datastores; paid deselected, offline-only
+skipped loudly).
+
+**Done + verified (root-cause):** R1 first-word pre-roll · R2 delivery de-dup · R3
+record_trade persistence · R4 durable trace store + `/debug/traces` · R5 style detector
++ config-guard · R6 self-reflection rewrite (live-verified 4/5→5/5) · R7 tool-result store
++ recall · R8 user-selectable fast model + tighter endpointing · R9 durable conversation
+store + `/api/conversations` · R10 voice preview.
+
+**Present as mechanism, not live-verifiable here (hardware/services):**
+- Barge-in immediacy (§2.1): cancel path is correct in code; true instant halt needs AEC +
+  a duplex-audio client — not reproducible without a mic.
+- Grok TTS tag *audibility* (§3.1): tags are generated, sanitized, and chunked so a tag is
+  never split; whether they *sound* right needs a live key + ears.
+- SER prosody (§3.3): `LaggingEmotionProvider` is wired to feed §10/§17 and is traced;
+  inference quality needs the emotion2vec GPU service running.
+
+**Deliberately deferred (with rationale, not silently skipped):**
+- Prompt caching (§9.1): NOT hard-coded. OpenAI/Google/Anthropic already do automatic
+  server-side prefix caching for the stable system prefix, and OpenRouter usage accounting
+  already logs $0 on those. Injecting explicit `cache_control` breakpoints risks breaking
+  `json_object` mode across the mixed provider set and cannot be safely verified here.
+  Recommended as a targeted follow-up on the Anthropic (complex) tier only.
+- Full Langfuse / Pipecat-LiveKit adoption: see the framework-decision table above.
+- Response-tone final wording (§7): human-tuned by design; the mechanism (detector +
+  reflection) is in and the config-guard prevents regressions.

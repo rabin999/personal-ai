@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24_000  # PCM16 output we request from xAI
 _COST_PER_CHAR_USD = 4.20 / 1_000_000  # xAI Grok TTS pricing
-_VOICES = {"ara", "eve", "leo", "rex", "sal"}
+# Ordered public list (the voice sample-preview surface, §3.2 / brief §3.2).
+VOICES = ("ara", "eve", "leo", "rex", "sal")
+_VOICES = set(VOICES)
 
 # Synthesis chunk budget: big enough for natural prosody within a clause,
 # small enough that the first audio arrives fast.
