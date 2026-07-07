@@ -89,6 +89,7 @@ class VoiceSession:
         conversations: ConversationStore | None = None,
         extractor: MemoryExtractor | None = None,
         defer_routing: bool = True,
+        engine: str = "native",
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -110,6 +111,7 @@ class VoiceSession:
         self._conversations = conversations
         self._extractor = extractor
         self._defer_routing = defer_routing
+        self._engine = engine
         self._turn_index = 0  # verbatim conversation-log turn counter (§6)
         self._vocab_terms: list[str] | None = None  # resolved once per session
         # Serialize background delivery: the idle poll and each turn both call
@@ -144,7 +146,11 @@ class VoiceSession:
         # Record the pinned voice on the session span (spec §2b): one voice for the
         # whole session, visible in the trace so a voice change would be detectable.
         self._trace.emit(
-            "session", "conversation started", user_id=self._user_id, voice=self._voice
+            "session",
+            "conversation started",
+            user_id=self._user_id,
+            voice=self._voice,
+            engine=self._engine,  # §11: which voice runtime produced this session
         )
         buffer: list[bytes] = []
         # Pre-roll ring of the most recent pre-speech frames (§19 first-word fix).

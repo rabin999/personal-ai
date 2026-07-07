@@ -13,7 +13,12 @@ import {
   requestMicAccess,
 } from "../lib/audio";
 import { fetchMe, logout, type Me } from "../lib/session";
-import { getModels, sendFeedback, setModel as saveModel } from "../lib/api";
+import {
+  getModels,
+  sendFeedback,
+  setModel as saveModel,
+  setVoiceEngine as saveVoiceEngine,
+} from "../lib/api";
 import { useTheme } from "../lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
@@ -69,6 +74,11 @@ export default function CompanionPage() {
       .then((m) => {
         setModels(m.choices);
         setModel_(m.selected ?? "");
+        // §11: restore the persisted voice engine so the client reconnects to
+        // the same runtime the user last chose.
+        if (m.voice_engine === "native" || m.voice_engine === "pipecat") {
+          setRuntime(m.voice_engine);
+        }
       })
       .catch(() => {});
   }, []);
@@ -351,7 +361,11 @@ export default function CompanionPage() {
                 <span className={FIELD_LABEL}>Voice engine</span>
                 <select
                   value={runtime}
-                  onChange={(e) => setRuntime(e.target.value as "native" | "pipecat")}
+                  onChange={(e) => {
+                    const eng = e.target.value as "native" | "pipecat";
+                    setRuntime(eng);
+                    void saveVoiceEngine(eng).catch(() => {}); // §11: persist the choice
+                  }}
                   disabled={active}
                   className={FIELD}
                   title="Switch between the native asyncio runtime and the Pipecat pipeline (VAD/barge-in). Choose before starting."

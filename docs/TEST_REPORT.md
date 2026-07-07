@@ -594,3 +594,43 @@ by prompt_version. The Traces page shows per-turn feedback controls.
 Proven in Item 1 (interrupt then same-topic follow-up keeps the working-memory thread).
 
 **Full non-paid suite 356 passed; mypy (42 files) + lint-imports clean.**
+
+---
+
+## Item 11 — Engine/model selection + streaming input + acknowledge-first-parallel (spec §11)
+
+### Model selection (already present, confirmed)
+User-selectable fast model persisted in `ModelPrefs.fast_model`, exposed via `GET/PATCH /api/models`,
+applied as `AssembledPrompt.model_override`, validated against the live catalog, and visible on the
+llm.call span (model). ✓
+
+### Voice-engine selection — now PERSISTED + TRACED (gap closed)
+Previously the native/pipecat toggle was client-only local state (lost on reload). Added:
+- `ModelPrefs.voice_engine` (`native`|`pipecat`, default native), merged-persisted via
+  `PATCH /api/models` (setting the engine never wipes the fast-model choice).
+- The voice `session` trace span now records `engine`.
+- Frontend restores the persisted engine on mount (`getModels().voice_engine → setRuntime`) and
+  saves on change (`setVoiceEngine`), so the client reconnects to the same runtime behind the voice
+  port. **Verified real:** default `native`; set `pipecat` persists AND keeps `fast_model` (merge);
+  reread confirms. Unit: `test_voice_engine_defaults_native_and_persists`.
+
+### Streaming voice INPUT (partials)
+`FasterWhisperSTT.transcribe_stream` already emits partial `TranscriptPiece(is_final=False)` on a
+re-decode cadence that feeds endpointing (§21), then a final piece with per-word confidence. Present
+in code; **full audio verification is mic-blocked** (needs a real microphone + the `voice` extra).
+
+### Acknowledge-first then run the slow tool in PARALLEL (reconciled with R13)
+The reconciled policy, now coherent across the code:
+- **Quick current-info** (weather/news/time/price the model requests): `run_inline` resolves it
+  in-turn, bounded (≤8s), so the companion answers THIS turn with real data (R13). On timeout it
+  **promotes to the background queue** (Item 5).
+- **Slow / background tools**: `dispatch` enqueues them (runs in parallel on the worker), the model
+  is told to "briefly say you're on it" (acknowledge-first), and the `DeliveryComposer` waiter
+  delivers the actual finding at the next pause — with the Item 8 pileup cap. This is
+  acknowledge-first-parallel; the background/waiter flow is covered by `test_background_delivery` +
+  the Item 8 delivery tests.
+
+**Blocked (hardware):** streaming-input audio behavior and the Pipecat engine runtime both need a
+real mic + the `voice` extra; the selection/persistence/trace wiring above is verified without them.
+
+**Full non-paid suite 356 passed; web tsc + build clean; mypy + lint clean.**

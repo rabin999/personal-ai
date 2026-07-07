@@ -114,11 +114,16 @@ export function getModels(): Promise<{
   choices: string[];
   selected: string | null;
   default: string;
+  voice_engines: string[];
+  voice_engine: string;
 }> {
   return authed("/api/models");
 }
 export function setModel(fast_model: string | null): Promise<{ selected: string | null }> {
   return authed("/api/models", { method: "PATCH", body: JSON.stringify({ fast_model }) });
+}
+export function setVoiceEngine(voice_engine: string): Promise<{ voice_engine: string }> {
+  return authed("/api/models", { method: "PATCH", body: JSON.stringify({ voice_engine }) });
 }
 
 // ── feedback ─────────────────────────────────────────────────────────────

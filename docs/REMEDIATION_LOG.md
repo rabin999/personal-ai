@@ -585,3 +585,17 @@ Non-paid suite 351.
 - Verified real: capability regression (lonely→no search; nonsense→search), ambiguity guardrail
   (DisambiguationRequest), feedback→trace (session+turn keyed, Item 7 attribution).
 Non-paid suite 356.
+
+---
+
+## Autonomous backlog run — Item 11: Engine/model selection + streaming + ack-first (2026-07-07)
+
+- Voice-engine selection now persisted: ModelPrefs.voice_engine (native/pipecat), PATCH /api/models
+  (merge-safe with fast_model), recorded on the voice session trace span, restored client-side on
+  mount + saved on change. Verified real (persist + merge + reread) + unit.
+- Model selection already complete (fast_model, /api/models, model_override).
+- Streaming voice input partials already emitted by FasterWhisperSTT (mic-blocked for full verify).
+- Ack-first-parallel reconciled with R13: quick current-info → run_inline (answer now, timeout →
+  promote to background); slow/background → enqueue (parallel) + model acks + waiter delivers (Item 8
+  pileup cap). Coherent single policy.
+Non-paid suite 356.

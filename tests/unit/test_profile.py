@@ -158,3 +158,18 @@ async def test_project_types_seed_contains_finance_blueprint(
     await registry.seed_defaults(DEFAULTS_DIR)
     types = await registry.project_types()
     assert [t.id for t in types] == ["finance_portfolio"]
+
+
+# Item 11: voice-engine choice defaults to native, persists, and merges with the
+# fast-model choice (setting one pref never wipes the other).
+async def test_voice_engine_defaults_native_and_persists(profiles: ProfileService) -> None:
+    p = await profiles.first_run_sync("u_eng")
+    assert p.model_prefs.voice_engine == "native"
+
+    await profiles.update("u_eng", {"model_prefs": {"fast_model": "google/gemini-2.5-flash-lite"}})
+    updated = await profiles.update("u_eng", {"model_prefs": {"voice_engine": "pipecat"}})
+
+    assert updated.model_prefs.voice_engine == "pipecat"
+    assert updated.model_prefs.fast_model == "google/gemini-2.5-flash-lite"  # merge, not replace
+    reread = await profiles.get("u_eng")
+    assert reread.model_prefs.voice_engine == "pipecat"

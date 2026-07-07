@@ -1,6 +1,6 @@
 """Data schemas for Config & User Profile (spec §2)."""
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,11 +27,14 @@ class CommPrefs(BaseModel):
 
 
 class ModelPrefs(BaseModel):
-    """Per-user LLM model choice (§4). ``fast_model`` is a user-selected fast/flash
-    model tried first on non-complex turns; None → default tier routing. The
-    router validates it against the configured catalog, so a stale id is ignored."""
+    """Per-user LLM + voice-engine choice (§4/§11). ``fast_model`` is a user-selected
+    fast/flash model tried first on non-complex turns; None → default tier routing.
+    ``voice_engine`` selects the voice runtime (native asyncio loop vs Pipecat); it
+    persists so the client reconnects to the same engine, and it's recorded in the
+    trace. Both are validated so a stale value is ignored."""
 
     fast_model: str | None = None
+    voice_engine: Literal["native", "pipecat"] = "native"
 
 
 class UserProfile(BaseModel):

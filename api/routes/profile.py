@@ -39,20 +39,32 @@ async def list_models(user: CurrentUser, request: Request) -> dict[str, Any]:
         "choices": pipeline.llm.fast_model_choices(),
         "selected": profile.model_prefs.fast_model,
         "default": pipeline.llm.route("simple"),
+        # §11: the user-selectable voice engine + this user's persisted choice.
+        "voice_engines": ["native", "pipecat"],
+        "voice_engine": profile.model_prefs.voice_engine,
     }
 
 
 class _ModelChoice(BaseModel):
     fast_model: str | None = None
+    voice_engine: str | None = None
 
 
 @router.patch("/models")
 async def set_model(body: _ModelChoice, user: CurrentUser, request: Request) -> dict[str, Any]:
-    """Set (or clear, with null) this user's fast-model choice (§4)."""
+    """Set (or clear, with null) this user's fast-model + voice-engine choice (§4/§11)."""
     pipeline = _pipeline(request)
-    if body.fast_model is not None and body.fast_model not in pipeline.llm.fast_model_choices():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown model")
-    updated = await pipeline.profiles.update(
-        user.user_id, {"model_prefs": {"fast_model": body.fast_model}}
-    )
-    return {"selected": updated.model_prefs.fast_model}
+    updates: dict[str, Any] = {}
+    if body.fast_model is not None:
+        if body.fast_model not in pipeline.llm.fast_model_choices():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown model")
+        updates["fast_model"] = body.fast_model
+    if body.voice_engine is not None:
+        if body.voice_engine not in ("native", "pipecat"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown engine")
+        updates["voice_engine"] = body.voice_engine
+    updated = await pipeline.profiles.update(user.user_id, {"model_prefs": updates})
+    return {
+        "selected": updated.model_prefs.fast_model,
+        "voice_engine": updated.model_prefs.voice_engine,
+    }
