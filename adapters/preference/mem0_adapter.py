@@ -18,6 +18,13 @@ episodic — see docs/REMEDIATION_LOG.md for the two-engine rationale.
 import asyncio
 import logging
 import os
+
+# Disable Mem0/PostHog telemetry BEFORE importing mem0 anywhere: PostHog spawns a
+# background thread that phones home and can delay process exit (a lingering
+# non-daemon flush on Ctrl+C). Set at import time so it's in place first.
+os.environ.setdefault("MEM0_TELEMETRY", "False")
+os.environ.setdefault("POSTHOG_DISABLED", "1")
+
 from typing import Any
 from urllib.parse import urlparse
 
@@ -30,7 +37,6 @@ MEM0_COLLECTION = "mem0_preferences"
 
 class Mem0PreferenceMemory:
     def __init__(self, settings: Settings) -> None:
-        os.environ.setdefault("MEM0_TELEMETRY", "False")  # no phone-home
         self._memory: Any | None = None
         try:
             from mem0 import Memory  # type: ignore[import-untyped]

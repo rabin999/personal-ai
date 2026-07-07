@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     # exists for that verification regardless of this flag.
     voice_runtime: str = "native"
 
+    # Dev convenience: run the background worker (§14 consolidation/search/tool
+    # tasks) as an in-process asyncio task inside the API instead of a separate
+    # process, so `uvicorn api.app:app` runs everything. Keep FALSE in production
+    # — there the worker is a separate process for latency + failure isolation.
+    run_worker_in_process: bool = False
+
     # Application logging transport (brief Part B): pluggable, config-driven sinks.
     # Comma-separated list of active sinks: "file", "stdout" (both may be on).
     log_sinks: str = "file"

@@ -78,3 +78,14 @@ async def test_turns_are_user_scoped() -> None:
     assert len(a) == 2 and all(t["user_id"] == USER_A for t in a)
     rows_b = await docs.find(CONVERSATION_TURNS_COLLECTION, {"user_id": USER_B})
     assert len(rows_b) == 2  # B's turns stored separately, never returned to A
+
+
+async def test_reads_drop_mongo_id_for_json_serialization() -> None:
+    # Regression: real Mongo docs carry a non-JSON-serializable ObjectId _id;
+    # both reads must strip it so the API can serialize them.
+    store = ConversationStore(FakeDocStore())
+    await _record(store, USER_A, "s1", 1)
+    convos, _ = await store.list_conversations(USER_A)
+    turns = await store.turns(USER_A, "s1")
+    assert all("_id" not in c for c in convos)
+    assert all("_id" not in t for t in turns)

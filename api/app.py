@@ -5,6 +5,8 @@ Thin edge: resolves bearer token → user_id (spec §26) and streams tokens/audi
 composition root — so ``core/`` itself never imports ``adapters/``.
 """
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -28,18 +30,37 @@ from api.routes import (
 )
 from config.settings import get_settings
 
+logger = logging.getLogger(__name__)
+
 WEB_DIST = Path(__file__).parents[1] / "web" / "dist"
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Wire the full pipeline at startup; fail loudly if a datastore is down (§1)."""
-    pipeline = await build_pipeline(get_settings())
+    """Wire the full pipeline at startup; fail loudly if a datastore is down (§1).
+
+    In dev (``run_worker_in_process``) the §14 background worker runs as an
+    in-process task so one command runs everything; production keeps it separate.
+    """
+    settings = get_settings()
+    pipeline = await build_pipeline(settings)
     app.state.pipeline = pipeline
     app.state.user_context = pipeline.user_context
+
+    worker_task: asyncio.Task[None] | None = None
+    if settings.run_worker_in_process:
+        from workers.consolidation_worker import build_worker
+
+        worker = build_worker(pipeline)
+        worker_task = asyncio.create_task(worker.run_forever())
+        logger.info("background worker running in-process (dev; §14)")
+
     try:
         yield
     finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            await asyncio.gather(worker_task, return_exceptions=True)
         await pipeline.aclose()
 
 

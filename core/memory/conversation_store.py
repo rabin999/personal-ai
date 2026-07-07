@@ -98,7 +98,7 @@ class ConversationStore:
             docs = [d for d in docs if d.get("last_ts", 0.0) <= end_ts]
         docs.sort(key=lambda d: d.get("last_ts", 0.0), reverse=True)
         total = len(docs)
-        return docs[offset : offset + limit], total
+        return [_jsonable(d) for d in docs[offset : offset + limit]], total
 
     async def turns(
         self, user_id: str, session_id: str, *, offset: int = 0, limit: int = 200
@@ -110,4 +110,9 @@ class ConversationStore:
             limit=100000,
         )
         docs.sort(key=lambda d: d.get("turn_index", 0))
-        return docs[offset : offset + limit]
+        return [_jsonable(d) for d in docs[offset : offset + limit]]
+
+
+def _jsonable(doc: dict[str, Any]) -> dict[str, Any]:
+    """Drop the Mongo ``_id`` (an ObjectId isn't JSON-serializable) for the API."""
+    return {k: v for k, v in doc.items() if k != "_id"}
