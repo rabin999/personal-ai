@@ -125,3 +125,14 @@ async def test_preference_layer_receives_the_exchange() -> None:
     await ex.extract_and_store(USER, "s1", "I love hiking", "nice!")
     assert prefs.added and prefs.added[0][0] == USER
     assert any("hiking" in m["content"] for m in prefs.added[0][1])
+
+
+def test_with_subject_prefixes_bare_facts_only() -> None:
+    from core.memory.extraction import _with_subject
+
+    # Bare fact → gets a subject so Graphiti can attach it.
+    assert _with_subject("takes meds at 8pm") == "The user takes meds at 8pm"
+    # Already-subjected facts are left as-is.
+    assert _with_subject("The user likes hiking") == "The user likes hiking"
+    assert _with_subject("User works at Acme") == "User works at Acme"
+    assert _with_subject("They have a dog named Trishul") == "They have a dog named Trishul"

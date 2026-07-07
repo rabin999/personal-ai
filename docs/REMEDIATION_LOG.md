@@ -66,6 +66,27 @@ preference/fact recall. A residual Graphiti warning (`Source entity not found in
 edge relation`) remains and is logged for follow-up. Recall is currently robust via episodic +
 Mem0 even when Graphiti lags.
 
+## Fifth pass — tracing completeness + Graphiti retrieval root-cause fix
+
+### R16 — Trace now has per-LLM-call spans + judgment + reflection (CLAUDE.md §5)
+Every OpenRouter call emits an `llm.call` span (model, in/out tokens, cost_usd,
+latency_ms, tier); `ResponseGenerator` emits a `judgment` span and a distinct
+`reflection` span. A `TraceStoreLogSink` maps correlation-bound structured-log records
+into the durable trace store, so all spans show up in `/debug/traces` + the /traces UI,
+grouped by session. The chat route binds `trace_id/turn_id/user_id` around the whole turn.
+Verified live: `llm → judgment → llm → reflection`, reflection catching a "flat filler
+opener" and cleaning it. This is the "hand-rolled trace equally complete" bar.
+
+### R17 — Graphiti retrieval returned nothing (the audit's #1 blocker) — ROOT-CAUSE FIXED
+**Root cause (proven live):** a bare fact episode ("takes meds at 8pm") makes Graphiti's
+extractor **orphan the edge** ("Source entity not found in nodes for edge relation") so
+`search` returns nothing; the SAME fact with a subject ("The user takes…") returns
+reliably. Direct A/B: bare → `[]`, subjected → `['user takes … 8pm']`.
+**Fix:** the extraction step now gives every semantic fact an explicit user subject before
+writing to Graphiti (`_with_subject`). Verified end-to-end: `profile_facts` returns the
+fact and a NEW session recalls "8 PM". Semantic/temporal retrieval is now reliable, not
+just backstopped by Mem0/episodic.
+
 ## Fourth pass — logging transport + per-user UI (Parts B & C)
 
 ### R13 — Pluggable logging transport (Part B)
