@@ -1,169 +1,193 @@
-# Today Report — Status Audit (evidence-backed)
+# Session Report — Post-Task Correction Audit (pass 2)
 
-> **Update (same day, after the audit):** the two memory bugs this audit found are now
-> fixed and re-verified live — (1) **Mem0 is wired** (preference layer: WRITE in the
-> extraction step, READ in prompt assembly; OpenRouter+fastembed+Qdrant), (2) the
-> **double-write on recall is gone** (recall turns now store nothing; ledger stays at
-> `entry_count: 1 / 2300`), and (3) **semantic retrieval returned the fact** on the
-> re-run (`'user takes blood-pressure prescription daily at 8pm'`). Details in
-> `docs/REMEDIATION_LOG.md` (R11–R12). The audit findings below are preserved as the
-> point-in-time record.
+**Date:** 2026-07-07
+**Method:** every claim verified by a **real chat turn** (real OpenRouter LLM + real Serper
+search + real Mongo/Qdrant/Neo4j/Redis) before touching code. No mocks. Each fix re-verified by
+a captured real conversation. Commits: `d91c2ed` (fix bundle), `c6be9d9` (remediation log).
 
 ---
 
-## Original audit (point-in-time)
+## TL;DR
 
-**Date:** 2026-07-07 · **Method:** greps, dependency inspection, and a **real captured
-conversation** against the live pipeline (OpenRouter + docker-compose datastores). Every
-claim below has a file path or command output. Where something isn't done, it says so.
+Audited the reported bugs against real runs. **Graphiti recall was NOT broken** (the audit's
+suspicion was stale). **Five things were genuinely broken and shipped anyway** — TTS tags leaking
+into chat, transient states stored as durable facts, unknown terms refused, "top N news" empty,
+and the big one: **capability false-refusals** ("I don't have access to real-time data") on a
+whole class of live-info queries. All five are now fixed and re-verified live.
 
----
+The root reason these shipped: **BUILD_STATUS.md / CLAUDE.md §6 claim `real_call`/e2e coverage
+everywhere, but there are zero `@pytest.mark.real_call` tests in the repo.** The mocked tests
+passed while the real app gave bad answers — exactly the failure mode the brief warns about.
 
-## 1. Proper tools — installed AND actually wired?
-
-| Tool | In deps? | Wired in code? | Verdict |
-|---|---|---|---|
-| **Graphiti (+Neo4j)** | ✅ `graphiti-core>=0.29.2`, `neo4j>=6.2.0` | ✅ imported `adapters/db.py:17`, `adapters/graph/graphiti.py`; used by `core/memory/semantic.py` | **Wired, but not functioning for retrieval** — see §3: `profile_facts` returned `(none)` and the run logged `Source entity not found in nodes for edge relation: TAKES`. The engine is real; the temporal facts aren't coming back. |
-| **Qdrant** | ✅ `qdrant-client>=1.18.0` | ✅ `adapters/db.py:26`, `adapters/vector/qdrant.py`; used by `core/memory/episodic.py`, `entities.py` | **Wired and WORKING** — episodic retrieval surfaced the meds + trade across a new session (§3). |
-| **Pipecat / LiveKit** | ✅ `pipecat-ai[silero]>=1.5.0` · LiveKit ❌ absent | ⚠️ Pipecat used **only for the Silero VAD model** (`adapters/vad/silero.py:28`). The VAD gate, endpointing, barge-in and session loop are **hand-rolled** in `voice/pipeline.py`, `endpointing.py`, `bargein.py`, `session.py`. No Pipecat transport / `PipelineTask` / `FrameProcessor`. | **Mostly hand-rolled.** Pipecat present but its pipeline/transport/barge-in is NOT used. |
-| **Mem0** | ✅ `mem0ai>=2.0.11` (installed today) | ⚠️ Adapter written `adapters/preference/mem0_adapter.py` + port `ports/preference_memory.py`; **smoke-tested working** (extracted "User loves hiking", "User's dog is named Trishul" via OpenRouter+fastembed+Qdrant). **NOT yet imported by `api/composition.py` / prompt assembly.** | **Installed + adapter, NOT live.** Integration in progress. |
-| **Langfuse / OpenTelemetry** | ❌ `grep -c langfuse uv.lock` → **0**; no opentelemetry | ❌ Only a comment in `core/observability/trace_store.py:13` explaining the choice NOT to use it. Tracing is hand-rolled (`voice/trace.py` + `core/observability/trace_store.py`, Mongo-backed). | **Not present.** Observability is hand-rolled (stage-level, see §3). |
-| **OpenRouter** | ✅ (via `openai` client) | ✅ `adapters/llm/openrouter.py` | **Wired, WORKING** (all LLM calls in §3). |
-| **Grok TTS** | ✅ (xAI via httpx) | ✅ `adapters/tts/grok.py` | **Wired**; audibility not verified (needs ears). |
-| **Serper / Brave** | ✅ keys in `.env` | ✅ `adapters/search/serper.py`, `adapters/search/brave.py` | **Wired, WORKING** (news pulled in §3). |
-| **Silero VAD** | ✅ (pipecat extra) | ✅ `adapters/vad/silero.py` | **Wired.** |
-| **emotion2vec (SER)** | ✅ `ser` extra | ✅ `adapters/ser/emotion2vec_client.py` + `services/ser_service` | **Wired, NOT verified** (needs GPU service running). |
-| **faster-whisper (STT)** | ✅ `faster-whisper>=1.2.1` | ✅ `adapters/stt/faster_whisper.py:49` | **Wired.** |
-| **Pydantic** | ✅ | ✅ everywhere (LLM outputs, extraction, tools) | **Wired, WORKING.** |
+This was a focused, high-value bundle. **Most of the 11-part audit remains unverified/undone** —
+see "Not done" below. Brutally honest scope: ~1 of 11 parts substantially closed.
 
 ---
 
-## 2. Where the wheel was reinvented
+## Part 0 — verification table (what a real run actually did)
 
-| Hand-rolled | File(s) | Named tool it "should" be | Why |
-|---|---|---|---|
-| Voice pipeline: VAD gate, endpointing, barge-in, session loop | `voice/pipeline.py`, `voice/endpointing.py`, `voice/bargein.py`, `voice/session.py` | **Pipecat** (pipeline/transport/native barge-in) | Original build predates this session; this session chose to fix specific bugs (pre-roll, delivery) over a full Pipecat migration that can't be A/B-tested without a mic. Logged in `REMEDIATION_LOG.md`. **This is the biggest reinvention and the likely reason barge-in immediacy can't be guaranteed.** |
-| Tracing / observability | `voice/trace.py`, `core/observability/trace_store.py` | **Langfuse / OTel** | Chose Mongo-backed trace to avoid standing up a Langfuse server; documented. Result: stage-level trace exists, but no hierarchical per-LLM-call token/cost/latency in the trace (cost is in a separate ledger). |
-| Memory extraction / consolidation loop | `core/memory/extraction.py` | **Mem0** (`add()`/`search()`) | Built a custom Pydantic extraction step this session. Mem0 now installed to complement it but not yet wired. Some overlap. |
-| Entity resolution, working memory, procedural rules, conversation log | `core/memory/entities.py`, `working.py`, `procedural.py`, `conversation_store.py` | (no named tool) | Legitimately custom; not a reinvention. |
+| Item | Was claimed | Real run BEFORE | Verdict | State now |
+|---|---|---|---|---|
+| 1.1 Graphiti semantic recall | done | "takes BP meds daily ~8pm" **was** retrieved into the prompt | **works — audit stale** | unchanged |
+| 1.3 "top N news" = N items | done | follow-up → "The first is about , and the second is about ." | **claimed-but-broken** | fixed (inline search) |
+| 1.4 TTS tags in chat | done | `[sigh]` `<pause>` `[warm]` literally in chat text | **claimed-but-broken** | **fixed** |
+| 1.5 / 8.13 transient→durable | done | "headache right now" stored as **semantic fact** | **claimed-but-broken** | **fixed** |
+| 1.6 unknown term → search | done | "Herak" → "not sure I've heard of that" | **claimed-but-broken** | **fixed** |
+| 8.8 capability awareness | (new) | "current time in Nepal" / weather → "I don't have access to real-time data" | **claimed-but-broken (class of bug)** | **fixed** |
 
 ---
 
-## 3. What actually works — proven by conversation (verbatim capture)
+## Fixes (each proven by a captured real conversation)
 
-Captured from a live run (real model + datastores). Raw, unedited:
+### 1. Capability awareness / tool routing — §8.8, §1.6, §1.3 (the class-of-bug)
 
+**Root cause (three compounding faults):**
+1. The identity/system prompt described the companion ("you remember past conversations") but
+   **never stated it can search the web** — so the fast tier fell back to "I'm an AI, I can't
+   access real-time data."
+2. `web_search` is a **background** tool — even when the model *did* request it, the dispatcher
+   enqueued it and returned a handle, so the turn produced a hollow "just a moment…" and **never
+   answered**. The later follow-up then hallucinated empty items.
+3. No deterministic net caught the refusal.
+
+**Fix (three layers):**
+- **System prompt:** an explicit *"What you can actually do"* block in `_identity_section`
+  (`core/reasoning/prompt_assembly.py`) that lists real capabilities and **forbids** the
+  "can't access real-time / never heard of it" refusal class.
+- **Inline resolution:** `ToolDispatcher.run_inline()` (new) executes a tool synchronously,
+  bounded (8 s). The response loop resolves a `web_search` request **in-turn** so the model
+  answers with real data now; on timeout it falls back to the background/waiter path.
+- **Deterministic backstop:** `_is_live_info_query()` (weather/news/time/price/score…) +
+  `_needs_capability_refusal/_hollow_promise` force a real search and re-answer when the model
+  ran no tool. Careful topic-marker regex so ordinary feelings never trip a search.
+
+**Captured proof:**
 ```
-[s1] USER: hi
-  COMPANION: Hey there! So good to meet you. What do I call you, and what's up?
-  style_flags: []                        ← warm companion, NOT assistant-speak ✅
+"what is the weather in Kathmandu right now?"
+→ "Right now in Kathmandu, it's 81°F and feels like 87°. You can expect occasional
+   thunderstorms today with a high of 83° and a 70% chance of precipitation."
+   [trace: web_search span tool_type=background:inline; log: POST google.serper.dev 200]
 
-[s1] USER: I take my blood-pressure prescription every day at 8pm.
-  COMPANION: Got it. You take your blood pressure prescription every day at 8 PM.
-  WROTE -> episodic:1 semantic:1 trades:0
-    semantic facts: ['takes blood-pressure medication daily around 8pm']   ← distilled ✅
+"what is Herak?"
+→ "'Herak' can refer to a Bosnian Serb soldier named Borislav Herak, a donor to Gonzaga
+   University named Donald Herak, or a Klingon warrior from Star Trek…"   (was: "never heard of it")
 
-[s1] USER: record that I bought 10 units of SYPNL at 230
-  COMPANION: Got it. You bought 10 units of SYPNL at 230.
-  WROTE -> episodic:1 semantic:0 trades:1                                    ← ledger write ✅
-
---- NEW SESSION s2 ---
-[s2] USER: hey, when do I take my medication again?
-  RETRIEVED episodic: ['took blood-pressure prescription daily at 8pm', ...]
-  RETRIEVED semantic facts: (none)                        ← Graphiti returned NOTHING ⚠️
-  COMPANION: You take your blood pressure prescription every day at 8 PM.   ← RECALL ✅ (via episodic)
-
-[s2] USER: what did I buy recently?
-  COMPANION: You recently bought 10 units of SYPNL at 230.                   ← RECALL ✅
-  WROTE -> ... trades:1                                   ← RE-LOGGED the same trade ⚠️
-
-LEDGER STATE: {... 'net_invested': 4600.0, 'entry_count': 2}   ← should be 2300/1 entry ⚠️
-
-[web_search] top news
-  summary: Trump...F-35 for Turkey. Russia attacks Ukraine ahead of NATO summit.
-           Sri Lanka prison riot. Ebola deaths top 500 in Congo.
-  distinct sources: 8 of 8                                ← distinct, no dup ✅ (but a paragraph, not a numbered "top 2")
+REGRESSION GUARD — "I feel kind of lonely today"
+→ "I'm really sorry you're feeling a bit lonely today. Wanna talk about it?"
+   serper calls before=2 after=2  → NO spurious search
 ```
 
-**Scorecard for §3:**
-- ✅ **"hi"** → real companion voice, warm/curious/short, no assistant-speak.
-- ✅ **Store fact → new-session recall** WORKS — "when do I take my meds?" → "every day at 8 PM" in a fresh session.
-- ✅ **Trade record → later recall** WORKS — "what did I buy?" → "10 units of SYPNL at 230".
-- ✅ **Top news** distinct + once (8/8 distinct sources), BUT rendered as a summary paragraph, not a clean numbered "top 2" list.
-- ❌ **Interruption / immediate barge-in** — NOT verifiable here (no microphone / duplex audio client in this environment). The cancel path exists in `voice/session.py` but real instant-halt depends on AEC + a live audio client. **Unproven.**
-- ⚠️ **Two real bugs found by this run** (reported, not fixed): (1) **semantic/Graphiti retrieval returns nothing** — recall is currently carried entirely by episodic; (2) **recall turns re-extract** — when the companion restates a past trade, the extraction logs it AGAIN (ledger doubled to 2 entries / 4600).
+**Logged design deviation (REMEDIATION_LOG R13):** spec §8.6/§15 says search is *always*
+background (voice-latency reason). For explicit current-info questions we now resolve it inline
+so the companion actually answers instead of promising a result that never arrives (§8.8/§8.11).
+Background/waiter path retained as the timeout fallback and for the voice runtime.
 
-**Observability trace (real, captured):**
+### 2. TTS tags stripped from chat, preserved in trace — §1.4
+
+`GenerationResult` now carries **two** fields: `final_text` (ALL delivery tags stripped — for the
+chat UI and stored memory) and `voice_text` (whitelisted tags kept — for TTS + shown raw in the
+trace). `_strip_all_tags()` cleans chat text; `_sanitize_tags()` keeps whitelisted tags for voice.
+`api/routes/chat.py` and `voice/session.py` updated so **TTS speaks `voice_text`** (prosody
+preserved) while chat + memory get clean text.
+
+**Captured proof:**
 ```
-session     | text turn started
-retrieval   | episodic=0 hits
-assembly    | complexity=simple           model_override=null
-router      | tier=simple
-generation  | action=clarify              style_flags=[]
-response    | Hey! So glad to be here...
-memory      | epi=1 sem=1 trades=0        facts=["user takes medication daily around 8pm"]
+"I just got the job I really wanted!"
+CHAT REPLY:  "Oh, Nandi, that's fantastic news! Congratulations, I'm so happy for you!"   (0 tags)
+TRACE voice_text: "Oh, Nandi, that's fantastic news! [warm] Congratulations, I'm so happy for you!"
 ```
-So observability IS real at **stage level** (read → assemble → route → generate → memory-write),
-persisted to Mongo (`turn_traces`) and served at `/debug/traces`. What it does NOT have:
-per-LLM-call token/cost/latency inside the trace, self-reflection as its own span, or Langfuse.
-It shows *what happened*, not yet *how much each call cost*.
+
+### 3. Transient state → episodic, not durable fact — §1.5, §8.13
+
+Extraction prompt (`core/memory/extraction.py`) now explicitly separates durable facts /
+preferences / routines from transient current states, and a deterministic `_looks_transient()`
+guard demotes any transient "fact" to **episodic-only** (with a durability-marker allowlist so
+"daily/every/prefers/works at" always stay semantic).
+
+**Captured proof:**
+```
+"I have a headache right now"          → stored 1 event(s), 0 fact(s)   (was: 1 fact)
+"I go for a run every morning at 6am"  → stored 1 event(s), 1 fact(s)   (durable fact kept)
+```
 
 ---
 
-## 4. Module-by-module honesty (§1–§26)
+## Trace completeness (spot-checked, §5 backend only)
 
-`V` = verified by running it this session · `C` = code complete, NOT run-verified this session
-
-| § | Module | State |
-|---|---|---|
-| §1 | Database layer | **working (V)** — Mongo/Qdrant/Neo4j/Redis connect; pipeline boots. |
-| §2 | Config & profile | **working (V)** — traits seeded, model_prefs, audio_prefs. |
-| §3 | Cost ledger | **working (C)** — logged per call; not eyeballed this run. |
-| §4 | Working memory | **working (V)** — in-session turns used in prompt. |
-| §5 | Episodic | **working (V)** — write + cross-session retrieval proven in §3. |
-| §6 | Semantic (Graphiti) | **partial/broken (V)** — writes attempted, **retrieval returns none**; "Source entity not found" warnings. This is a real gap. |
-| §7 | Procedural | **code complete (C)** — not exercised in §3. |
-| §8 | Entity resolution | **working (C)** — used by assembly; not stressed this run. |
-| §9 | Self-model / overclaim | **working (V)** — style/overclaim path ran (style_flags clean). |
-| §10 | Prompt assembly | **working (V)** — assembled every turn; traits reach prompt. |
-| §11 | LLM router | **working (V)** — tier routing + fast-model override live. |
-| §12 | Response gen + gates | **working (V)** — real replies, gates, no assistant-speak. |
-| §13 | Tool dispatcher | **working (C)** — ReAct loop; dedup guard added; web_search ran. |
-| §14 | Background queue | **code complete (C)** — deferred delivery not exercised in §3. |
-| §15 | Web search | **working (V)** — Serper returned distinct headlines. |
-| §16 | Projects / ledger | **working (V) with a bug** — trade persisted + recalled, but recall turns double-log (§3). |
-| §17 | Psych user-model | **code complete (C)** — not observed this run. |
-| §18 | Learning/consolidation | **code complete (C)** — runs as queued task; not observed. |
-| §19 | Audio input pipeline | **code complete, hand-rolled (C)** — pre-roll fix in; not audio-verified. |
-| §20 | STT (faster-whisper) | **code complete (C)** — not run (no audio this session). |
-| §21 | Endpointing | **code complete (C)** — logic only; not audio-verified. |
-| §22 | SER (emotion2vec) | **stubbed-until-GPU (C)** — needs the GPU service. |
-| §23 | TTS (Grok) | **code complete (C)** — voice preview endpoint added; audibility unverified. |
-| §24 | Barge-in | **code complete, UNPROVEN (C)** — cannot verify instant halt without a mic. |
-| §26 | User context (static auth) | **working (V)** — token→user resolution used throughout. |
-
-**"Claimed done but not verified by running":** §3, §7, §8, §13(queue path), §14, §17, §18,
-§19–§24 (all voice/audio + learning). The memory/reasoning/response/search core (§1,2,4,5,9,10,11,12,15,16,26) **is** run-verified this session.
+The durable per-turn trace is more complete than the brief feared. The weather turn recorded:
+`session · retrieval · assembly · router · judgment · generation · 6× llm.call · 2× tool ·
+response(+voice_text)`, grouped by session, at `/debug/traces/{session}`. The `web_search` tool
+span carries `tool_type=background:inline` + the result summary; the `response` span carries the
+raw tagged `voice_text`. **Not verified:** the clickable list→detail **UI** (Part 5) — only the
+backend data.
 
 ---
 
-## 5. Bottom line
+## Tests & checks
 
-- **What works right now (run-verified):** the text/reasoning core is genuinely good — warm
-  companion voice (no assistant-speak), cross-session recall of facts and trades, live tool
-  use, and a stage-level trace. Roughly **~60–65% of the specified app is actually working**
-  end-to-end from the text boundary. The remaining ~35% is either **voice/audio (§19–§24,
-  unprovable here without a mic)** or **learning/psych (§17–§18, built but not observed)**.
+- New deterministic guards: `tests/unit/test_audit_fixes.py` (tag stripping, live-info routing,
+  refusal detection, transient classification).
+- Corrected two tests that pinned the **old buggy** behavior: the golden tag test (now asserts
+  clean `final_text` + tagged `voice_text`), and the prompt-size ceiling (raised to account for
+  the always-present, non-trimmable capability block).
+- **Full non-real-call suite: green** (exit 0, 0 failures). `mypy` clean on changed files.
+  `lint-imports` clean (core ↛ adapters intact).
+- Note: `tests/unit/test_pipecat_processor.py` fails to *collect* (pipecat optional extra not
+  installed) — pre-existing, unrelated to these changes.
 
-- **Reinvented that shouldn't be:** (1) the **voice pipeline / barge-in** is hand-rolled
-  instead of Pipecat — the biggest one; (2) **tracing** is hand-rolled instead of Langfuse;
-  (3) the **memory extraction loop** is custom while **Mem0 is installed but not yet wired**.
+---
 
-- **Single biggest thing between now and a working companion:** **the semantic-memory layer
-  (Graphiti) is not returning facts** — recall is surviving purely on episodic vector search,
-  and the extraction step double-writes on recall turns. Memory correctness (reliable
-  semantic retrieval + not re-storing what's merely being recalled) is the #1 blocker. Voice
-  barge-in via Pipecat is the #2 blocker, but it's unverifiable in this environment.
+## Not done / still unverified (the honest gap)
 
-*(No code was changed in this audit. Mem0 was installed + an adapter written prior to this
-audit request; it is not yet wired into the live loop.)*
+These were **not** addressed; they remain as previously claimed, unverified by me:
+
+- **Part 3** — unified structured result envelope.
+- **Part 4** — real LLM-as-judge suite. **Still does not exist.**
+- **Part 5** — trace **UI** (list → click → detail with metrics/prompt-version/judge/feedback).
+  Backend data is largely present; the UI was not driven.
+- **Part 6** — prompt versioning + version-grouped performance attribution + prompt caching.
+- **Part 7** — conversation behaviors (session timeout→consolidation, offer-once/comfortable-
+  with-silence, heavy-mood re-engagement, correction supersede, waiter delivery/carry-over/
+  pileup). Unverified.
+- **Part 8** (except 8.8 / 8.13) — graceful degradation, cost-ceiling enforcement, memory
+  conflict supersession, ambiguous-entity guardrail, feedback→trace linkage, barge-in
+  continuity, engine/model switch persistence, streaming voice input, acknowledge-first-then-
+  parallel, latency levers. Unverified.
+- **Part 9–11** — deeper agentic loop, doc-contradiction cleanup, and the broader real-test
+  replacement. Only the audit-fix tests above were added.
+- **Voice path** (Pipecat migration, barge-in immediacy, streaming STT, SER GPU) — needs a mic /
+  GPU; not verifiable in this environment.
+
+---
+
+## Biggest remaining gap
+
+**Existing memory pollution is not cleaned.** The live prompt for `u_demo_001` still contains
+junk accreted from earlier broken runs — a hallucinated fact *"Sundari believes a dark room will
+help them"* and ~6 near-duplicate "asking about Japan/Korea" episodic entries. My fixes stop
+**new** pollution, but nothing consolidates/dedups/supersedes the **existing** store
+(Parts 8.3 conflict-supersession, 8.4 consolidation). That is the highest-value next bundle.
+
+Secondary: with zero `real_call` tests, every "done" in BUILD_STATUS is unverified. The judge
+suite (Part 4) + a handful of real-call behavior tests would have caught all five bugs above
+automatically and should come before more feature work.
+
+---
+
+## Files changed
+
+```
+core/reasoning/prompt_assembly.py   capability block in the system prompt (§8.8)
+core/reasoning/response_gen.py      final_text/voice_text split; inline-search + backstop
+core/tools/dispatcher.py            ToolDispatcher.run_inline (bounded in-turn tool exec)
+core/memory/extraction.py           transient-vs-durable prompt + _looks_transient guard
+api/routes/chat.py                  trace keeps voice_text; chat returns clean text
+voice/session.py                    TTS speaks voice_text; memory/trace get clean/raw
+tests/unit/test_audit_fixes.py      NEW deterministic guards
+tests/golden/test_gs3_behavioral.py corrected tag contract
+tests/unit/test_prompt_assembly.py  raised size ceiling for capability block
+docs/REMEDIATION_LOG.md             R13–R16
+```
+
+**Note:** `today_report.md` had been truncated to empty in the working tree at session start
+(not by this session's edits) — it was restored from git, then replaced with this report.
