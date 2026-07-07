@@ -866,3 +866,53 @@ horizontal-overflow layouts in the pages. Added real mobile polish (`web/src/ind
 - **16px inputs on ≤640px** to stop iOS focus-zoom.
 Web tsc + build clean. Full on-device look/feel verification needs a real phone (paired with the
 mobile speaker-routing item, which is device-blocked).
+
+---
+
+## Item 12 — Performance measurement + levers
+
+**Real per-turn numbers (LangGraph engine, mature model), captured from the trace:**
+| scenario | total | llm calls | first-llm | tokens_in | cost |
+|---|---|---|---|---|---|
+| simple ("hey there") | ~6.4s | 2 | ~2.5s | 3.4k | $0.012 |
+| complex (philosophical) | ~5.8s | 1 | ~5.8s | 3.8k | $0.014 |
+| tool (weather) | ~8.8s | 3 | ~0.8s | 8.8k | $0.029 |
+
+These are slower than the old flash-lite era — an INTENTIONAL trade per A2 (mature model = better
+thought) + the A3 context-resolution node. The addendum's directive is explicit: manage latency with
+streaming/parallelism, NOT by dumbing down the model.
+
+**Levers in place:** model tiering for sub-steps (context-resolution=moderate, judge=complex);
+prompt-cache hit/miss logged ($0 on hit, Item 7); cost-ceiling (Item 10); per-turn latency/tokens/
+cost on every span + Langfuse cost dashboards (A8); inline-quick vs enqueue-parallel tool policy
+(Item 11); the reranker trims prompt size (A10).
+
+**Known levers to restore/add (honest follow-ups):**
+- **Streaming TTFT on the LangGraph voice path:** the graph's `respond` node calls the non-streaming
+  `generate()`, so the native path's sentence-by-sentence TTS streaming (first-audio latency) is not
+  used under LangGraph. Restoring streaming in the graph is the highest-value latency lever.
+- Run context-resolution + memory-read concurrently (`asyncio.gather`); skip the context node
+  entirely on a fresh session (no history) — already guarded, but the reasoning call dominates.
+
+## Item 13 — Mobile speaker routing (verified present)
+
+Implemented (prior commit + `web/src/lib/audio.ts::SpeakerRoute`): on mobile, TTS is routed to the
+MEDIA/loud-speaker stream (hidden `<audio>` media element + `setSinkId` where supported + iOS
+`audioSession="play-and-record"`), not the earpiece/call stream. Desktop keeps the raw destination.
+**Device-blocked:** confirming the actual earpiece-vs-speaker routing needs a real phone.
+
+---
+
+## Item 14 — Doc contradictions + final sweep
+
+- Removed the config-format hedge in the design doc (Mongo `project_types` is THE one format for
+  shared blueprints — not "could be YAML files").
+- Design doc "Later-phase" section corrected: **LangGraph is now the core orchestration engine**
+  (behind the Orchestrator port), and **observability/Langfuse is core, not later-phase**; Mem0 +
+  reranker noted as wired behind ports.
+- Spec stack table: added **Mem0** (personalization), **bge-reranker**, **LangGraph** (Orchestrator
+  port), **Langfuse** (self-hosted tracing/prompts/evals).
+- **Final gate:** full non-paid suite **366 passed**; mypy (core) + `lint-imports` clean (the
+  hexagonal boundary holds even after adding LangGraph/Langfuse/reranker — each imported only in its
+  adapter). Real-call suites (barge-in engine, companion voice 8/8, memory cleanup, trace
+  reconstruction, context carrying, deferred routing, judge calibration) green when run.

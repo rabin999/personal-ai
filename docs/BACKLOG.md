@@ -27,9 +27,9 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 - [x] **Item 9** — Memory routing to background worker — raw-log cursor (routed watermark) + MemoryRouter.route_pending (exactly-once) + worker poll loop; live path deferred (raw-log write 2.5ms, no inline extract). cursor prevents double-write (verified real). config defer_memory_routing
 - [x] **Item 10** — Remaining edge cases — cost-ceiling enforcement (per-turn _CostBudget, config cap) + graceful degradation (memory reads wrapped, store-down still assembles) + verified capability regression / ambiguity guardrail / feedback→trace
 - [x] **Item 11** — Engine/model selection + streaming + ack-first — voice_engine now persisted (merge-safe) + traced + restored client-side; model selection already done; streaming-input partials exist (mic-blocked); ack-first-parallel reconciled with R13 (inline-quick / enqueue+waiter-slow)
-- [ ] **Item 12** — Performance testing + latency levers
-- [ ] **Item 13** — Mobile speaker routing (native default + Pipecat)
-- [ ] **Item 14** — Doc contradictions + FINAL full sweep
+- [x] **Item 12** — Performance — real per-turn latency/tokens/cost captured across simple/complex/tool (trace); levers in place (tiering sub-steps, prompt-cache logging, cost ceiling, reranker); mature-model latency is an intentional A2 trade. Streaming-TTFT on the LangGraph voice path noted as the top follow-up lever
+- [x] **Item 13** — Mobile speaker routing — implemented (SpeakerRoute: media element + setSinkId + iOS play-and-record); device-blocked to verify earpiece-vs-speaker on a real phone
+- [x] **Item 14** — Doc sweep — removed the config-format hedge (Mongo is the one format); design doc updated: LangGraph is core (behind the Orchestrator port), observability/Langfuse is core (not later-phase); Mem0 + reranker added to the spec stack. Final gate: 366 non-paid + real_call suites green; mypy + lint-imports clean
 
 **Environment confirmed (session start 2026-07-07):** real stores up (Mongo/Qdrant/Neo4j/Redis
 via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is possible.

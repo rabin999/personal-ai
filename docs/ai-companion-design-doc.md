@@ -270,7 +270,7 @@ A "project" is an ongoing thing the user tracks over time (distinct from a one-o
 
 ### 7.1 Project *types* vs. project *instances* (critical distinction)
 
-- **Project type = the blueprint.** Defines what fields a kind of project has, what metrics it derives, and what actions/tools it exposes. Shared across all users, authored by the developer. **Stored in a Mongo `project_types` collection** (a handful of them). *(These could be YAML files instead — the author chose Mongo to avoid file-based config entirely. The rule is only that type definitions ≠ user data.)*
+- **Project type = the blueprint.** Defines what fields a kind of project has, what metrics it derives, and what actions/tools it exposes. Shared across all users, authored by the developer. **Stored in a Mongo `project_types` collection** (a handful of them) — the ONE config format for shared blueprints (not file-based; type definitions ≠ user data).
 - **Project instance = a specific user's actual project + data.** Thousands of them, constantly updated. **Stored in Mongo (canonical) + a thin vector pointer in Qdrant (for fuzzy lookup).**
 
 Analogy: the type is the *class*; instances are the *objects*. Adding a new kind of project (finance, fitness, job-search) = adding a new type definition. No new code, no new tables.
@@ -694,11 +694,15 @@ The author studied a broad LLM-integration curriculum. This maps that learning o
 - **Section 7** (budget guardrails, unit economics, multi-tenant cost attribution, vector-DB choice, managed-vs-self-hosted, vendor lock-in) → Cost Ledger, per-project caps, per-user attribution, and decisions already made.
 - **Section 1** (embeddings/geometry, inference economics) → reused in memory retrieval and cost design; the rest of §1 is conceptual foundation, not code.
 
-**Later-phase / not-MVP:**
-- Multi-agent frameworks (LangGraph/LlamaIndex/CrewAI) — the design is a **custom single-agent loop**, deliberately framework-free for control.
+**Now core (updated per the addendum):**
+- **LangGraph is the orchestration engine** for the reasoning turn — behind the `Orchestrator` port (A1.5), so it's swappable and `core/` never imports it. (The earlier "custom single-agent, framework-free" stance is superseded; the native loop remains as an alternate adapter.)
+- **Observability is CORE, not later-phase.** Full per-turn traces (per-LLM-call token/cost/latency, tool calls, reasoning nodes incl. the "why-not", self-reflection), prompt versioning + attribution, and **self-hosted Langfuse** (traces behind the trace port) are first-class. LLM-as-judge + a real-call suite are the standing quality gate.
+- **Mem0** (personalization memory) + a **cross-encoder reranker** (bge-reranker, picks which memories enter the prompt) are wired behind ports.
+
+**Still later-phase / not-MVP:**
 - Fine-tuning/LoRA — not needed; prompting + memory covers it.
 - Bedrock/AgentCore — on Hetzner/OpenRouter, not AWS-managed.
-- Most of Section 4 (guardrails/security/red-teaming) and Section 5 observability (Langfuse/OpenTelemetry/CI-eval) — matter more at multi-user *scale*; lighter for the initial build, but the multi-tenant framing makes them nearer-term than they'd be for a single-user app.
+- Most of Section 4 (guardrails/security/red-teaming) — matters more at multi-user scale.
 
 **Curriculum gaps (new learning required for this app):**
 - Real-time voice pipeline (Pipecat/LiveKit, VAD, barge-in, endpointing).

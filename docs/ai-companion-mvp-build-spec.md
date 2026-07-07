@@ -43,7 +43,11 @@ identity source swapped, `core/` untouched). See §26 and `docs/DEPLOYMENT.md §
 | Doc/relational store | **MongoDB** | Config, profiles, projects, tasks, ledger, cost |
 | Vector store | **Qdrant** | Episodic memory + entity pointers; hybrid dense+BM25 + RRF |
 | Graph store | **Graphiti + Neo4j** | Semantic memory / relationships with temporal validity |
-| Task queue | **Redis** (or Mongo-backed for MVP) | Background tasks |
+| Personalization memory | **Mem0** | Fast preference/personalization layer, wired into prompt assembly; reconciled with the extraction step so they don't double-store |
+| Reranker | **bge-reranker** (fastembed) | Cross-encoder that picks WHICH fused memories enter the prompt (context quality) |
+| Reasoning engine | **LangGraph** (behind the `Orchestrator` port) | Explicit turn graph: perceive → resolve-context → respond → reflect; swappable |
+| Tracing / prompts / evals | **Langfuse** (self-hosted, behind the trace/log-sink port) | Hierarchical per-turn traces (model/tokens/cost), prompt versioning, LLM-judge/evals |
+| Task queue | **Redis** | Background tasks (consolidation, memory-routing, search, outbox) |
 | Search | **Serper** primary, **Brave** fallback | + query cache |
 | Structured output | **Pydantic** | Validate every LLM JSON block |
 | Auth (stub) | **Static bearer token → static user record** | No auth system built; see §26. Real auth = swap one adapter |
