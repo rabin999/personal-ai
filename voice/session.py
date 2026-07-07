@@ -98,6 +98,11 @@ class VoiceSession:
         self._delivery = delivery
         self._vocab = vocab
         self._vocab_terms: list[str] | None = None  # resolved once per session
+        # Serialize background delivery: the idle poll and each turn both call
+        # _deliver_pending; without this they can pull the same finished task
+        # before either marks it delivered, the same result gets spoken 2-3x (§14).
+        self._delivery_lock = asyncio.Lock()
+        self._delivered_ids: set[str] = set()
 
     async def converse(self, frames: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """Run a whole conversation over a continuous frame stream.
@@ -339,23 +344,31 @@ class VoiceSession:
         )
 
     async def _deliver_pending(self, out: asyncio.Queue[bytes | None]) -> None:
-        """Speak any finished background result at this pause, in-voice (§14/§8.6)."""
+        """Speak any finished background result at this pause, in-voice (§14/§8.6).
+
+        Serialized: the idle poll and the per-turn call can't both pull the same
+        task before it's marked delivered, and an id guard blocks any re-delivery.
+        """
         if self._delivery is None:
             return
-        recent = " ".join(t.text for t in self._working.recent(self._session_id, n=4))
-        try:
-            deliveries = await self._delivery.deliveries_for_pause(
-                self._session_id, self._user_id, recent
-            )
-        except Exception:  # delivery is best-effort; never break the turn
-            logger.exception("background delivery failed")
-            return
-        for item in deliveries:
-            line = getattr(item, "line", "")
-            if not line:
-                continue
-            self._trace.emit("response", line, delivered=True)
-            await self._synthesize(line, out)
+        async with self._delivery_lock:
+            recent = " ".join(t.text for t in self._working.recent(self._session_id, n=4))
+            try:
+                deliveries = await self._delivery.deliveries_for_pause(
+                    self._session_id, self._user_id, recent
+                )
+            except Exception:  # delivery is best-effort; never break the turn
+                logger.exception("background delivery failed")
+                return
+            for item in deliveries:
+                line = getattr(item, "line", "")
+                task_id = getattr(item, "task_id", "")
+                if not line or (task_id and task_id in self._delivered_ids):
+                    continue
+                if task_id:
+                    self._delivered_ids.add(task_id)
+                self._trace.emit("response", line, delivered=True, task_id=task_id)
+                await self._synthesize(line, out)
 
     def _remember(self, user_text: str, assistant_text: str) -> None:
         """Persist the turn to episodic memory (§5) for future recall; non-blocking."""

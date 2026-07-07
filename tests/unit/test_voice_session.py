@@ -6,6 +6,7 @@ streams back — without any real model, LLM, or datastore. Turn-taking is
 server-driven (§19 VAD gate + §21 endpointing), not push-to-talk.
 """
 
+import asyncio
 from collections.abc import AsyncIterator
 
 from core.memory.working import WorkingMemory
@@ -195,6 +196,45 @@ async def test_preroll_recovers_onset_frames_the_gate_swallowed() -> None:
     # More frames reach STT than just those from speech_start onward: the full
     # 20-frame burst plus the pre-gate onset are transcribed.
     assert stt.frames_seen > 20
+
+
+class _Interjection:
+    def __init__(self, task_id: str, line: str) -> None:
+        self.task_id = task_id
+        self.line = line
+
+
+class RepeatingDelivery:
+    """Returns the SAME finished result on every pull (queue-race simulation)."""
+
+    def __init__(self, task_id: str, line: str) -> None:
+        self._item = _Interjection(task_id, line)
+        self.calls = 0
+
+    async def deliveries_for_pause(
+        self, session_id: str, user_id: str, recent_context: str
+    ) -> list[_Interjection]:
+        self.calls += 1
+        return [self._item]
+
+
+async def test_background_result_delivered_at_most_once() -> None:
+    # §14/§5.4: even if the queue hands back the same finished task twice, the
+    # session speaks it exactly once — no "same news item 2-3x" duplication.
+    trace = TraceEmitter(SESSION)
+    working = WorkingMemory()
+    delivery = RepeatingDelivery("task-1", "Market's open till 3 today.")
+    session = _session(ScriptedVAD([0.02]), FakeSTT("x"), working, trace)
+    session._delivery = delivery
+
+    out: asyncio.Queue[bytes | None] = asyncio.Queue()
+    await session._deliver_pending(out)
+    await session._deliver_pending(out)  # second pull returns the same task
+
+    trace.close()
+    delivered = [e async for e in trace.events() if e.data.get("delivered")]
+    assert len(delivered) == 1, f"expected one delivery, got {len(delivered)}"
+    assert delivery.calls == 2  # both pulls happened; only the first spoke
 
 
 async def test_events_are_grouped_into_turns() -> None:
