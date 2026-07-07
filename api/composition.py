@@ -171,7 +171,13 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     graph = GraphitiGraphStore(db, ledger=ledger, pricing=pricing)
 
     working = WorkingMemory()
-    episodic = EpisodicMemory(vectors)
+    reranker = None
+    if settings.reranker_enabled:
+        from adapters.rerank.fastembed_reranker import FastEmbedReranker
+
+        reranker = FastEmbedReranker(settings.reranker_model)
+        logger.info("reranker enabled: %s", settings.reranker_model)
+    episodic = EpisodicMemory(vectors, reranker=reranker)
     semantic = SemanticMemory(graph)
     procedural = ProceduralMemory(docs)
     entities = EntityResolver(vectors)

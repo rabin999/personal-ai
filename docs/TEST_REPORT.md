@@ -835,3 +835,19 @@ the Langfuse trace"), the Traces page now gives BOTH:
 
 Opening a turn reconstructs the entire turn — in-app for a quick read, and in Langfuse for the full
 span tree with cost/latency. Web tsc+build clean.
+
+---
+
+## A10 — Reranker for context selection (bge-reranker)
+
+**App-goal verified:** a dedicated cross-encoder picks WHICH fused candidate memories enter the
+prompt — directly improving context quality (A3).
+
+- `ports/reranker.py` (Reranker port) + `adapters/rerank/fastembed_reranker.py` (bge-reranker-base
+  via fastembed, already a dep). Behind a port (swappable); never raises (degrades to fusion order).
+- `EpisodicMemory.retrieve` with a reranker fetches a wider candidate set (k*3) then reranks to the
+  top-k by the query. Config-gated (`reranker_enabled`, default off — first-use model download).
+- **Real proof:** for "what pets does the user have?", over noise (a trade, a run, loneliness) the
+  reranker put **"user adopted a puppy named Momo" #1** — the right memory into the prompt.
+- Unit (`test_reranker.py`, 2): reranker reorders+truncates; no-reranker keeps fusion+recency order.
+- Non-paid suite 366; lint-imports clean (core depends only on the Reranker port).

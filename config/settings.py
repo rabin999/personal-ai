@@ -131,6 +131,12 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_project: str = "companion"  # for building trace-detail deep links (A9)
 
+    # Reranker (A10): a cross-encoder picks WHICH fused candidate memories enter the
+    # prompt (improves context quality). Off by default (first-use model download);
+    # enable on deploys where the model is warmed.
+    reranker_enabled: bool = False
+    reranker_model: str = "BAAI/bge-reranker-base"
+
     # Reasoning-model policy (A2): the MAIN user-facing reasoning turn uses a MATURE,
     # strong model — quality of thought over raw speed — instead of the flashy fast
     # tier (which produced shallow, context-blind answers). Trivial sub-steps (context

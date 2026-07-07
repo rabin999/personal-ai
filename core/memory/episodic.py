@@ -10,7 +10,7 @@ import re
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic import BaseModel
 
@@ -53,9 +53,16 @@ class EpisodicHit(BaseModel):
     id: str | None = None  # vector-store point id (for delete from /memories)
 
 
+class _Reranker(Protocol):
+    def rerank(self, query: str, documents: list[str], *, top_n: int) -> list[int]: ...
+
+
 class EpisodicMemory:
-    def __init__(self, vectors: VectorStore) -> None:
+    def __init__(self, vectors: VectorStore, reranker: "_Reranker | None" = None) -> None:
         self._vectors = vectors
+        # A10: optional cross-encoder reranker to pick which fused candidates enter
+        # the prompt (improves context quality). None → fusion + recency order.
+        self._reranker = reranker
 
     async def write(
         self,
@@ -127,9 +134,12 @@ class EpisodicMemory:
         return removed
 
     async def retrieve(self, user_id: str, query_text: str, k: int = 6) -> list[EpisodicHit]:
-        """Hybrid RRF retrieval (adapter) + recency weighting, user-scoped."""
+        """Hybrid RRF retrieval (adapter) + recency weighting, user-scoped. With a
+        reranker (A10), fetch a wider candidate set and let a cross-encoder pick the
+        top-k most relevant to the query — better context than fusion score alone."""
+        fetch_k = k * 3 if self._reranker is not None else k
         hits = await self._vectors.hybrid_search(
-            EPISODIC_COLLECTION, query_text, user_id=user_id, k=k
+            EPISODIC_COLLECTION, query_text, user_id=user_id, k=fetch_k
         )
         now = datetime.now(UTC)
         scored = [
@@ -143,7 +153,10 @@ class EpisodicMemory:
             for hit in hits
         ]
         scored.sort(key=lambda h: h.score, reverse=True)
-        return scored
+        if self._reranker is not None and len(scored) > k:
+            order = self._reranker.rerank(query_text, [h.text for h in scored], top_n=k)
+            return [scored[i] for i in order]
+        return scored[:k]
 
 
 def chunk_transcript(turns: list[Turn], max_chars: int = MAX_CHUNK_CHARS) -> list[str]:
