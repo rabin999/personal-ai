@@ -35,6 +35,10 @@ VAD_FRAME_BYTES = 512 * 2  # Silero @16kHz requires exactly 512 samples per call
 
 
 def _build_vad() -> VADModel:
+    # A fresh instance per WebSocket: Silero is a stateful RNN, so each session
+    # needs its own hidden state — sharing one across concurrent users would mix
+    # their audio state. (The repeated "Loading Silero VAD" DEBUG log is quieted
+    # by lowering pipecat's log level at startup, not by sharing state.)
     from adapters.vad.silero import SileroVAD  # voice extra (§19)
 
     return SileroVAD()

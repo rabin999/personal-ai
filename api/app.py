@@ -32,6 +32,24 @@ from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
+
+def _quiet_pipecat_logs() -> None:
+    """Pipecat logs via loguru at DEBUG/INFO (the banner, 'Loading Silero VAD'
+    on every connection). Raise its floor to WARNING so those don't spam the
+    console or mislead ('am I on Pipecat?') — warnings/errors still show."""
+    try:
+        import sys
+
+        from loguru import logger as _loguru
+
+        _loguru.remove()
+        _loguru.add(sys.stderr, level="WARNING")
+    except Exception:  # loguru not installed / already configured — non-fatal
+        pass
+
+
+_quiet_pipecat_logs()
+
 WEB_DIST = Path(__file__).parents[1] / "web" / "dist"
 
 
