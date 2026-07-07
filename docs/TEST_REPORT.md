@@ -634,3 +634,49 @@ The reconciled policy, now coherent across the code:
 real mic + the `voice` extra; the selection/persistence/trace wiring above is verified without them.
 
 **Full non-paid suite 356 passed; web tsc + build clean; mypy + lint clean.**
+
+---
+
+## A1 + A1.5 — LangGraph orchestrator behind a swappable Orchestrator port
+
+**App-goal verified:** the reasoning turn runs on LangGraph as an explicit graph, behind a port so
+the engine is swappable, and it reasons about CONTEXT (A3) so follow-up references resolve.
+
+### Architecture (A1.5 — clean swap)
+- `core/reasoning/orchestrator.py` — the `Orchestrator` port (generate / generate_spoken). Lives in
+  `core/` (returns a core type) but `core/` imports NO concrete engine.
+- `adapters/orchestrator/langgraph_orchestrator.py` — the LangGraph adapter. **LangGraph is imported
+  only here.** `lint-imports` stays green (`core/ ↛ adapters/`), proving the swap is clean: swapping
+  LangGraph for another engine = new adapter + one wiring line in `api/composition.py`, no `core/`
+  change. Selected by `settings.orchestrator` (default `langgraph`; `native` = the old loop).
+- Consumers (chat route, voice route, pipecat runtime) call `pipeline.orchestrator` through the port.
+- Blueprint written into the design doc (swap procedure for every port/engine).
+
+### The graph (real multi-node, not one-pass)
+`perceive → resolve_context (A3) → respond → reflect_log`. Each node logs a `graph.node` reasoning
+span (A5), incl. negative context ("no prior context to connect to"). The heavy, judged reasoning/
+gates/tool-loop stay in `ResponseGenerator` (the `respond` node) — "keep the brain's pieces behind
+the ports; LangGraph orchestrates them" — so quality isn't regressed while the graph adds
+context-connection + deep logging.
+
+### A3 context carrying — the headline failure, FIXED (real, captured)
+```
+T1  "what's the weather in Kathmandu right now?"
+    → "Oh, it's 75°F right now in Kathmandu, RealFeel 82, scattered thunderstorms…"
+T2  "what about that temperature — is that hot for this time of year?"
+    → "Usually in July, Kathmandu is 66–77°F, so 75° is right in that average range!"
+```
+It resolved "**that** temperature" to T1's 75°F and answered in context — **no "which temperature?"**.
+
+### Verification
+- Real-call (`tests/real_call/test_context_carrying.py`, 2 pass): a pure back-reference recalls the
+  temperature (never "which temperature?") + judged companion-OK; and the `resolve_context` node is
+  logged in the trace.
+- Real: the wired engine is `LangGraphOrchestrator`; `RealTurns` harness now drives it.
+- Full non-paid suite 357 passed; `lint-imports` clean (core never imports langgraph); mypy clean.
+
+### Known refinement (→ dedicated A3 item)
+On a follow-up phrased like a live-info query ("is that normal for this time of year?"), the
+deterministic capability-search backstop can fire a fresh search that overrides the carried context.
+The context-resolution note is injected but doesn't yet SUPPRESS the re-search — addressed in the
+dedicated A3 item (suppress live-search when the answer is carried in context).

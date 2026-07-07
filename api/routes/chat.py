@@ -118,7 +118,7 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     # generation/extraction emits a per-call span into this turn's trace (§5).
     with pipeline.logs.bind(trace_id=body.session_id, turn_id=turn_no, user_id=user.user_id):
         pipeline.logs.info("turn.request", text=body.text)
-        result = await pipeline.generator.generate(prompt, pipeline.dispatcher, context)
+        result = await pipeline.orchestrator.generate(prompt, pipeline.dispatcher, context)
         pipeline.logs.info(
             "turn.response",
             action=result.action,

@@ -168,6 +168,7 @@ def _build_app(*, authed: bool) -> "object":
         working=WorkingMemory(),
         assembler=FakeAssembler(),
         generator=FakeGenerator(),
+        orchestrator=FakeGenerator(),  # A1: chat route calls pipeline.orchestrator
         dispatcher=None,
         delivery=FakeDelivery(),
         tts=FakeTTS(),

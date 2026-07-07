@@ -61,7 +61,7 @@ def build_pipeline(
         user_id=user_id,
         session_id=session_id,
         assembler=pipeline.assembler,
-        generator=pipeline.generator,
+        generator=pipeline.orchestrator,
         working=pipeline.working,
         extractor=pipeline.extractor,
         dispatcher=pipeline.dispatcher,

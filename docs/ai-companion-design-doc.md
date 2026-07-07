@@ -709,3 +709,29 @@ The author studied a broad LLM-integration curriculum. This maps that learning o
 ---
 
 *End of document.*
+---
+
+## Addendum blueprint — Swappable engines behind ports (A1.5)
+
+**Governing principle:** no external engine or tool — LangGraph, Pipecat, Qdrant, Graphiti, Mem0,
+the LLM provider, TTS/STT, the trace store — may be deeply coupled to the application. Each is a
+replaceable implementation behind a clearly defined port. `core/` depends only on ports/interfaces;
+adapters are wired at startup in `api/composition.py`.
+
+**Turn lifecycle (each stage an interface, not a vendor):**
+turn ingress → prompt/context assembly (`PromptAssembler`) → **reasoning/orchestration
+(`Orchestrator` port)** → tools (`ToolDispatcher` over the tool registry) → self-reflection →
+output (TTS port) → memory write (deferred routing worker) → trace (trace store port).
+
+**Ports & their adapters:**
+- Orchestrator (reasoning engine): `core.reasoning.orchestrator.Orchestrator` →
+  `adapters/orchestrator/langgraph_orchestrator.py` (LangGraph) **or** the native
+  `ResponseGenerator`. Selected by `settings.orchestrator`.
+- Voice engine: native `VoiceSession` / Pipecat runtime (selected per session).
+- LLM: `ports/llm.py` → OpenRouter adapter. STT/TTS/SER/search/vector/graph/queue/doc/user-context
+  each have a port in `ports/` and an adapter in `adapters/`.
+
+**Swap procedure (same for every component):** implement the port with the new tool in `adapters/`,
+change one wiring line in `api/composition.py`; `core/` business logic is untouched. Proof the
+architecture is right: `lint-imports` enforces `core/ ↛ adapters/`, so the LangGraph library is
+imported ONLY inside its adapter — swapping LangGraph for another engine touches no `core/` code.

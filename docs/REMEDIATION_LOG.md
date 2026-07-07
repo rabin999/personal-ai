@@ -599,3 +599,16 @@ Non-paid suite 356.
   promote to background); slow/background → enqueue (parallel) + model acks + waiter delivers (Item 8
   pileup cap). Coherent single policy.
 Non-paid suite 356.
+
+---
+
+## Addendum run — A1+A1.5: LangGraph orchestrator behind a swappable port (2026-07-07)
+
+Lifted the no-LangGraph exclusion per the addendum. Reasoning engine now sits behind an Orchestrator
+port (core/reasoning/orchestrator.py); LangGraph is one adapter (adapters/orchestrator/), the native
+loop the other, selected by settings.orchestrator (default langgraph). lint-imports proves core never
+imports langgraph — the swap is clean (A1.5). Graph: perceive→resolve_context(A3)→respond→reflect_log,
+each node logging a reasoning span incl. negative context (A5). The heavy judged reasoning stays in
+ResponseGenerator (respond node) so quality isn't regressed. A3 context carrying fixed: "that
+temperature" resolves to the prior weather (real capture); real_call tests pass. Blueprint added to
+the design doc. Note: search-backstop-overrides-context refinement deferred to the dedicated A3 item.

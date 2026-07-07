@@ -6,6 +6,7 @@ NOT belong here; they live in the profile/registry (spec §2).
 """
 
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -115,6 +116,11 @@ class Settings(BaseSettings):
     # spend crosses this, the tool/reasoning loop STOPS and answers with what it
     # has (a cost_ceiling span is traced) — a runaway loop can't burn the budget.
     max_turn_cost_usd: float = 0.50
+
+    # Reasoning engine (A1/A1.5): the orchestrator adapter behind the Orchestrator
+    # port. "langgraph" = the explicit graph (context-resolution + deep logging);
+    # "native" = the hand-rolled asyncio loop. Swapping engines is one wiring line.
+    orchestrator: Literal["native", "langgraph"] = "langgraph"
 
     # Welcome-email SMTP (fastapi-mail via Gmail). Gmail requires an APP PASSWORD
     # (2FA enabled) — the normal account password will NOT work. Empty MAIL_*

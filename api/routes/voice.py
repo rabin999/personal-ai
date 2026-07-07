@@ -138,7 +138,7 @@ def _start(
         stt=pipeline.stt,
         endpointer=_endpointer(user),
         assembler=pipeline.assembler,
-        generator=pipeline.generator,
+        generator=pipeline.orchestrator,
         tts=pipeline.tts,
         working=pipeline.working,
         trace=trace,

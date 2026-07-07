@@ -33,3 +33,14 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 
 **Environment confirmed (session start 2026-07-07):** real stores up (Mongo/Qdrant/Neo4j/Redis
 via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is possible.
+- [x] **A1+A1.5** — LangGraph orchestrator behind a swappable Orchestrator port — graph
+  (perceive→resolve_context(A3)→respond→reflect_log); core never imports langgraph (lint-imports
+  clean = clean swap); A3 context carrying fixed ("that temperature"→prior weather); real_call tests
+- [ ] **A2** — Mature reasoning model for the core turn
+- [ ] **A3** — Context/working-memory (suppress re-search when answer carried) + more scenarios
+- [ ] **A4** — Multi-utterance accumulate/merge/split
+- [ ] **A5** — Deep traces incl why-not (extend across all nodes)
+- [ ] **A8** — Consolidate on Langfuse (self-hosted) for prompt mgmt/evals/traces
+- [ ] **A9** — Full trace detail page
+- [ ] **A10** — Reranker / RAGAS / Arq / secrets / rate-limit / migrations
+- [ ] **A6** — Mobile-first UI

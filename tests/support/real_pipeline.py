@@ -97,7 +97,9 @@ class RealTurns:
         # under this turn (mirrors api/routes/chat.py) — the trace then reconstructs
         # the whole pipeline, not just the stage headers we emit here.
         with self._p.logs.bind(trace_id=session_id, turn_id=1, user_id=self._user):
-            result = await self._p.generator.generate(prompt, self._p.dispatcher, ctx)
+            # Exercise the WIRED engine (LangGraph orchestrator by default) — not
+            # the native generator directly — so tests judge the real turn engine.
+            result = await self._p.orchestrator.generate(prompt, self._p.dispatcher, ctx)
         trace.emit("generation", f"action={result.action}", action=result.action)
         trace.emit("response", result.final_text, voice_text=result.voice_text or result.final_text)
         trace.emit("session", "turn complete", total_ms=0.0)

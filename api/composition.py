@@ -49,6 +49,7 @@ from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectService
 from core.psych.consolidation import Consolidator
 from core.psych.user_model import PsychUserModel
+from core.reasoning.orchestrator import Orchestrator
 from core.reasoning.prompt_assembly import PromptAssembler
 from core.reasoning.response_gen import ResponseGenerator
 from core.reasoning.self_model import SelfModel
@@ -88,6 +89,7 @@ class Pipeline:
     llm: OpenRouterLLM
     assembler: PromptAssembler
     generator: ResponseGenerator
+    orchestrator: Orchestrator
     self_model: SelfModel
     psych: PsychUserModel
     stt: FasterWhisperSTT
@@ -202,6 +204,16 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     generator = ResponseGenerator(
         llm, self_model, registry, logs=logs, max_turn_cost_usd=settings.max_turn_cost_usd
     )
+    # A1/A1.5: the reasoning engine sits behind the Orchestrator port. LangGraph is
+    # one adapter (imported only in adapters/), the native loop is the other —
+    # swapping is this one wiring line; core/ is untouched.
+    orchestrator: Orchestrator
+    if settings.orchestrator == "langgraph":
+        from adapters.orchestrator.langgraph_orchestrator import LangGraphOrchestrator
+
+        orchestrator = LangGraphOrchestrator(llm, generator, logs=logs)
+    else:
+        orchestrator = generator
     consolidator = Consolidator(semantic, procedural, psych, docs, llm, episodic=episodic)
 
     return Pipeline(
@@ -221,6 +233,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         llm=llm,
         assembler=assembler,
         generator=generator,
+        orchestrator=orchestrator,
         self_model=self_model,
         psych=psych,
         stt=FasterWhisperSTT(model_size=settings.stt_model_size, ledger=ledger),

@@ -12,6 +12,7 @@ dependencies = [
     "graphiti-core>=0.29.2",
     "httpx>=0.28.1",
     "itsdangerous>=2.2.0",
+    "langgraph>=1.2.8",
     "mem0ai>=2.0.11",
     "neo4j>=6.2.0",
     "numpy>=2.4.6",
