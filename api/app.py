@@ -23,6 +23,7 @@ from api.routes import (
     memories,
     profile,
     voice,
+    voice_pipecat,
     voices,
 )
 from config.settings import get_settings
@@ -60,6 +61,7 @@ def create_app(*, wire_adapters: bool = True) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(profile.router)
     app.include_router(voice.router)
+    app.include_router(voice_pipecat.router)
     app.include_router(debug.router)
     app.include_router(conversations.router)
     app.include_router(voices.router)

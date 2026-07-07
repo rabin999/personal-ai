@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     preference_memory_enabled: bool = True
     preference_model: str = "google/gemini-2.5-flash-lite"
 
+    # Voice runtime (CLAUDE.md §5): "native" (the asyncio loop) or "pipecat" (the
+    # framework-owned pipeline/VAD/barge-in). Native is default until the Pipecat
+    # path is verified end-to-end in the browser; the /ws/voice-pipecat endpoint
+    # exists for that verification regardless of this flag.
+    voice_runtime: str = "native"
+
     # Application logging transport (brief Part B): pluggable, config-driven sinks.
     # Comma-separated list of active sinks: "file", "stdout" (both may be on).
     log_sinks: str = "file"

@@ -66,6 +66,33 @@ preference/fact recall. A residual Graphiti warning (`Source entity not found in
 edge relation`) remains and is logged for follow-up. Recall is currently robust via episodic +
 Mem0 even when Graphiti lags.
 
+## Sixth pass — Pipecat voice runtime (CLAUDE.md §5)
+
+### R18 — Pipecat adoption for the voice loop / VAD / barge-in
+Built the framework-owned voice pipeline the contract requires, sharing ONE engine
+with the native runtime (`voice/pipecat/`):
+- `CompanionProcessor` — our reasoning core (assembly → generation → extraction) as a
+  Pipecat `FrameProcessor`: on a final `TranscriptionFrame` it reasons and pushes the
+  reply downstream for TTS. **Headless-verified** via pipecat's own `run_test` harness.
+- `CompanionSTTService` / `CompanionTTSService` — faster-whisper (§20) and Grok TTS (§23)
+  wrapped as Pipecat STT/TTS services. **Headless-verified** (run_stt→TranscriptionFrame,
+  run_tts→TTSAudioRawFrame).
+- `RawPCMSerializer` — keeps the existing browser wire protocol (raw PCM16 in@16k /
+  out@24k) so the current AudioWorklet client drives it, no Pipecat JS client needed.
+  **Unit-tested** (round-trip).
+- `runtime.py` — assembles `input → VADProcessor(Silero) → STT → Companion → TTS → output`
+  on Pipecat's FastAPI-WebSocket transport; VAD/endpointing/**barge-in are framework-driven**
+  (Pipecat interrupts the in-flight reply when the user speaks — §24, no hand-wiring).
+- `/ws/voice-pipecat` route + `voice_runtime` config flag. The native `/ws/voice` stays
+  the default; this endpoint is the one to test in the browser.
+
+**Verification status:** all Pipecat COMPONENTS are headless-tested (4 tests). The
+end-to-end browser audio round-trip (real mic → VAD-driven barge-in → playback) needs a
+browser and is the user's manual test — the reason it's a parallel route behind a flag,
+not a replacement, so nothing regresses if the transport needs iteration. This is the
+honest state: the required framework is wired and its logic proven; only the audio I/O
+edge is unverified here.
+
 ## Fifth pass — tracing completeness + Graphiti retrieval root-cause fix
 
 ### R16 — Trace now has per-LLM-call spans + judgment + reflection (CLAUDE.md §5)

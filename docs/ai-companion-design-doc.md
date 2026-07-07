@@ -136,6 +136,52 @@ Additional signals: never endpoint right after a filler word ("um", "uh"); optio
 
 No wake-word engine at MVP; the user manually starts the app. Per-user custom wake words are a backlog item (they require per-phrase model training, which is non-trivial). The app must, however, remember its own user-given name (§3.1).
 
+### 3.6 Conversation lifecycle — start, engagement, silence, and end
+
+This section defines the full arc of a conversation so the companion behaves like a friend who is present, not a bot that either sits mute or chatters anxiously.
+
+**3.6.1 Start signal (how "active listening" begins).**
+The app never initiates a session. The signal is simple: the user opens the app → it enters active-listening mode → **the first user speech is the signal** that a conversation has begun. From there, normal back-and-forth conversation flows. Because engagement only begins *after* the user speaks first, the app does not respond to background TV, other people's conversations, or the user talking to someone else — it only engages once the user has addressed it.
+
+**3.6.2 End signal + inactivity timeout (how a session closes).**
+A session runs from *user-opens* to *user-ends*. It closes when:
+- The user **explicitly ends** it ("bye", "talk later", clear disengagement), OR
+- A **configurable inactivity timeout** elapses with no user speech (default **10 minutes**; lives in per-user config like other thresholds, tunable without code change). This is the fallback for when the user simply walks away without saying goodbye — a human eventually realizes the other person has drifted off, and the conversation is over.
+
+Session close is what **triggers consolidation** (§4 / §18): memory extraction/consolidation runs at session end, off the critical path. So "what defines a session" is answered here: *open → first speech → conversation → explicit end or 10-min inactivity → consolidation.*
+
+**3.6.3 Post-introduction engagement (carrying a lull, without speaking first).**
+Once the user has opened the conversation and given some introduction (their name, a bit of context), if there is no active request or topic, the companion may **warmly engage** to carry the conversation forward — like a friend filling a natural lull ("so what's going on with you?", "how's your day, brother?"), and it can introduce itself here naturally.
+
+Critical: this is **not** a violation of "user speaks first." The user still opens the session and speaks first; this is only *carrying an already-open conversation* forward during a lull. The app never initiates the session.
+
+**3.6.4 Offer once, then be comfortable with silence.**
+The companion offers engagement **once**, warmly — and if it doesn't land, it does **not** keep poking. Repetition ("so? what's up? anything happening? you there?") is anxious and clingy, the opposite of the design's warmth. The right disposition is **comfortable with silence**: a companion at ease not talking. Silence *with* someone is allowed and is often the right response. This isn't a hard counter ("ask N times"); it's a disposition — offer once per extended lull, then let it breathe. Paradoxically, being comfortable in silence is what makes the times it *does* speak feel warm rather than needy. This is the anti-dependency principle (§1) showing up in micro-behavior: a companion that doesn't manufacture engagement.
+
+**3.6.5 Emotional read sets the tone of any re-engagement.**
+Whether and *how* the companion breaks a silence is set by the **emotional read** (from SER/prosody + text sentiment), not by a fixed style:
+- **Light lull** (mood fine, conversation just paused) → a warm, upbeat opener is perfect ("so what's up with you?").
+- **Heavy silence** (the user seems sad, upset, or processing) → do NOT chirp a cheery prompt; that's tone-deaf and makes the person feel unseen. Instead, **stay quietly present** or offer a **soft, low-register opening** that matches their state ("I'm here if you want to talk about it", "no rush"). The energy drops to meet them.
+- **Uncertain read** → default to **presence over prompting**. Because the emotional signal is probabilistic and sometimes wrong, when the companion can't confidently tell whether a silence is heavy or light, staying quiet is the lower-risk choice than risking a tone-deaf "what's up!" into someone's hard moment. Err toward the response that can't hurt.
+
+*Example — light lull:*
+> [pause] Companion: "So — what's going on with you today?"
+
+*Example — heavy silence:*
+> [user has gone quiet after saying something painful]
+> Companion: [waits] … "I'm here. No rush."   ← soft, matches the mood, doesn't fill with cheer
+
+**3.6.6 When the user corrects the companion.**
+The user is always the authority on themselves. When corrected ("no, that's wrong, I never said that", "it's 9pm not 8pm"):
+- **Defer to the user and update confidently** — never argue "yes you did." Believe the person over the stored memory.
+- **No silent overwrite** — but no lengthy report either. Confirm the change in **one short summary line** of what was updated. History is preserved underneath (supersede, not delete — validity windows, §4), but the user doesn't see that machinery.
+- **Don't over-apologize or get defensive** — a quick, graceful acknowledgment, then move on.
+- **Records get the same treatment** (trades, commitments) — update and summarize the change in one line; the superseded value is retained in history, not shown.
+
+*Example:*
+> User: "no, I moved my meds to 9pm."
+> Companion: "Got it — updated that to 9pm."     ← one line, confirms what changed, no report, no argument
+
 ---
 
 ## 4. Memory Architecture
@@ -311,6 +357,31 @@ Shape the tool registry to be **MCP (Model Context Protocol)**-compatible now (c
 - Integrating an external ecosystem later (e.g. OpenClaw, or hundreds of existing MCP servers like Gmail/calendar/GitHub) = adding an MCP server URL to config, not rebuilding the tool layer.
 - Optionally expose the app *as* an MCP server so other agents can drive its memory/projects.
 - *Honest caveat:* MCP is today's best standard but the agent-interop space moves fast; the durable principle is "tools behind a clean, standard-shaped registry," and MCP is the current best instantiation.
+
+### 8.8 Background-task delivery — the "waiter model" (for ALL long-running / background tasks)
+
+When the user asks for something slow (a web search, or any task routed to the background), the task runs **independently** — like a kitchen preparing an order — but *delivering the result back* is a **social act** that must respect what's happening in the conversation right now. The governing analogy: two people are talking in a café; one orders a meal; the waiter processes it independently and, when it's ready, returns and says *"Sorry to interrupt — your order's ready, would you like it now?"* rather than dropping the plate mid-sentence. The companion delivers background results the same way.
+
+**When a task can wait vs. respond right away:** when the user requests something, decide whether the answer can be delivered immediately (fast/inline) or should go to the background (slow). If background, the result — once ready — becomes a **pending delivery** that may *create a new conversational turn based on the conversation context + the result*, added to a delivery queue. It is not blurted the instant it resolves.
+
+**The delivery flow:**
+1. Task resolves → result held as a **pending delivery** (never an immediate interrupt).
+2. Check conversation state:
+   - **If someone is mid-speech** (user speaking, or the app/agent speaking) → **hold.** Never interrupt an active utterance.
+   - **At the next natural pause** → deliver with a brief acknowledgment: *"Sorry to jump in — that thing you asked about is ready. Want it now?"*
+3. **Respect the answer:** "yes" → give it; "not now / hang on" → hold and offer again later or when the user circles back.
+
+**Edge cases (all part of this behavior):**
+- **Topic has moved on** → reconnect *explicitly* rather than confusing them: *"Going back to what you asked earlier about X — I found it."* Don't drop a stale result into an unrelated topic as if it belonged there.
+- **No longer relevant / user clearly abandoned it** → **drop it silently.** A waiter wouldn't announce a cancelled order. (Requires a relevance check — did the user decisively move on, or just pause?)
+- **Multiple results resolve at once** → don't machine-gun them; batch or prioritize: *"A couple of things came back — want to hear them?"* (one trip, not many).
+- **Result is interesting enough to start a NEW topic** → queue it as an **offer**, never auto-launch: *"That turned up something interesting — want to hear it?"*
+- **Urgent / time-sensitive result** → interject a bit more promptly, but still acknowledge: *"Quick one, sorry — this is time-sensitive:"* (a waiter interrupts faster if your food's getting cold).
+- **User is emotionally engaged** (venting, upset) → hold non-urgent results longer. Delivery timing respects **emotional context**, not just acoustic pauses — don't interrupt someone's hard moment to announce a search result.
+
+**Undelivered results carry to the next conversation.** If a background task resolved but was never delivered (the user left before a pause, or moved on), it is held as **pending** and surfaced early when the user *next opens a conversation* — like a friend saying *"oh hey, that thing you asked me to look up — I found it."* **With a staleness check:** time-sensitive pending items (e.g. "news today" asked three days ago) **expire and are dropped**, not delivered stale; durable items ("look up that book") are still worth delivering. This ties to session lifecycle (§3.6.2): pending deliveries survive session close and are re-evaluated for relevance on next open.
+
+**The one principle under all of it:** the task runs independently, but *delivery* pauses for active speech, acknowledges the interruption, offers rather than dumps, respects the answer, reconnects if the topic moved, and drops if it's gone stale or irrelevant.
 
 ---
 
