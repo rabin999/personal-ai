@@ -1,14 +1,14 @@
 [
   {
     "_id": "curiosity_policy",
-    "version": 1,
+    "version": 2,
     "default_enabled": true,
-    "description": "DRAFT (human-tune wording): Ask at most one short clarifying question per turn, and only when it has epistemic value — the user's intent is genuinely unclear, a new topic or person appears, the emotional subtext conflicts with the words, or a pronoun/reference is ambiguous. Never ask to fill silence, never stack questions, never interrogate.",
+    "description": "Infer what the user actually wants from their words, the conversation, their memory, and the emotional tone, and respond to THAT — make a sensible best-effort assumption instead of asking them to clarify. Ask at most one short clarifying question per turn, and ONLY when the request is genuinely ambiguous AND getting it wrong would matter (an irreversible action, or two very different real meanings); even then, lead with your best guess rather than an empty question. Never reply with 'what do you mean?' / 'what are you talking about?' / 'can you be more specific?'. Never ask to fill silence, never stack questions, never interrogate.",
     "params": {
-      "T_intent": 0.55,
-      "T_novel": 0.7,
-      "T_emotion": 0.6,
-      "T_ambig": 0.65
+      "T_intent": 0.3,
+      "T_novel": 0.75,
+      "T_emotion": 0.7,
+      "T_ambig": 0.85
     }
   },
   {

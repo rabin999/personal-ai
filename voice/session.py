@@ -280,7 +280,19 @@ class VoiceSession:
                 )
                 self._trace.emit("router", f"routing to {prompt.complexity_hint} tier")
 
-            result = await self._generator.generate(prompt, self._dispatcher, context)
+            # Stream the reply into TTS sentence-by-sentence (§8.12): the first
+            # sentence starts synthesizing while the rest is still generating, so
+            # the user hears audio far sooner. TTS speaks the tagged text (prosody);
+            # a non-streamable turn (tool/live-info) falls back to one synth call.
+            self._trace.emit("tts", "synthesizing reply audio")
+
+            async def speak(text: str) -> None:
+                async for chunk in self._tts.speak(
+                    text, self._voice, user_id=self._user_id, session_id=self._session_id
+                ):
+                    out.put_nowait(chunk)
+
+            result = await self._generator.generate_spoken(prompt, self._dispatcher, context, speak)
             self._trace.emit(
                 "generation",
                 f"action={result.action}",
@@ -294,15 +306,14 @@ class VoiceSession:
                     level="warn",
                     style_flags=result.style_flags,
                 )
-            # TTS speaks the tagged text so the voice performs the prosody; the
-            # trace keeps that raw tagged text, while working memory + the durable
+            # The trace keeps the raw tagged voice text; working memory + durable
             # stores get the clean, tag-free text (brief §1.4/§5.10).
             voice_text = result.voice_text or result.final_text
             self._trace.emit("response", result.final_text, voice_text=voice_text)
             self._working.append(self._session_id, Turn(role="assistant", text=result.final_text))
             self._remember(transcript, result.final_text)
             self._log_conversation(transcript, result.final_text, emotion)
-            await self._synthesize(voice_text, out)
+            self._trace.emit("tts", "reply audio complete")
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled")
             raise

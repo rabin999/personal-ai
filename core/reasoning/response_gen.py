@@ -17,6 +17,7 @@ defaults — final feel is tuned by a human (contract §7).
 import json
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
@@ -50,8 +51,11 @@ class ToolDispatch(Protocol):
     async def run_inline(self, call: ToolCall, context: ToolContext) -> Any: ...
 
 
-# Default gate thresholds; overridden by curiosity_policy trait params.
-DEFAULT_GATE_PARAMS = {"T_intent": 0.55, "T_novel": 0.7, "T_emotion": 0.6, "T_ambig": 0.65}
+# Default gate thresholds; overridden by curiosity_policy trait params. Tuned to
+# strongly favor responding over clarifying — intent inference is the priority, so
+# we only clarify when the model is very unsure (low T_intent) or ambiguity is
+# extreme (high T_ambig).
+DEFAULT_GATE_PARAMS = {"T_intent": 0.3, "T_novel": 0.75, "T_emotion": 0.7, "T_ambig": 0.85}
 
 # §5-mandated safety net: only used when the LLM's JSON fails validation twice.
 # Not a conversational canned reply — the real disclosure (rule 4) and background
@@ -90,17 +94,12 @@ _NEGATIVE = (
     "forget it",
 )
 
+# NOTE: field ORDER matters — judgment + tool_request come BEFORE draft_response
+# so the streaming voice path (§8.12) can read the tool decision before it starts
+# speaking the reply, and only stream when no tool is needed.
 _JUDGMENT_INSTRUCTIONS = """
-Respond ONLY with a JSON object of this exact shape:
-{"draft_response": "<your reply — short, warm, natural spoken language. The voice
-   ACTUALLY performs inline delivery tags, so WEAVE THEM IN to sound human, not
-   flat: [laugh] [chuckle] [sigh] [gasp] for feeling; [warm] [gentle] [soft] for
-   tone; <emphasis>word</emphasis> to stress a word; <slow> ... </slow> to slow
-   down; <pause> for a beat. Use 1-3 tags where they genuinely fit the moment
-   (a laugh when something's funny, a gentle tone when they're down) — never tag
-   every sentence, never force it. Example: 'Oh [laugh] that's amazing — <emphasis>
-   congrats</emphasis>!'>",
- "judgment": {"intent_confidence": <0..1 how sure you are of what the user wants>,
+Respond ONLY with a JSON object of this exact shape, with the keys in THIS ORDER:
+{"judgment": {"intent_confidence": <0..1 how sure you are of what the user wants>,
               "novelty_score": <0..1 how new this topic is for this user>,
               "emotional_salience": <0..1 emotional weight of this moment>,
               "ambiguity": <0..1 how ambiguous the request is>,
@@ -114,12 +113,38 @@ Respond ONLY with a JSON object of this exact shape:
                  draft_response yourself, in your own voice (one short sentence,
                  warm, part of the reply) — never a canned or ToS-style disclaimer>,
               "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"},
- "tool_request": null | {"tool_id": "<id>", "args": {<per the tool's schema>}}}
+ "tool_request": null | {"tool_id": "<id>", "args": {<per the tool's schema>}},
+ "draft_response": "<your reply — short, warm, natural spoken language. The voice
+   ACTUALLY performs inline delivery tags, so WEAVE THEM IN to sound human, not
+   flat: [laugh] [chuckle] [sigh] [gasp] for feeling; [warm] [gentle] [soft] for
+   tone; <emphasis>word</emphasis> to stress a word; <slow> ... </slow> to slow
+   down; <pause> for a beat. Use 1-3 tags where they genuinely fit the moment
+   (a laugh when something's funny, a gentle tone when they're down) — never tag
+   every sentence, never force it. Example: 'Oh [laugh] that's amazing — <emphasis>
+   congrats</emphasis>!'>"}
 Set capability_boundary_flag if your draft claims felt emotion or consciousness.
 tool_request: leave null unless you need a tool to answer well (see tools below).
 Ground every factual claim about the user in the conversation and the provided
 memories/facts. If the answer is not in your context, say you don't remember —
 NEVER invent details about the user's life.
+""".strip()
+
+
+# Plain-text spoken reply for the streaming voice path (§8.12) — no JSON, so it
+# streams from the first token straight into TTS. Judgment/gates are skipped for
+# these plain conversational turns (they always just respond).
+_SPOKEN_REPLY_INSTRUCTIONS = """
+Reply out loud in your own warm, natural voice — 1-3 short spoken sentences, like
+a close friend actually talking. Work out what they really mean and respond to
+THAT; make a sensible best-effort read of their intent and never stall with 'what
+do you mean?' / 'what are you talking about?'. Weave in 1-3 inline delivery tags
+where they genuinely fit so the voice sounds human, not flat: [laugh] [chuckle]
+[sigh] for feeling; [warm] [gentle] [soft] for tone; <emphasis>word</emphasis> to
+stress a word; <pause> for a beat — never tag every sentence. If they ask whether
+you're real, an AI, or whether you have feelings, be honest about being an AI in
+one short warm sentence folded into your reply — never a canned disclaimer. Never
+use assistant / service-desk phrasing. Reply with ONLY the spoken words — no JSON,
+no quotes, no preamble.
 """.strip()
 
 
@@ -348,6 +373,106 @@ class ResponseGenerator:
             return summary  # at least hand them the real facts
         answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
         return answer or summary
+
+    async def generate_spoken(
+        self,
+        prompt: "AssembledPrompt | DisambiguationRequest",
+        dispatcher: "ToolDispatch | None",
+        context: "ToolContext | None",
+        speak: "Callable[[str], Awaitable[None]]",
+    ) -> GenerationResult:
+        """Voice turn (§8.12): stream the spoken reply to ``speak`` sentence-by-
+        sentence so TTS starts on the first sentence, when it's a plain
+        conversational turn. Falls back to the full non-streamed path (tool loop,
+        gates, capability search) for anything else, then speaks the reply once.
+        Always returns the final GenerationResult for memory/trace.
+        """
+        if isinstance(prompt, DisambiguationRequest):
+            result = await self._disambiguate(prompt)
+            await speak(result.voice_text or result.final_text)
+            return result
+
+        can_use_tools = dispatcher is not None and context is not None
+        # Stream only a plain reply: no pending confirmation, and not a live-info
+        # query (those need a tool/search first). Tool turns and refusals go the
+        # full path so we never speak a holding line then re-answer.
+        streamable = not (
+            can_use_tools and prompt.session_id in self._pending
+        ) and not _is_live_info_query(prompt.utterance)
+        if streamable:
+            try:
+                streamed = await self._stream_reply(prompt, speak)
+                if streamed is not None:
+                    return streamed
+            except Exception:  # any streaming hiccup → safe fallback (never worse)
+                logger.exception("streaming reply failed; falling back to non-streamed")
+
+        result = await self.generate(prompt, dispatcher, context)
+        await speak(result.voice_text or result.final_text)
+        return result
+
+    async def _stream_reply(
+        self, prompt: AssembledPrompt, speak: "Callable[[str], Awaitable[None]]"
+    ) -> GenerationResult | None:
+        """Stream the spoken reply as PLAIN prose (no JSON) so the first sentence
+        starts synthesizing from the first tokens (§8.12). Speaks completed
+        sentences as they arrive. Returns None (→ caller falls back) on an empty
+        stream. Used only for plain conversational turns (no tool/live-info)."""
+        instructions = _SPOKEN_REPLY_INSTRUCTIONS
+        if prompt.emotion:
+            instructions += f"\nDetected voice emotion signal: {json.dumps(prompt.emotion)}"
+        messages = [
+            *prompt.messages[:-1],
+            {"role": "system", "content": instructions},
+            prompt.messages[-1],
+        ]
+
+        text = ""
+        spoken = 0
+        async for delta in self._llm.stream(
+            prompt.user_id,
+            messages,
+            prompt.complexity_hint,
+            session_id=prompt.session_id,
+            model=prompt.model_override,
+        ):
+            text += delta
+            while (b := _sentence_end(text, spoken)) is not None:
+                await self._speak_clean(text[spoken:b], speak)
+                spoken = b
+
+        if not text.strip():
+            return None  # empty stream → fall back to the full path
+        if spoken < len(text):  # flush the final (unterminated) sentence
+            await self._speak_clean(text[spoken:], speak)
+
+        # A streamed plain reply is a confident direct response by construction.
+        judgment = Judgment(intent_confidence=0.9, ambiguity=0.1)
+        return await self._finish_spoken(prompt, text, judgment)
+
+    async def _speak_clean(self, sentence: str, speak: "Callable[[str], Awaitable[None]]") -> None:
+        """Sanitize a sentence (keep whitelisted voice tags, drop assistant-speak)
+        and hand it to TTS. Skips empties."""
+        text = scrub_forbidden(_sanitize_tags(sentence)) or _sanitize_tags(sentence)
+        if text.strip():
+            await speak(text)
+
+    async def _finish_spoken(
+        self, prompt: AssembledPrompt, decoded_draft: str, judgment: Judgment
+    ) -> GenerationResult:
+        """Build the result for an already-spoken streamed reply (trace/memory)."""
+        self._span(
+            "judgment",
+            intent=judgment.intent_confidence,
+            novelty=judgment.novelty_score,
+            salience=judgment.emotional_salience,
+            ambiguity=judgment.ambiguity,
+            complexity=judgment.complexity_tier,
+            boundary_flag=judgment.capability_boundary_flag,
+            streamed=True,
+        )
+        voice_text = _sanitize_tags(decoded_draft)
+        return await self._finish(prompt, voice_text, "respond", judgment)
 
     async def _resolve_confirmation(
         self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
@@ -666,6 +791,18 @@ def _sanitize_tags(text: str) -> str:
 
     cleaned = _BRACKET_TOKEN.sub(keep, text)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+# Sentence boundary for streaming spoken output (§8.12): punctuation + whitespace,
+# so we never speak a half-formed sentence.
+_SENTENCE_END_RE = re.compile(r"[.!?…][\"'\)\]]?\s")
+
+
+def _sentence_end(text: str, start: int) -> int | None:
+    """End index of the next complete sentence after ``start`` (punctuation +
+    whitespace), or None — so we never speak a half-formed sentence."""
+    match = _SENTENCE_END_RE.search(text, start)
+    return match.end() if match else None
 
 
 def _strip_all_tags(text: str) -> str:

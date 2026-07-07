@@ -9,7 +9,7 @@ to the Cost Ledger fire-and-forget after the call resolves (rule 3).
 import asyncio
 import logging
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from functools import cached_property
 from typing import Any
 
@@ -119,6 +119,71 @@ class OpenRouterLLM:
             self._log_call(result, tier, (time.perf_counter() - started) * 1000)
             return result
         raise LLMUnavailable(f"all models failed for tier '{tier}': {'; '.join(errors)}")
+
+    async def stream(
+        self,
+        user_id: str,
+        messages: Sequence[Mapping[str, Any]],
+        tier: Tier = "moderate",
+        *,
+        response_format: Mapping[str, Any] | None = None,
+        session_id: str | None = None,
+        model: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream text deltas from the first model in the chain (§8.12).
+
+        No mid-stream fallback: if the model errors before any delta the caller
+        falls back to non-streamed ``complete`` (which walks the whole chain).
+        """
+        chain = list(self._tiers[tier])
+        if model and model in self.fast_model_choices():
+            chain = [model, *[m for m in chain if m != model]]
+        model_id = chain[0]
+        started = time.perf_counter()
+        kwargs: dict[str, Any] = {
+            "model": model_id,
+            "messages": list(messages),
+            "stream": True,
+            "stream_options": {"include_usage": True},
+            "extra_body": {"usage": {"include": True}},
+        }
+        if response_format is not None:
+            kwargs["response_format"] = response_format
+        try:
+            stream = await self._client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            raise LLMUnavailable(f"stream failed to start on {model_id}: {exc}") from exc
+
+        parts: list[str] = []
+        usage: Any = None
+        async for chunk in stream:
+            if chunk.choices:
+                delta = chunk.choices[0].delta
+                if delta is not None and delta.content:
+                    parts.append(delta.content)
+                    yield delta.content
+            if getattr(chunk, "usage", None) is not None:
+                usage = chunk.usage
+
+        result = self._result_from_usage("".join(parts), model_id, usage)
+        self._log_cost(user_id, result, session_id)
+        self._log_call(result, tier, (time.perf_counter() - started) * 1000)
+
+    def _result_from_usage(self, text: str, model_id: str, usage: Any) -> CompletionResult:
+        cost = 0.0
+        in_tok = out_tok = 0
+        if usage is not None:
+            in_tok = getattr(usage, "prompt_tokens", 0) or 0
+            out_tok = getattr(usage, "completion_tokens", 0) or 0
+            if getattr(usage, "model_extra", None):
+                cost = float(usage.model_extra.get("cost") or 0.0)
+        return CompletionResult(
+            text=text, model=model_id, input_tokens=in_tok, output_tokens=out_tok, cost_usd=cost
+        )
+
+    def preload(self) -> None:
+        """Touch the local embedder so the first turn doesn't pay its cold load."""
+        _ = self._embedder
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         return await asyncio.to_thread(

@@ -73,7 +73,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # the adapter/edge layer.
     app.state.accounts = pipeline.accounts
 
-    bg_tasks: list[asyncio.Task[None]] = []
+    # Warm the STT model + local embedder off the request path so the first
+    # conversation doesn't pay their cold-load spike (§8.12 latency).
+    async def _warm() -> None:
+        try:
+            await asyncio.to_thread(pipeline.stt.preload)
+            await asyncio.to_thread(pipeline.llm.preload)
+            logger.info("STT + embedder warmed")
+        except Exception:  # warmup is best-effort — never block/kill startup
+            logger.warning("warmup failed (non-fatal)", exc_info=True)
+
+    bg_tasks: list[asyncio.Task[None]] = [asyncio.create_task(_warm())]
     if settings.run_worker_in_process:
         from workers.consolidation_worker import build_worker
         from workers.outbox_worker import OutboxWorker

@@ -5,7 +5,7 @@
 by Response Generation (§12), not here.
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
@@ -41,6 +41,23 @@ class LLM(Protocol):
 
         ``model`` (a user-selected fast model, §4) is tried first when given,
         with the tier chain kept as fallback.
+        """
+        ...
+
+    def stream(
+        self,
+        user_id: str,
+        messages: Sequence[Mapping[str, Any]],
+        tier: Tier = "moderate",
+        *,
+        response_format: Mapping[str, Any] | None = None,
+        session_id: str | None = None,
+        model: str | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream the completion as text deltas (spec §8.12 — start TTS on the
+        first sentence). Cost + the per-call span are logged when the stream ends.
+        Raises LLMUnavailable if the model can't start; the caller may fall back to
+        the non-streamed ``complete``.
         """
         ...
 

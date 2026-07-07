@@ -48,6 +48,13 @@ class FasterWhisperSTT:
 
         return WhisperModel(self._model_size, device="cpu", compute_type="int8")
 
+    def preload(self) -> None:
+        """Load + warm the model so the FIRST utterance doesn't pay the cold-load
+        spike (§8.12). Runs a tiny dummy decode. Call at startup in a thread."""
+        silence = np.zeros(SAMPLE_RATE // 2, dtype=np.float32)  # 0.5s of silence
+        segments, _ = self._model.transcribe(silence, beam_size=1)
+        list(segments)  # force the lazy generator so the graph is fully warm
+
     async def transcribe_stream(
         self,
         frames: AsyncIterator[bytes],

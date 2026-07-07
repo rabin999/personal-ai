@@ -178,11 +178,11 @@
     },
     {
       "id": "curiosity_gate_clarifies_on_low_intent",
-      "note": "Genuinely unclear intent \u2192 clarify (this is allowed, not interrogation).",
+      "note": "Genuinely unclear intent (no possible referent) \u2192 clarify is still allowed; the gate only fires now when the model is VERY unsure (T_intent 0.3).",
       "utterance": "the thing... you know, that one",
       "draft": "Which thing do you mean?",
       "judgment": {
-        "intent": 0.3,
+        "intent": 0.15,
         "novelty": 0.6,
         "salience": 0.4,
         "ambiguity": 0.9,

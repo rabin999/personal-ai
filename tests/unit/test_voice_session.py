@@ -76,6 +76,13 @@ class FakeGenerator:
     ) -> GenerationResult:
         return GenerationResult(final_text="Hey, good to hear you.", action="respond", turn_id="t1")
 
+    async def generate_spoken(
+        self, prompt: object, dispatcher: object, context: object, speak: object
+    ) -> GenerationResult:
+        result = await self.generate(prompt, dispatcher, context)
+        await speak(result.voice_text or result.final_text)  # type: ignore[operator]
+        return result
+
 
 class FakeTTS:
     async def speak(
@@ -261,6 +268,14 @@ class InterruptibleGenerator:
         return GenerationResult(
             final_text="Got it — you jumped in.", action="respond", turn_id="t2"
         )
+
+    async def generate_spoken(
+        self, prompt: object, dispatcher: object, context: object, speak: object
+    ) -> GenerationResult:
+        # Mirror the runtime: streaming path resolves to generate() then speaks.
+        result = await self.generate(prompt, dispatcher, context)
+        await speak(result.voice_text or result.final_text)  # type: ignore[operator]
+        return result
 
 
 async def test_barge_in_stops_reply_cancels_generation_and_answers_new_input() -> None:
