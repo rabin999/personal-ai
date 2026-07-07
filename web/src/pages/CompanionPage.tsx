@@ -228,6 +228,12 @@ export default function CompanionPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Links to the per-user data pages (real routes). */}
+            <nav className="hidden items-center gap-1 text-xs sm:flex">
+              <button onClick={() => navigate("/conversations")} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Conversations</button>
+              <button onClick={() => navigate("/memories")} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Memories</button>
+              <button onClick={() => navigate("/traces")} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Traces</button>
+            </nav>
             <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:flex dark:border-slate-700 dark:bg-slate-800/70">
               <span className={`h-2 w-2 rounded-full ${dotColor}`} />
               <span className="text-slate-600 dark:text-slate-300">{CONN_LABEL[conn]}</span>

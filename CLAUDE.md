@@ -3,203 +3,220 @@
 A multi-user, voice-first AI companion built multi-tenant-ready. This file is your
 persistent operating contract. Read it fully at the start of every session.
 
+**Prime directive:** serve the REAL app requirements in the design doc and spec — a companion
+that thinks before it replies, reflects on its own output, remembers properly, and sounds
+human. These docs describe INTENT. Where a rule here or a line in the docs would block you
+from actually satisfying that intent, the intent wins: make the sensible decision, log it,
+and keep doing real work. Do NOT let a fixed line of process stop you from real
+implementation or real testing.
+
 ---
 
 ## 1. Source of Truth (read before coding)
 
 - `docs/ai-companion-design-doc.md` — the **WHY**: architecture, decisions, rationale.
-- `docs/ai-companion-mvp-build-spec.md` — the **WHAT**: 26 modules, each with
-  interface, data schema, behavior rules, and acceptance criteria.
-- `docs/BUILD_STATUS.md` — current progress (state). Read it first each session;
-  update it when a module is completed. This is the ONLY file you routinely update
-  as you build.
-- **Git history is the session log.** Each commit (referencing its spec module) is the
-  record of what was done. There is no separate session-log file to maintain.
+- `docs/ai-companion-mvp-build-spec.md` — the **WHAT**: modules with interfaces, schemas,
+  behavior rules, acceptance criteria.
+- `docs/BUILD_STATUS.md` — current progress (state). Read first each session; update when a
+  module is done. The ONLY file you routinely update while building.
+- **Git history is the session log.** Each commit (referencing its spec module) is the record.
 
 **Rules about the docs:**
-- ALWAYS read the relevant spec module section **before** writing any code for it.
-- If code and spec disagree, **the spec wins**.
-- If the spec itself seems wrong, incomplete, or ambiguous, **STOP and ask** —
-  do not silently deviate or invent behavior.
-- Do not restate large chunks of the docs back to me; act on them.
+- Before implementing ANY requirement, re-read the exact design/spec line and ask:
+  "what REAL interaction would prove this is satisfied the way a human would judge it?"
+  Build to pass THAT — never to pass a mock.
+- If code and spec disagree, the spec wins.
+- If the spec/design is vague, contradictory, or self-blocking (e.g. "YAML or JSON or DB"),
+  make ONE sensible decision, note it in the commit body + REMEDIATION_LOG.md, and continue.
+  Do not stall, and do not silently drift.
+- Act on the docs; don't restate them back to me.
 
 ---
 
-## 2. Non-Negotiable Invariants
+## 2. What this app IS — the behavior that must actually work
 
-These are enforced across every module (spec §0.5 and §25). Violating any of these
-is a defect even if tests pass:
+This is the point of the whole project. The companion must:
 
-1. **Multi-tenant isolation.** Every retrieval, write, and cost entry is
-   `user_id`-scoped. One user's data must NEVER appear in another user's context
-   (prompt bleed). This is a correctness invariant, not an optimization.
-2. **`user_id` comes from the resolved User Context (spec §26) — never hard-code it**
-   anywhere in `core/`. Take it from the request/session context.
-3. **Ports & adapters boundary.** `core/` depends ONLY on interfaces in `ports/`.
-   `core/` must NEVER import from `adapters/`. Adapters are wired at startup.
-4. **Everything money-costing logs to the Cost Ledger (§3)**, async, after the call
-   resolves, never blocking the user-facing response. Cache hits log as $0.
-5. **Every LLM JSON output is Pydantic-validated.** On validation failure: retry
-   once, then fall back to a safe response. Never trust unvalidated model JSON.
-6. **Config over code.** Behavior params (thresholds, trait descriptions, provider
-   choices) live in the profile/registry/config, not hard-coded in logic.
-7. **The companion never speaks first.** No process emits user-facing output except
-   in response to user input — the one exception is consent-gated project insight
-   (§16), which still asks permission before speaking.
-8. **Idle is nearly free.** The VAD gate (§19) must block all paid calls during
-   silence. Verify no STT/LLM/TTS fires when there's no speech.
-9. **Never diagnose; correlation ≠ causation** (§17, §18). Emotion/psych inferences
-   are probabilistic signals, never clinical claims.
-10. **Async-first.** Use `asyncio`. Slow work goes to the queue (§14), never blocks
-    the conversation path.
+- **Think before it replies (ReAct).** Perceive the input -> reason about it -> decide whether
+  it needs memory/tools -> act -> observe -> and only then respond. Not a reflexive one-shot
+  generation. The reasoning step is real and happens every turn.
+- **Self-reflect before finalizing.** Before the reply goes out, the agent critiques its own
+  draft against: the response standard (warm, human, short, companion-not-assistant), whether
+  it overclaimed feeling, whether it duplicated anything, whether the format is right, and
+  whether it actually used the memory/context it should have. If the draft fails, it revises.
+  Self-reflection is a first-class step, not a bolt-on.
+- **Assemble context properly.** Every turn READS memory before reasoning (working + episodic
+  + semantic + procedural + relevant project data), assembles it into the prompt with the
+  active traits, reasons, responds, then WRITES (extraction/consolidation) after acting.
+- **Control memory deliberately.** Decide what is worth storing and WHERE (episodic vs.
+  semantic vs. procedural), distill episodes into durable facts over time, and NEVER re-store
+  something that is merely being recalled. Memory correctness is core, not incidental.
+- **Sound like the companion.** Warm, curious about the person, concise, human. NEVER generic
+  assistant-speak ("How can I help you?", "What's on your mind?"). Disclosure is pull-based,
+  one sentence, only when the question demands it. No ToS-style disclaimers, no overclaiming
+  feeling.
+- **Use its traits.** The behavioral traits we defined (curiosity policy, humor, emotional
+  intelligence, moral framework, self-model, etc.) are composed into the system prompt from
+  config and actually shape the response — not decorative.
+
+If any process rule below gets in the way of the above, the above wins.
 
 ---
 
-## 3. Architecture (spec §0.6, design doc §17)
+## 3. Non-Negotiable Invariants (these never bend — they are safety/correctness)
 
-**Shape:** modular monolith (`core/`, provider-agnostic) + separated services where
-runtime characteristics genuinely differ:
+Unlike process rules, these are hard. Violating any is a defect even if tests pass:
+
+1. **Multi-tenant isolation.** Every retrieval/write/cost entry is `user_id`-scoped. One
+   user's data must NEVER appear in another user's context.
+2. **`user_id` comes from the resolved User Context (§26)** — never hard-coded in `core/`.
+3. **Ports & adapters boundary.** `core/` depends ONLY on `ports/`; never imports `adapters/`.
+4. **Everything money-costing logs to the Cost Ledger**, async, never blocking the response.
+   Cache hits log $0.
+5. **Every LLM JSON output is Pydantic-validated.** Fail -> retry once -> safe fallback.
+6. **Config over code.** Behavior params (thresholds, trait descriptions, provider/model
+   choice) live in config, not hard-coded.
+7. **The companion never speaks first** (except consent-gated project insight, which asks first).
+8. **Idle is nearly free.** VAD gate blocks all paid calls during silence.
+9. **Never diagnose; correlation != causation.** Emotion/psych inferences are signals, not claims.
+10. **Async-first.** Slow work goes to the queue, never blocks the conversation path.
+
+**Agentic where judgment helps; rigid where safety demands it.** The reasoning, memory
+decisions, tool orchestration, and self-correction SHOULD be a deep agentic loop — not a
+shallow fixed pipeline. But the invariants above are deterministic and always enforced —
+never left to agent discretion. Get both halves right.
+
+---
+
+## 4. Architecture
+
+Modular monolith (`core/`, provider-agnostic) + separated services where runtime differs:
 - **voice/** — real-time session runtime (stateful, latency-critical)
-- **workers/** — background/async (consolidation/learning, background search); off
-  the conversation-latency path
-- **services/ser_service/** — SER (emotion2vec), needs GPU
-- **api/** — thin FastAPI serving edge (SSE/WebSocket streaming; resolves token → user_id)
+- **workers/** — background/async (consolidation/learning, background search)
+- **services/ser_service/** — SER (emotion2vec), GPU
+- **api/** — thin FastAPI edge (SSE/WebSocket streaming; resolves token -> user_id)
 
-**Follow the directory scaffold in design doc §17.3 exactly.** Key rule again:
-`core/` → `ports/` (interfaces) → `adapters/` (concrete, swappable). Never shortcut this.
+`core/` -> `ports/` (interfaces) -> `adapters/` (concrete, swappable). Follow design doc §17.3.
 
 ---
 
-## 4. Tech Stack (spec §0.3) — ask before adding anything not listed
+## 5. Tech Stack — use the REQUIRED tools; do not reinvent them
 
-- **Language:** Python 3.11+ · **Serving:** FastAPI (ASGI) · **Async:** asyncio
-- **Package/env manager:** **`uv`** (deterministic, lockfile-based — always use it, never bare pip)
-- **Voice runtime:** Pipecat (or LiveKit Agents) — AEC, noise suppression, VAD, barge-in
-- **VAD:** Silero · **STT:** OpenRouter `/audio/transcriptions` (or faster-whisper local)
-- **SER:** emotion2vec (self-hosted GPU service)
-- **LLM:** OpenRouter `/chat/completions` (complexity-tier routing, fallback)
-- **TTS:** Grok Voice TTS via OpenRouter `/audio/speech` (inline tags)
-- **Doc/relational store:** MongoDB · **Vector:** Qdrant (dense+BM25+RRF, filtered-HNSW)
-- **Graph:** Neo4j + Graphiti (temporal validity) · **Queue/cache:** Redis
-- **Search:** Serper (primary) + Brave (fallback) + query cache
-- **Validation:** Pydantic
-- **Auth:** NONE built — static bearer token → static user record (§26)
+- **Language:** Python 3.11+ · **Serving:** FastAPI · **Async:** asyncio · **Env:** `uv` (never bare pip)
+- **Voice + barge-in:** **Pipecat** — use its pipeline/transport/FrameProcessor for the voice
+  loop, VAD gate, endpointing, and barge-in. Do NOT hand-wire these (hand-rolling voice is a
+  known past failure and why interruption is unreliable).
+- **VAD:** Silero · **STT:** OpenRouter (or faster-whisper local) · **SER:** emotion2vec
+- **LLM:** OpenRouter (complexity-tier routing, fallback) · **TTS:** Grok Voice TTS (inline tags)
+- **Doc store:** MongoDB · **Vector (episodic):** Qdrant (dense+BM25+RRF, filtered-HNSW)
+- **Semantic/temporal memory:** **Graphiti + Neo4j** — REQUIRED, not hand-rolled. Its
+  retrieval MUST actually return facts (verify with a real call; do not assume).
+- **Personalization memory:** **Mem0** — wire it into the live loop (prompt assembly), not
+  just installed. Reconcile with the custom extraction step so they don't double-store.
+- **Tracing:** full per-turn trace is CORE (not later-phase): per-LLM-call token/cost/latency,
+  tool calls, retrieval steps, and the self-reflection step as its own span, grouped by
+  session_id. Prefer **Langfuse**; a hand-rolled trace must be equally complete.
+- **Queue/cache:** Redis · **Search:** Serper (primary) + Brave (fallback) + cache
+- **Validation:** Pydantic · **Auth:** none — static bearer token -> static user record (§26)
 
-**Dev toolchain (standardized — all config in `pyproject.toml`):**
-- **`ruff`** — linting + formatting (replaces black/flake8/isort)
-- **`mypy`** — static type checking
-- **`pytest`** (+ `pytest-asyncio`, `pytest-cov`) — testing
-- **`import-linter`** (or a grep check) — enforce the `core/` ↛ `adapters/` boundary
-- **pre-commit** hooks + CI — run the full check so bad code can't be committed/merged
+**Dev toolchain (config in `pyproject.toml`):** ruff (lint+format), mypy, pytest
+(+asyncio, +cov), import-linter (core !-> adapters). Pre-commit runs FAST checks only (ruff).
 
-Do not introduce LangGraph/CrewAI/LlamaIndex (design is a custom single-agent loop),
-fine-tuning, or AWS Bedrock/AgentCore. These are explicitly out (design doc §19).
+**Excluded unless you ask me first:** LangGraph, CrewAI, LlamaIndex, AutoGen, fine-tuning,
+Bedrock/AgentCore (design is a custom single-agent loop). If one is genuinely the right fix,
+STOP and make the case in REMEDIATION_LOG.md — don't silently add it. If it's named as
+REQUIRED above (Graphiti/Mem0/Pipecat/Qdrant/Langfuse), wire it in properly — reinventing it
+is a defect.
 
-## 4a. Commands (use these EXACTLY — never improvise tool usage)
-
+### 5a. Commands (use exactly)
 ```
-Install / sync deps:   uv sync
-Add a dependency:      uv add <pkg>            # NEVER `pip install`
-Add a dev dependency:  uv add --dev <pkg>
-Run the app:           uv run <entrypoint>
-Run all tests:         uv run pytest
-Run tests w/ coverage: uv run pytest --cov
-Lint + auto-fix:       uv run ruff check --fix
-Format:                uv run ruff format
-Type check:            uv run mypy .
-Boundary check:        uv run lint-imports        # core/ must not import adapters/
-FULL CHECK (pre-merge): uv run ruff check && uv run mypy . && uv run lint-imports && uv run pytest
+Sync deps:              uv sync
+Add dep / dev dep:      uv add <pkg>   /   uv add --dev <pkg>     # never pip install
+Fast check (anytime):   uv run ruff check --fix && uv run ruff format
+Types / boundary:       uv run mypy .   /   uv run lint-imports
+Logic tests:            uv run pytest -m "not real_call"
+Real-call GenAI tests:  uv run pytest -m real_call                # real model + real stores
+FULL CHECK (per bundle):uv run ruff check && uv run mypy . && uv run lint-imports && uv run pytest
 ```
 
-Every agent (Claude Code, Codex, human) uses these exact commands. Dependencies are
-added via `uv add` so the lockfile stays authoritative — the environment never drifts
-between agents or sessions.
+### 5b. Testing cadence (do not waste time)
+- `ruff`: run freely, anytime — instant.
+- FULL CHECK / real-call suite: run ONCE after a completed BUNDLE. NEVER per edit, per format,
+  or per commit. Mid-bundle, keep building.
 
 ---
 
-## 5. How to Work
+## 6. Definition of Done — REAL testing for a GenAI app (not mock theater)
 
-**Build in the spec's build order (§0.4). One module at a time.**
+This is a GenAI companion, not a CRUD app. Unit tests that mock the LLM and pass while the app
+gives bad responses are worthless. A module/bundle is done only when:
 
-For EACH module:
-1. Read its spec section fully (interface, schema, behavior rules, acceptance criteria).
-2. Check its dependencies are already built (per BUILD_STATUS.md).
-3. Implement against the interface (respect the ports/adapters boundary).
-4. Write **unit + integration + end-to-end tests** covering the module's acceptance
-   criteria AND the invariant checks (§6). These ARE the definition of done.
-5. Run the FULL CHECK (§4a): ruff + mypy + lint-imports + pytest. All green.
-6. Only when everything in §6 passes: update `docs/BUILD_STATUS.md`, commit, move on.
+- **Logic tests (mock ok):** pure logic (parsing, routing, clamping, schema) in isolation.
+- **Integration tests (REAL stores):** against real Qdrant/Mongo/Neo4j/Redis via
+  docker-compose — catches wiring bugs mocks hide (e.g. Graphiti writing malformed edges).
+- **Real-call end-to-end (NO mocking the model or stores):** the core
+  memory/reasoning/response/tool loop tested with REAL model calls + REAL datastores. Mocking
+  the LLM here proves nothing. Mark `@pytest.mark.real_call`.
+- **Response-QUALITY evaluation (the part that was missing):** for every behavioral
+  requirement, send a REAL message, capture the REAL response, JUDGE it:
+  - Deterministic assertions for hard rules: banned assistant-speak absent, disclosure never
+    proactive, no duplication, no cross-user leak, no double-write on recall turns, self-
+    reflection actually ran.
+  - LLM-as-judge for subjective quality: a pinned separate model scores the response against
+    the design's response standard (warm/human/short/companion). Keep a small human-calibration
+    set. Use community-standard approaches (LLM-as-judge; RAGAS for retrieval) — don't invent
+    a worse scheme.
+  - Rule of thumb: **if a human can tell in one read that "hi -> 'How can I help you?'" is wrong,
+    your test MUST catch it automatically.** Build exactly that.
 
-**Do NOT:**
-- Build multiple modules before verifying the earlier ones.
-- Build backlog items: presence detection, per-user custom wake words, encryption
-  at rest, external MCP integrations (e.g. OpenClaw), real authentication, per-user
-  trait override admin UI. (The MCP-shaped registry and per-user override *storage*
-  are in; the external integrations and admin surface are not.)
-- Add dependencies not in §4 without asking.
-- Guess at the fuzzy behavioral modules — see §7 below.
+**Invariant checks (every applicable module):** acceptance criteria pass · two-user isolation ·
+cost logged · ports boundary clean · FULL CHECK green.
 
----
-
-## 6. Definition of Done (per module) — FULL testing required
-
-A module is NOT done until **all of the following pass**, not just "the code looks complete":
-
-**All three test levels must exist and pass:**
-1. **Unit tests** — module logic in isolation, dependencies/ports **mocked**. Fast, no
-   real DB/API. Covers the module's behavior rules and most acceptance criteria.
-2. **Integration tests** — module against **real dependencies** (real Qdrant/Mongo/
-   Neo4j/Redis via docker-compose, real adapter). Catches store/provider wiring bugs
-   that mocks hide.
-3. **End-to-end tests** — module exercised through the **full path** it participates in
-   (e.g. a real conversation turn that writes then retrieves memory through the
-   assembled pipeline). Thin for early modules, fuller as modules connect.
-
-**Plus these invariant checks (cross-cutting, every module that applies):**
-- [ ] **Every acceptance-criteria checkbox** in the module's spec section passes as a test.
-- [ ] **Multi-tenant isolation** — two-user test: user A's data never appears for user B
-      (at integration + e2e level for any module touching user data).
-- [ ] **Cost logging** — every paid op produced a Cost Ledger entry.
-- [ ] **Ports boundary** — `lint-imports` confirms `core/` did not import `adapters/`.
-- [ ] **Full check passes:** `uv run ruff check && uv run mypy . && uv run lint-imports && uv run pytest`.
-
-Do not mark a module ✅ in BUILD_STATUS.md until every box above is green. If a test
-level genuinely doesn't apply to a module, state why explicitly rather than skipping.
+**Proof by conversation is the highest bar.** For core changes, capture a real conversation
+(store a fact -> new session -> recall; "top 2 news" -> 2 distinct once) and show the actual
+responses + the trace (did it read memory, reason, self-reflect, how many steps, which model,
+cost). "Tests pass" without a captured real conversation is NOT done for the core loop. Never
+report a timeout or skipped verification as success.
 
 ---
 
-## 7. Modules that need human iteration (flag, don't decide)
+## 7. Behavioral modules — build the mechanism AND verify the quality yourself
 
-Some modules are judgment-heavy — their correctness is about *feel and behavior*,
-not passing a unit test. For these, implement the mechanism per spec, then STOP and
-let me test/tune rather than deciding behavior yourself:
-- Response Generation behavior gates (§12): curiosity gate, pull-based disclosure,
-  overclaim rewrite — get the mechanism right; I tune the thresholds/wording.
-- Psychological User-Model (§17) and Learning/Consolidation (§18): build the
-  confidence-update and correlation machinery; I validate the inferences.
-- Prompt Assembly (§10) budgeting/trimming and TTS tag placement (§23): mechanism
-  yes, final tuning mine.
-
-Build the mechanical modules (DB, memory stores, cost, tools, projects, queue,
-audio pipeline) fully. Hand-off the behavioral/psychological tuning to me.
+Judgment-heavy modules (response/tone §12, psych §17, learning §18, prompt assembly §10,
+TTS tags §23): build the mechanism AND verify the OUTPUT QUALITY with real judged calls (§6)
+before claiming done. You are responsible for catching "this sounds like a generic assistant,
+not our companion." Do NOT punt response quality to me — the automated quality tests must catch
+bad output. I do FINAL fine-tuning of thresholds/wording; the baseline must already be good and
+proven. Build the mechanical modules (DB, memory stores, cost, tools, queue) fully.
 
 ---
 
 ## 8. Session Rhythm
 
-1. Read `docs/BUILD_STATUS.md` to see current state → know where we are.
-2. I'll name the module (or you propose the next per build order §0.4).
-3. Read that spec section → implement → write unit + integration + e2e tests → run the
-   FULL CHECK (§4a) → show results.
-4. On pass:
-   - Update `docs/BUILD_STATUS.md` (status, Tests U/I/E column, Current module, Last updated).
-   - Commit with a clear message referencing the spec section
-     (e.g. "feat(memory): implement §5 Episodic Memory + unit/integration/e2e tests").
-     **The commit history IS the session log** — no separate log file.
+1. Read `docs/BUILD_STATUS.md` -> know current state.
+2. I name the module (or you propose next per build order).
+3. Read the spec/design section -> implement (REQUIRED tools, not reinvented; think before
+   coding) -> write §6 tests (real-call + judged for the core loop) -> FULL CHECK once per
+   bundle -> show results INCLUDING a captured real conversation for core modules.
+4. On pass: update `BUILD_STATUS.md`; commit referencing the spec section
+   (e.g. "feat(memory): §5 Episodic + real-call tests"). Git history is the session log.
 5. Next module.
 
-`BUILD_STATUS.md` is the only file you routinely update while building. Git history
-carries the "what happened" record. Keep commits scoped to one module where possible.
-If a mid-build decision deviates from or clarifies the design doc / spec, note it in
-the commit body AND flag whether the spec/design doc itself needs updating (don't
-silently drift).
+If a mid-build decision deviates from or clarifies the docs, note it in the commit body and
+flag whether the design/spec itself needs updating — don't silently drift.
+
+---
+
+## 9. Discipline (read every session)
+
+- **Think before you reply/implement.** Re-read the exact requirement; ask "what real
+  interaction proves this?"; build to that.
+- **ReAct + self-reflection are real steps**, every turn — reason before responding, critique
+  the draft before finalizing, revise if it fails the standard.
+- **Real calls, not mocks, for the core loop.** Judge the actual response. Bad responses FAIL a test.
+- **Prove by conversation.** Capture and show real output + trace for core changes. No "fixed"
+  without proof.
+- **Use the required tools; don't reinvent** (Graphiti, Mem0, Pipecat, Qdrant, Langfuse-or-equal).
+- **Requirements over rigid lines.** If a process rule blocks real work or real testing, make
+  the sensible call, log it, and keep going. Serve the app's actual intent.
+- **Efficient cadence.** Fast ruff checks anytime; heavy/real-call suite once per completed bundle.

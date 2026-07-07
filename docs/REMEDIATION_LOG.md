@@ -66,6 +66,28 @@ preference/fact recall. A residual Graphiti warning (`Source entity not found in
 edge relation`) remains and is logged for follow-up. Recall is currently robust via episodic +
 Mem0 even when Graphiti lags.
 
+## Fourth pass — logging transport + per-user UI (Parts B & C)
+
+### R13 — Pluggable logging transport (Part B)
+`LogSink` port + `FileLogSink` (JSON Lines) / `StdoutLogSink` adapters + config factory
+(`log_sinks`), `StructuredLogger` (core) fans one JSON record to all active sinks with
+per-turn correlation ids (`trace_id`/`turn_id`/`user_id`) bound via a contextmanager. Chat
+route emits `turn.request`/`turn.response`. Tested.
+
+### R14 — Per-user pages backends (Part C)
+`/api/conversations` (paginated + server-side ISO datetime range, date-fns on the client),
+`/api/memories/{semantic,episodic,procedural}` (grouped, paginated, episodic delete),
+`/debug/traces`, and `/api/feedback` (thumbs up/down + note tied to session/turn/trace).
+Added `VectorStore.list_by_user`/`delete` + `EpisodicMemory.list_recent`/`delete`.
+
+### R15 — Per-user UI (real routes, not hash)
+Switched `web/App.tsx` HashRouter → **BrowserRouter** with real named paths `/conversations`,
+`/memories`, `/traces` (+ nav). Built the three pages: conversations (paginated, datetime
+range), memories (grouped by type, forget-a-memory), traces (readable per-turn view +
+thumbs up/down/note feedback). Server SPA fallback is a **404 handler** (not a catch-all
+route) so it never shadows API/probe routes or the 401 challenge. `npm run build` green
+(tsc + vite). date-fns adopted for date formatting.
+
 ## Framework decisions (adopt / reject + why)
 
 | Area | Decision | Rationale |

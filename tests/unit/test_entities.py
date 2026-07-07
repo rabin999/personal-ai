@@ -24,6 +24,14 @@ class FakeVectorStore:
         self.searches.append({"collection": collection, "user_id": user_id, "k": k})
         return self.hits
 
+    async def list_by_user(
+        self, collection: str, *, user_id: str, limit: int = 100
+    ) -> list[VectorHit]:
+        return list(self.hits)
+
+    async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
+        return True
+
 
 async def test_index_writes_pointer_with_payload_and_stable_id() -> None:
     vectors = FakeVectorStore()

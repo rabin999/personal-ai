@@ -31,6 +31,14 @@ class FakeVectorStore:
         self.searches.append({"collection": collection, "user_id": user_id, "query": query_text})
         return self.hits
 
+    async def list_by_user(
+        self, collection: str, *, user_id: str, limit: int = 100
+    ) -> list[VectorHit]:
+        return list(self.hits)
+
+    async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
+        return True
+
 
 class FakeLLM:
     def __init__(self, text: str = "That sounds really hard.", fail_times: int = 0) -> None:

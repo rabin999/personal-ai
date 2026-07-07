@@ -77,13 +77,37 @@ def _mount_web(app: FastAPI) -> None:
         return
     app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")
 
+    @app.get("/pcm-worklet.js")
+    async def _worklet() -> FileResponse:
+        return FileResponse(WEB_DIST / "pcm-worklet.js", media_type="text/javascript")
+
     @app.get("/")
     async def _index() -> FileResponse:
         return FileResponse(WEB_DIST / "index.html")
 
-    @app.get("/pcm-worklet.js")
-    async def _worklet() -> FileResponse:
-        return FileResponse(WEB_DIST / "pcm-worklet.js", media_type="text/javascript")
+    # SPA fallback via a 404 handler (NOT a catch-all route): real routes always
+    # match first, so this only fires for genuinely-unmatched paths. A GET for a
+    # non-API client route (/conversations, /memories, /traces, …) returns the app
+    # shell so a refresh survives; everything else keeps its original error
+    # (status + headers, e.g. the 401 WWW-Authenticate challenge).
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse, Response
+
+    async def _spa_fallback(request: Request, exc: Exception) -> Response:
+        assert isinstance(exc, StarletteHTTPException)
+        path = request.url.path
+        if (
+            exc.status_code == 404
+            and request.method == "GET"
+            and not path.startswith(("/api", "/ws", "/debug", "/assets", "/health"))
+        ):
+            return FileResponse(WEB_DIST / "index.html")
+        return JSONResponse(
+            {"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers
+        )
+
+    app.add_exception_handler(StarletteHTTPException, _spa_fallback)
 
 
 def get_pipeline(app: FastAPI) -> Pipeline:

@@ -4,6 +4,25 @@
 // keeps them on the companion route instead of bouncing back to /login.
 
 const KEY = "companion.entered";
+const TOKEN_KEY = "companion.token";
+const DEFAULT_TOKEN = "static_token_abc";
+
+/** The bearer token the app authenticates API + WS calls with. */
+export function getToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) || DEFAULT_TOKEN;
+  } catch {
+    return DEFAULT_TOKEN;
+  }
+}
+
+export function setToken(token: string): void {
+  try {
+    localStorage.setItem(TOKEN_KEY, token || DEFAULT_TOKEN);
+  } catch {
+    /* storage unavailable — non-fatal */
+  }
+}
 
 export function isEntered(): boolean {
   try {
