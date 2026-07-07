@@ -32,7 +32,7 @@ export function ThemeToggle({ pref, onChange }: Props) {
             onClick={() => onChange(o.value)}
             className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
               active
-                ? "bg-white text-indigo-600 shadow-sm dark:bg-slate-950 dark:text-indigo-300"
+                ? "bg-white text-sky-600 shadow-sm dark:bg-slate-950 dark:text-sky-300"
                 : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             }`}
           >

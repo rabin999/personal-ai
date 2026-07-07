@@ -51,7 +51,7 @@ export function TraceLog({
           </div>
           <div className="flex items-center gap-2">
             {realTurns > 0 && (
-              <span className="rounded-full bg-indigo-100 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300">
+              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
                 {realTurns} {realTurns === 1 ? "turn" : "turns"}
               </span>
             )}

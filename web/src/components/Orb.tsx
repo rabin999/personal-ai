@@ -24,10 +24,11 @@ interface Palette {
 
 const PALETTE: Record<TurnState, Palette> = {
   idle: {
+    // Calm skies — soft sky blue.
     sphere:
-      "radial-gradient(circle at 33% 28%, #c7d2fe 0%, #818cf8 42%, #3730a3 100%)",
-    glow: "#6366f1",
-    accent: "#a5b4fc",
+      "radial-gradient(circle at 33% 28%, #bae6fd 0%, #38bdf8 42%, #075985 100%)",
+    glow: "#0ea5e9",
+    accent: "#7dd3fc",
   },
   listening: {
     sphere:
@@ -42,10 +43,11 @@ const PALETTE: Record<TurnState, Palette> = {
     accent: "#fcd34d",
   },
   speaking: {
+    // Fresh water — aqua/cyan.
     sphere:
-      "radial-gradient(circle at 33% 28%, #e9d5ff 0%, #a855f7 44%, #6b21a8 100%)",
-    glow: "#a855f7",
-    accent: "#d8b4fe",
+      "radial-gradient(circle at 33% 28%, #a5f3fc 0%, #22d3ee 44%, #0e7490 100%)",
+    glow: "#06b6d4",
+    accent: "#67e8f9",
   },
 };
 

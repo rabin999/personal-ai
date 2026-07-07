@@ -132,7 +132,7 @@ function ProfileBody({ p }: { p: UserProfile }) {
     <div className="flex flex-col gap-6">
       {/* Identity */}
       <div className="flex items-center gap-3">
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-base font-semibold text-white shadow-sm">
+        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 text-base font-semibold text-white shadow-sm">
           {initials(p.user_id)}
         </div>
         <div className="min-w-0">
@@ -222,7 +222,7 @@ function Meter({ label, value }: { label: string; value: number | null }) {
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-fuchsia-500 transition-[width]"
+          className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 transition-[width]"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -246,11 +246,11 @@ function Toggle({ label, on }: { label: string; on?: boolean }) {
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
         on
-          ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300"
+          ? "bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300"
           : "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500"
       }`}
     >
-      <span className={`h-1.5 w-1.5 rounded-full ${on ? "bg-indigo-500" : "bg-slate-400 dark:bg-slate-600"}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${on ? "bg-sky-500" : "bg-slate-400 dark:bg-slate-600"}`} />
       {label}
     </span>
   );

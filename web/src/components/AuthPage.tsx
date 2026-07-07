@@ -16,7 +16,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
   return (
     <div className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-slate-50 px-5 py-10 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Ambient wash */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_45%_at_50%_12%,rgba(99,102,241,0.14),transparent_70%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_45%_at_50%_12%,rgba(14,165,233,0.14),transparent_70%)]" />
 
       <div className="absolute right-4 top-4">
         <ThemeToggle pref={themePref} onChange={onThemeChange} />
@@ -25,7 +25,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
       <div className="relative w-full max-w-sm">
         {/* Brand */}
         <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-lg shadow-indigo-600/20">
+          <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/20">
             <svg viewBox="0 0 24 24" className="h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
               <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
@@ -54,17 +54,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
             <GoogleIcon />
             Continue with Google
           </button>
-
-          <p className="mt-4 text-center text-xs leading-relaxed text-slate-400 dark:text-slate-500">
-            New here or returning — it's the same button. We'll create your account
-            on first sign-in.
-          </p>
         </div>
-
-        <p className="mx-auto mt-6 max-w-xs text-center text-[11px] leading-relaxed text-slate-400 dark:text-slate-600">
-          By continuing you agree to let your companion remember your conversations
-          so it can be there for you over time.
-        </p>
       </div>
     </div>
   );

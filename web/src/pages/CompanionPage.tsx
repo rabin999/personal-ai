@@ -18,7 +18,7 @@ import { useTheme } from "../lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
 const FIELD =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
 const FIELD_LABEL =
   "text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400";
 
@@ -255,7 +255,7 @@ export default function CompanionPage() {
       <main className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-sm">
               <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
                 <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
@@ -290,7 +290,7 @@ export default function CompanionPage() {
                 <path d="M4 6h16M4 12h10M4 18h7" />
               </svg>
               {realTurns > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold leading-none text-white">
+                <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold leading-none text-white">
                   {realTurns}
                 </span>
               )}
@@ -301,7 +301,7 @@ export default function CompanionPage() {
               onClick={() => setProfileOpen(true)}
               aria-label="Open your profile"
               title="Your profile"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-xs font-semibold text-white shadow-sm outline-none ring-offset-2 ring-offset-white transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-indigo-500 dark:ring-offset-slate-950"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 text-xs font-semibold text-white shadow-sm outline-none ring-offset-2 ring-offset-white transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-sky-500 dark:ring-offset-slate-950"
             >
               {me?.picture ? (
                 <img
@@ -319,7 +319,7 @@ export default function CompanionPage() {
 
         <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-4 py-8 sm:px-6">
           {/* Soft backdrop wash */}
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(99,102,241,0.08),transparent_70%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(14,165,233,0.08),transparent_70%)]" />
           <Orb state={turnState} level={level} />
           {/* Live mic-input waveform — reacts to the user's voice while listening. */}
           {conn === "active" && (
@@ -387,7 +387,7 @@ export default function CompanionPage() {
               className={`group flex shrink-0 items-center justify-center gap-2.5 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-md transition-all active:scale-[0.98] lg:min-w-[13rem] ${
                 active
                   ? "bg-rose-600 shadow-rose-600/20 hover:bg-rose-500"
-                  : "bg-indigo-600 shadow-indigo-600/20 hover:bg-indigo-500"
+                  : "bg-sky-600 shadow-sky-600/20 hover:bg-sky-500"
               }`}
             >
               {active ? (
@@ -405,11 +405,12 @@ export default function CompanionPage() {
               )}
             </button>
           </div>
-          <p className="mt-3 text-center text-xs text-slate-500 lg:text-left dark:text-slate-400">
-            {active
-              ? "Just talk — I take turns on my own. Talk over me to interrupt."
-              : "Press start and speak naturally."}
-          </p>
+          {/* Only surface the non-obvious bit (barge-in); no filler when idle. */}
+          {active && (
+            <p className="mt-3 text-center text-xs text-slate-500 lg:text-left dark:text-slate-400">
+              Talk over me any time to interrupt.
+            </p>
+          )}
         </div>
       </main>
 

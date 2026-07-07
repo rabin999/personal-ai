@@ -7,16 +7,16 @@ import { useEffect, useRef } from "react";
 type Wave = { color: string; freq: number; speed: number; amp: number; width: number };
 
 const WAVES_DARK: Wave[] = [
-  { color: "#60a5fa", freq: 1.0, speed: 0.9, amp: 1.0, width: 2.4 }, // blue
-  { color: "#a78bfa", freq: 1.7, speed: -1.3, amp: 0.8, width: 2.0 }, // violet
-  { color: "#f472b6", freq: 2.5, speed: 1.7, amp: 0.6, width: 1.6 }, // pink
-  { color: "#34d399", freq: 3.3, speed: -2.1, amp: 0.45, width: 1.4 }, // teal
+  { color: "#38bdf8", freq: 1.0, speed: 0.9, amp: 1.0, width: 2.4 }, // sky
+  { color: "#22d3ee", freq: 1.7, speed: -1.3, amp: 0.8, width: 2.0 }, // cyan
+  { color: "#2dd4bf", freq: 2.5, speed: 1.7, amp: 0.6, width: 1.6 }, // teal
+  { color: "#7dd3fc", freq: 3.3, speed: -2.1, amp: 0.45, width: 1.4 }, // light sky
 ];
 const WAVES_LIGHT: Wave[] = [
-  { color: "#2563eb", freq: 1.0, speed: 0.9, amp: 1.0, width: 2.4 },
-  { color: "#7c3aed", freq: 1.7, speed: -1.3, amp: 0.8, width: 2.0 },
-  { color: "#db2777", freq: 2.5, speed: 1.7, amp: 0.6, width: 1.6 },
-  { color: "#059669", freq: 3.3, speed: -2.1, amp: 0.45, width: 1.4 },
+  { color: "#0284c7", freq: 1.0, speed: 0.9, amp: 1.0, width: 2.4 }, // sky
+  { color: "#0891b2", freq: 1.7, speed: -1.3, amp: 0.8, width: 2.0 }, // cyan
+  { color: "#0d9488", freq: 2.5, speed: 1.7, amp: 0.6, width: 1.6 }, // teal
+  { color: "#0ea5e9", freq: 3.3, speed: -2.1, amp: 0.45, width: 1.4 }, // sky
 ];
 
 export function Waveform({ level, active }: { level: number; active: boolean }) {
