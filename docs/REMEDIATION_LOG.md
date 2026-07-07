@@ -53,3 +53,19 @@ sink (never blocks the WS send path); `GET /debug/traces` + `/debug/traces/{sess
 expose a user's own traces (auth'd, isolation-scoped). Tests in `test_trace_store.py`
 (ordering + two-user isolation). Also removed a duplicate `queue/dispatcher/delivery/
 web_search` construction block in the composition root (dead second instances).
+
+### R5 — No enforcement of the anti-assistant-speak tone standard (§7) — MECHANISM ADDED + confirmed live finding
+**Root cause of the symptom:** the tone standard is in config and reaches the prompt, but
+nothing *checked* the model honored it, so service-desk phrasings shipped silently.
+**Fix (mechanism, per §7 hand-off — no wording decided here):** `core/reasoning/style.py`
+detects forbidden assistant-speak / ToS-disclaimer shapes; `GenerationResult.style_flags`
+carries them; the voice runtime logs a `generation` **warn** trace when a reply slips.
+Gating regression tests: detector coverage + a config-guard asserting `response_voice`
+still bans the shapes (`tests/golden/test_gs3_style.py`).
+**Confirmed live finding (for the human §7 tuner):** a paid, non-gating diagnostic runs the
+*real* fast model with the faithfully-composed traits over tempting openers. **4 of 5 bare
+greetings still produced service-desk openers** even with the trait present, e.g. `"hi"` →
+*"Hey there! How can I help you today?"*. So the trait wording alone does **not** reliably
+suppress the opener — this reproduces the reported complaint. Recommended next lever
+(mechanism; final tuning yours): a **self-reflection/rewrite pass** (brief §9.3) that, when
+`style_flags` is non-empty, has the model re-say the line in-voice before it leaves.

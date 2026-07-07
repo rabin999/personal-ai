@@ -24,6 +24,7 @@ from pydantic import BaseModel, BeforeValidator, ValidationError
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
+from core.reasoning.style import find_forbidden
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
@@ -175,6 +176,10 @@ class GenerationResult(BaseModel):
     action: Action
     judgment: Judgment | None = None
     turn_id: str | None = None
+    # Labels for any forbidden assistant-speak found in the final text (§7). The
+    # mechanism only FLAGS (wording is human-tuned); the runtime logs it to the
+    # trace so a tone regression is visible instead of shipping silently.
+    style_flags: list[str] = []
 
 
 class ResponseGenerator:
@@ -409,8 +414,15 @@ class ResponseGenerator:
             capability_boundary_flag=judgment.capability_boundary_flag if judgment else None,
         )
         await self._self_model.log(record, statement_text=text)
+        style_flags = find_forbidden(text)
+        if style_flags:
+            logger.warning("response contains forbidden assistant-speak: %s", style_flags)
         return GenerationResult(
-            final_text=text, action=action, judgment=judgment, turn_id=record.turn_id
+            final_text=text,
+            action=action,
+            judgment=judgment,
+            turn_id=record.turn_id,
+            style_flags=style_flags,
         )
 
 

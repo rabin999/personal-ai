@@ -274,6 +274,13 @@ class VoiceSession:
                 action=result.action,
                 turn_id=result.turn_id,
             )
+            if result.style_flags:  # §7: tone regression is visible, not silent
+                self._trace.emit(
+                    "generation",
+                    f"style warning: forbidden assistant-speak {result.style_flags}",
+                    level="warn",
+                    style_flags=result.style_flags,
+                )
             self._trace.emit("response", result.final_text, text=result.final_text)
             self._working.append(self._session_id, Turn(role="assistant", text=result.final_text))
             self._remember(transcript, result.final_text)

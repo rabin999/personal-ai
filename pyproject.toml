@@ -91,6 +91,7 @@ addopts = "-q"
 markers = [
     "integration: needs real datastores from docker-compose (Mongo/Qdrant/Neo4j/Redis)",
     "acceptance: end-to-end acceptance-criteria tests",
+    "paid: hits a real paid provider (needs an API key); skipped loudly without one",
 ]
 
 [tool.coverage.run]
