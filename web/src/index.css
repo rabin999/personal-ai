@@ -96,3 +96,38 @@ body {
   background-color: rgb(148 163 184 / 0.35);
   border-radius: 9999px;
 }
+
+/* ── Mobile polish (A6) ─────────────────────────────────────────────────── */
+/* Honor iOS safe areas (notch/home indicator) so the sticky nav and content
+   never sit under the status bar or gesture bar. */
+html {
+  -webkit-text-size-adjust: 100%; /* don't let iOS auto-inflate type on rotate */
+}
+body {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right)
+    env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+/* Snappier taps: remove the 300ms delay + the grey tap flash on controls. */
+button,
+a,
+[role="button"],
+select,
+input {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+/* Comfortable minimum touch target on phones (WCAG ~44px) for the small pill
+   buttons without bloating the desktop layout. */
+@media (max-width: 640px) {
+  button,
+  a[role="button"],
+  select {
+    min-height: 40px;
+  }
+  /* prevent iOS zoom-on-focus for text inputs (font < 16px triggers it) */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}

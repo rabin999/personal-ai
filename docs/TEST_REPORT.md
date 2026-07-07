@@ -851,3 +851,18 @@ prompt — directly improving context quality (A3).
   reranker put **"user adopted a puppy named Momo" #1** — the right memory into the prompt.
 - Unit (`test_reranker.py`, 2): reranker reorders+truncates; no-reranker keeps fusion+recency order.
 - Non-paid suite 366; lint-imports clean (core depends only on the Reranker port).
+
+---
+
+## A6 — Mobile-first UI
+
+The app was already substantially mobile-first (viewport meta; overflow-x sticky nav; header
+truncation with `min-w-0`; a `lg:hidden` slide-over for nav on phones; `max-w-3xl` centered content;
+flex/flex-wrap data pages with no overflow-prone tables). Verified no fixed-width grids or
+horizontal-overflow layouts in the pages. Added real mobile polish (`web/src/index.css`):
+- **iOS safe-area insets** on `body` so the sticky nav/content clear the notch + home indicator;
+- **`touch-action: manipulation` + no tap-highlight** on interactive controls (snappier taps);
+- **≥40px touch targets** for the small pill buttons on phones (WCAG-ish);
+- **16px inputs on ≤640px** to stop iOS focus-zoom.
+Web tsc + build clean. Full on-device look/feel verification needs a real phone (paired with the
+mobile speaker-routing item, which is device-blocked).

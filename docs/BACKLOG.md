@@ -43,4 +43,4 @@ via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is pos
 - [~] **A8** — Langfuse — FULL self-hosted stack up (PG+ClickHouse+Redis+MinIO+web+worker, healthy); LangfuseTraceSink behind the LogSink port (swappable); real turn → 12 observations (LLM gens w/ model+tokens+cost + reasoning + tools). Tracing DONE; prompt-mgmt/eval migration = follow-up
 - [x] **A9** — Full trace detail — in-app technical breakdown (Item 6) + per-turn deep-link to the full Langfuse trace UI (langfuse_url = deterministic trace id)
 - [x] **A10a** — Reranker — bge-reranker-base behind a Reranker port, wired into episodic retrieval (fetch k*3 -> rerank top-k); real proof (pets query -> Momo #1); unit-tested. RAGAS/Arq/secrets/rate-limit/migrations remain as follow-ups.
-- [ ] **A6** — Mobile-first UI
+- [x] **A6** — Mobile-first UI — existing responsive foundation verified (no overflow/fixed grids) + polish: iOS safe-area insets, touch-action, ≥40px targets, 16px inputs (no iOS zoom). On-device look needs a real phone
