@@ -48,6 +48,9 @@ export class MicCapture {
     onFrame: (pcm: ArrayBuffer) => void,
     onLevel: (level: number) => void,
   ): Promise<void> {
+    // Declare a media (play-and-record) audio session on the Start gesture,
+    // before capture flips the OS into record-only mode → earpiece (mobile fix).
+    requestMediaAudioSession();
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: deviceId ? { exact: deviceId } : undefined,
@@ -77,8 +80,120 @@ export class MicCapture {
   }
 }
 
+// ── Mobile speaker routing ───────────────────────────────────────────────────
+// On phones/tablets a live mic+speaker session is treated as a *call*: the OS
+// routes output to the earpiece on the CALL-volume stream (quiet, wrong speaker).
+// We force MEDIA/loud-speaker output two ways, both feature-detected so desktop
+// and unsupported browsers fall back cleanly:
+//   1. iOS 17+ Safari: declare a media audio session (`navigator.audioSession`).
+//   2. Everywhere: pipe Web Audio through a hidden <audio> *media element*
+//      (media elements play on the MEDIA stream) pinned to the loud-speaker sink
+//      via setSinkId where supported (Android Chrome). This is the routing fix
+//      that keeps output off the earpiece/call stream.
+
+interface AudioSessionLike {
+  type: string;
+}
+
+/** Phones/tablets are where the earpiece/call-routing bug lives; desktop keeps
+ *  its known-good raw-destination path unchanged. iPadOS reports as desktop
+ *  Safari, so also treat a touch-capable Mac-like UA as mobile. */
+function isMobile(): boolean {
+  const ua = navigator.userAgent;
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+  return /Macintosh/.test(ua) && navigator.maxTouchPoints > 1; // iPadOS
+}
+
+/** iOS 17+ Safari: ask for simultaneous record + loud-speaker media playback. */
+export function requestMediaAudioSession(): void {
+  const nav = navigator as unknown as { audioSession?: AudioSessionLike };
+  try {
+    if (nav.audioSession && "type" in nav.audioSession) {
+      // We capture the mic AND play TTS at once → play-and-record. Declaring it
+      // (vs. the default "auto", which becomes record-only → earpiece) lets
+      // WebKit keep media playback on the loud speaker.
+      nav.audioSession.type = "play-and-record";
+    }
+  } catch {
+    /* older iOS / unsupported — the media-element route below still applies. */
+  }
+}
+
+/** The explicit loud-speaker output, if the platform exposes one by label. */
+async function loudSpeakerSinkId(): Promise<string | undefined> {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    // Mid-capture the *default* output is the earpiece on mobile, so prefer a
+    // device that names itself a speaker/speakerphone when one is exposed.
+    const speaker = devices.find(
+      (d) => d.kind === "audiooutput" && /speaker/i.test(d.label),
+    );
+    return speaker?.deviceId;
+  } catch {
+    return undefined;
+  }
+}
+
+type SinkCapableAudio = HTMLAudioElement & {
+  setSinkId?: (id: string) => Promise<void>;
+};
+
+/**
+ * Routes an AudioContext's output through a hidden <audio> media element so
+ * playback lands on the MEDIA/loud-speaker stream instead of the call/earpiece
+ * stream. Falls back to the raw context destination when media-element routing
+ * isn't available (older browsers / no MediaStreamDestination support).
+ */
+class SpeakerRoute {
+  /** Connect your source nodes here. */
+  readonly target: AudioNode;
+  private el: SinkCapableAudio | null = null;
+
+  constructor(ctx: AudioContext) {
+    // Only reroute on mobile (the bug's home); desktop keeps the raw destination.
+    if (!isMobile() || typeof ctx.createMediaStreamDestination !== "function") {
+      this.target = ctx.destination; // desktop / unsupported → default path
+      return;
+    }
+    const dest = ctx.createMediaStreamDestination();
+    const el = document.createElement("audio") as SinkCapableAudio;
+    el.autoplay = true;
+    el.setAttribute("playsinline", ""); // keep inline (don't go fullscreen) on iOS
+    el.setAttribute("aria-hidden", "true");
+    el.style.display = "none";
+    el.srcObject = dest.stream;
+    document.body.appendChild(el);
+    void el.play().catch(() => {
+      /* autoplay may need the Start gesture; enqueue() retries via ctx.resume */
+    });
+    this.el = el;
+    this.target = dest;
+    void this.forceLoudSpeaker();
+  }
+
+  private async forceLoudSpeaker(): Promise<void> {
+    if (!this.el?.setSinkId) return; // unsupported (notably iOS Safari)
+    const id = await loudSpeakerSinkId();
+    if (!id) return;
+    try {
+      await this.el.setSinkId(id);
+    } catch {
+      /* device gone / not permitted — leave on default output */
+    }
+  }
+
+  dispose(): void {
+    if (!this.el) return;
+    this.el.pause();
+    this.el.srcObject = null;
+    this.el.remove();
+    this.el = null;
+  }
+}
+
 export class AudioPlayer {
   private ctx: AudioContext;
+  private route: SpeakerRoute;
   private cursor = 0;
   private sources = new Set<AudioBufferSourceNode>();
   private rate = 24_000;
@@ -88,7 +203,11 @@ export class AudioPlayer {
     private onLevel: (level: number) => void,
     private onEnded: () => void = () => {},
   ) {
+    // Hint a media audio session before the context exists so the very first
+    // buffer already plays on the loud speaker (mobile earpiece fix).
+    requestMediaAudioSession();
     this.ctx = new AudioContext();
+    this.route = new SpeakerRoute(this.ctx);
   }
 
   configure(sampleRate: number): void {
@@ -113,9 +232,12 @@ export class AudioPlayer {
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < int16.length; i++) channel[i] = int16[i] / 0x8000;
 
+    // Resume a context the browser auto-suspended (mobile), else the queued
+    // buffer is silent and the hidden media element never gets audio to route.
+    if (this.ctx.state === "suspended") void this.ctx.resume();
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(this.ctx.destination);
+    src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
     const startAt = Math.max(this.ctx.currentTime, this.cursor);
     src.start(startAt);
     this.cursor = startAt + buffer.duration;
@@ -161,10 +283,22 @@ export class AudioPlayer {
     const buffer = this.ctx.createBuffer(1, merged.length, sampleRate);
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < merged.length; i++) channel[i] = merged[i] / 0x8000;
+    if (this.ctx.state === "suspended") void this.ctx.resume();
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
-    src.connect(this.ctx.destination);
+    src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
     src.start();
+  }
+
+  /** Release the media-routing element + audio context (call on disconnect). */
+  async close(): Promise<void> {
+    this.stop();
+    this.route.dispose();
+    try {
+      await this.ctx.close();
+    } catch {
+      /* already closed */
+    }
   }
 }
 

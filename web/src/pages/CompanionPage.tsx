@@ -125,6 +125,9 @@ export default function CompanionPage() {
     const path = runtimeRef.current === "pipecat" ? "/ws/voice-pipecat" : "/ws/voice";
     const ws = new WebSocket(`${proto}://${location.host}${path}`);
     ws.binaryType = "arraybuffer";
+    // Release the previous connection's playback context + hidden speaker-routing
+    // <audio> element before opening a new one (avoid accumulation on reconnect).
+    void playerRef.current?.close();
     playerRef.current = new AudioPlayer(
       (l) => {
         if (turnStateRef.current === "speaking") setLevel(l);
