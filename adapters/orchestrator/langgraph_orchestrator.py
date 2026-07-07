@@ -120,11 +120,22 @@ class LangGraphOrchestrator:
 
     async def _perceive(self, state: _TurnState) -> _TurnState:
         prompt = state["prompt"]
+        # A5: log the persona/profile read the agent has for this user this turn —
+        # the emotional read + which soft-signal/preference context is in play — so
+        # the trace shows what shaped the response, not just the words.
+        sections = prompt.sections
+        persona_active = [
+            k
+            for k in ("psych", "preferences", "self_statements", "facts")
+            if sections.get(k, "").strip()
+        ]
         self._span(
             "reasoning",
             node="perceive",
             utterance=prompt.utterance,
             prompt_version=prompt.prompt_version,
+            emotion=prompt.emotion,  # acoustic/emotional read of the user (A5 persona)
+            persona_context=persona_active,
             recent_turns=[m.get("content", "")[:120] for m in prompt.messages[1:-1]][-4:],
         )
         return {}
@@ -195,25 +206,40 @@ class LangGraphOrchestrator:
         return {"result": result}
 
     async def _reflect_log(self, state: _TurnState) -> _TurnState:
-        """A5: surface the outcome — action, style flags, and the tool 'why-not'."""
+        """A5: surface the outcome — action, style flags, and an explicit tool
+        'why-not' for every available tool that did NOT run this turn."""
         result = state["result"]
+        prompt = state["prompt"]
         dispatcher = state.get("dispatcher")
         context = state.get("context")
-        tools = []
+        tools: list[str] = []
         if dispatcher is not None and context is not None:
             try:
                 tools = [t.id for t in dispatcher.tools_for(context)]
             except Exception:
                 tools = []
-        # Whether a tool ran is visible on the tool spans; here we record the set
-        # that was AVAILABLE and the final action, so a not-called tool is explained
-        # by the turn's action (e.g. answered from memory → no web_search needed).
+        # A5: a not-called tool must be EXPLAINED, not silent. Whether a tool ran is
+        # on the tool.call spans; here we record, per available tool, the reason it
+        # was skipped when it wasn't used (answered from context/memory; no live
+        # info needed; the model judged it unnecessary).
+        why_not = {}
+        if result.action == "respond":
+            for tid in tools:
+                if tid == "web_search":
+                    why_not[tid] = (
+                        "answer carried in context — no live search"
+                        if prompt.suppress_live_search
+                        else "the model judged no live lookup was needed this turn"
+                    )
+                else:
+                    why_not[tid] = "not needed for this turn's intent"
         self._span(
             "reasoning",
             node="reflect_log",
             action=result.action,
             style_flags=result.style_flags,
             available_tools=tools,
+            tool_why_not=why_not,  # A5: explained negatives
         )
         return {}
 

@@ -39,7 +39,7 @@ via docker), OpenRouter + Serper + X-AI keys set. Real end-to-end testing is pos
 - [x] **A2** — Mature reasoning model — main turn now routes to claude-4.5-sonnet (settings.reasoning_tier=complex), recorded in trace; sub-steps keep faster tiers; noticeably more thoughtful (real capture); companion suite 8/8
 - [x] **A3** — Context/working-memory — suppress_live_search flag set by the context node on a follow-up (no irrelevant re-search); reasons over carried info (real captures); 3 real_call scenarios pass
 - [x] **A4** — Multi-utterance — classify_utterance (accumulate/merge/split by timing+continuity+state) + combine; integrated in VoiceSession (fold a quick addition into one turn); decision logged in trace. unit + engine E2E; live-audio timing mic-blocked
-- [ ] **A5** — Deep traces incl why-not (extend across all nodes)
+- [x] **A5** — Deep traces — graph nodes log persona read (emotion+context), context-connection, multi-utterance decision, and explicit tool why-not (each uncalled tool explained); + llm model/tokens/cost + reflection. real capture
 - [ ] **A8** — Consolidate on Langfuse (self-hosted) for prompt mgmt/evals/traces
 - [ ] **A9** — Full trace detail page
 - [ ] **A10** — Reranker / RAGAS / Arq / secrets / rate-limit / migrations

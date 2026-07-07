@@ -757,3 +757,26 @@ treated as its own turn.
   once with the combined transcript; barge-in tests still pass (spoke → split).
 - **Blocked:** the live audio timing of successive real utterances needs a mic; the decision logic +
   loop integration are engine-verified. Non-paid suite 364.
+
+---
+
+## A5 — Deep traces incl. the "why-not"
+
+**App-goal verified:** from the trace alone you can answer "why did it respond this way, what did it
+think, what context it used, which tools it used or skipped and WHY."
+
+The LangGraph nodes each write a `graph.node` reasoning span; combined with the existing llm.call
+(model/tokens/cost/latency), tool.call (status/args/result), reflection, and memory spans, a turn is
+fully reconstructable. A5 additions (captured on a real "rough day" turn):
+- **perceive:** the user persona read — `emotion` (acoustic/emotional read) + `persona_context`
+  (which soft-signal layers were in play: `preferences, self_statements, facts`).
+- **resolve_context (A3):** `relation` (new_topic/follow_up/…), `refers_to`, `note`, and
+  `suppress_live_search` — incl. the negative ("no prior context to connect to").
+- **multi-utterance (A4):** accumulate/merge/split `decision` + `reason` + `gap_ms`.
+- **reflect_log:** `action`, `style_flags`, `available_tools`, and **`tool_why_not`** — an explicit
+  reason each available tool was NOT called (e.g. web_search: "the model judged no live lookup was
+  needed"; or "answer carried in context — no live search"). A skipped tool is explained, not silent.
+- Model + routing + tokens + cost live on the llm.call spans (A2: model=claude-4.5-sonnet); the
+  self-reflection span shows ran/checked/revised.
+
+Non-paid suite 357+; real trace captured above. (A9 renders this as a full detail page.)
