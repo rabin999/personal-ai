@@ -1,8 +1,9 @@
-"""Port: User Context — bearer token → UserRecord (spec §26, design doc §18).
+"""Port: User Context — authenticated user_id → UserRecord (spec §26, design §18).
 
-The ONLY place identity is stubbed. The static adapter
-(``adapters/user_context/static.py``) resolves a static token map; real auth
-later replaces that adapter with zero changes in ``core/``.
+Identity is resolved by real Google SSO (``api/routes/auth.py``) into a signed
+session cookie carrying our internal ``user_id``; the ``SessionUserContext``
+adapter turns that ``user_id`` into a ``UserRecord``. This is the seam §18
+anticipated — swapping the identity source left ``core/`` untouched.
 """
 
 from typing import Any, Protocol
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 
 
 class Unauthorized(Exception):
-    """Raised by ``resolve`` when the bearer token is unknown (spec §26 rule 2)."""
+    """Raised when the session carries no / an unknown user (spec §26 rule 2)."""
 
 
 class UserRecord(BaseModel):
@@ -28,8 +29,8 @@ class UserRecord(BaseModel):
 
 
 class UserContext(Protocol):
-    """Resolves an incoming bearer token to a ``UserRecord``."""
+    """Resolves an authenticated ``user_id`` (from the session) to a ``UserRecord``."""
 
-    async def resolve(self, bearer_token: str) -> UserRecord:
-        """Return the ``UserRecord`` for ``bearer_token``; raise ``Unauthorized`` if unknown."""
+    async def record_for(self, user_id: str) -> UserRecord:
+        """Return the ``UserRecord`` for an authenticated ``user_id``."""
         ...

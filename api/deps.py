@@ -1,44 +1,36 @@
 """Request-scoped dependencies for the serving edge.
 
-The token → user_id wiring point (spec §26 rule 1): every request carries a
-bearer token; this dependency resolves it through the UserContext port and
-the resulting ``user_id`` flows into the pipeline. Downstream modules must
-take ``user_id`` from here — never hard-code it (spec §0.5).
+Identity now comes from the signed session cookie established by real Google SSO
+(``api/routes/auth.py``), not a bearer token (spec §26, design §18). This
+dependency reads the authenticated ``user_id`` from the session and resolves it
+to a ``UserRecord`` via the UserContext port; downstream modules take
+``user_id`` from here — never hard-code it (spec §0.5). No valid session → 401.
 """
 
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, status
 
-from ports.user_context import Unauthorized, UserContext, UserRecord
+from ports.user_context import UserContext, UserRecord
+
+SESSION_USER_KEY = "user_id"
 
 
-async def get_user_record(
-    request: Request,
-    authorization: Annotated[str | None, Header()] = None,
-) -> UserRecord:
-    """Resolve the request's bearer token to a ``UserRecord`` via the UserContext port."""
+async def get_user_record(request: Request) -> UserRecord:
+    """Resolve the request's session to a ``UserRecord`` via the UserContext port."""
     user_context: UserContext | None = request.app.state.user_context
     if user_context is None:
         raise HTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="UserContext adapter not wired yet (spec §26 not built)",
+            detail="UserContext adapter not wired yet",
         )
-    scheme, _, token = (authorization or "").partition(" ")
-    if scheme.lower() != "bearer" or not token:
+    user_id = request.session.get(SESSION_USER_KEY)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing bearer token",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Not authenticated — sign in with Google",
         )
-    try:
-        return await user_context.resolve(token)
-    except Unauthorized as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unknown token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+    return await user_context.record_for(user_id)
 
 
 CurrentUser = Annotated[UserRecord, Depends(get_user_record)]

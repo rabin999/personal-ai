@@ -21,6 +21,7 @@ from api.composition import Pipeline, build_pipeline
 from config.settings import get_settings
 from core.psych.consolidation import CONSOLIDATION_TASK_TYPE
 from core.tools.dispatcher import TOOL_TASK_TYPE
+from workers.outbox_worker import OutboxWorker
 from workers.task_worker import TaskWorker
 
 logging.basicConfig(level=logging.INFO)
@@ -41,12 +42,14 @@ def build_worker(pipeline: Pipeline) -> TaskWorker:
 async def main() -> None:
     pipeline = await build_pipeline(get_settings())
     worker = build_worker(pipeline)
+    outbox_worker = OutboxWorker(pipeline.outbox, pipeline.mailer)
     logger.info(
-        "worker started — handling: %s",
+        "worker started — handling: %s + outbox",
         [TOOL_TASK_TYPE, WEB_SEARCH_TASK_TYPE, CONSOLIDATION_TASK_TYPE],
     )
     try:
-        await worker.run_forever()
+        # Queue worker + outbox poller run concurrently in the worker process.
+        await asyncio.gather(worker.run_forever(), outbox_worker.run_forever())
     finally:
         await pipeline.aclose()
 

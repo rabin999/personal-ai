@@ -1,18 +1,21 @@
 // Authed API client for the per-user pages (conversations / memories / traces /
-// feedback). Uses the bearer token the app holds; every endpoint is user-scoped
-// server-side. Thin wrappers — pagination + range filtering happen on the server.
-
-import { getToken } from "./session";
+// feedback). Auth is the session cookie (Google SSO) — sent automatically with
+// credentials:"include"; no bearer token. A 401 means the session lapsed → bounce
+// to the login screen. Thin wrappers — pagination/filtering happen server-side.
 
 async function authed<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
+    credentials: "include",
     headers: {
-      Authorization: `Bearer ${getToken()}`,
       "Content-Type": "application/json",
       ...(init?.headers || {}),
     },
   });
+  if (res.status === 401) {
+    window.location.href = "/login";
+    throw new Error("401 Unauthorized");
+  }
   if (!res.ok) {
     throw new Error(`${res.status} ${res.statusText}`);
   }

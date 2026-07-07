@@ -212,7 +212,9 @@ import asyncio, json, ssl, websockets
 async def main():
     ctx = ssl.create_default_context()
     async with websockets.connect("wss://202-58-120-93.sslip.io/ws/voice", ssl=ctx) as ws:
-        await ws.send(json.dumps({"token": "static_token_abc"}))
+        # Auth now rides the session cookie set by Google sign-in; the WS reads it
+        # from the handshake. (This raw probe won't have one → it will be rejected.)
+        await ws.send(json.dumps({"voice": "eve"}))
         print(await ws.recv())   # {"type":"ready",...}
 asyncio.run(main())
 PY
@@ -242,3 +244,69 @@ systemctl restart companion-api
 `deploy/update.sh` and `deploy/setup.sh` both use `uv sync --extra voice`, so every
 deploy keeps voice available. faster-whisper is CPU-viable (design doc) — the **first**
 conversation loads the STT model (slow, tens of seconds) and it's cached after.
+
+---
+
+## 10. Authentication — Google SSO + sessions (real auth, replaces the stub)
+
+The static bearer-token stub is **gone**; the app uses **Google OAuth2/OIDC
+(Authlib) + signed session cookies (Starlette `SessionMiddleware`)**. Sign-in and
+sign-up are one flow: `GET /auth/google/login` → Google consent →
+`GET /auth/google/callback` creates the account on first login (our internal
+`user_id` mapped from the Google `sub`), seeds the §2 profile, queues a welcome
+email via the outbox, and sets the session cookie. `GET /auth/me` returns the
+current user; `POST /auth/logout` clears the session. All app routes 401 without a
+valid session.
+
+### 10.1 `.env` keys to fill (server `/opt/companion/.env`, mode 600)
+
+```
+GOOGLE_CLIENT_ID=<from Google Cloud Console>
+GOOGLE_CLIENT_SECRET=<from Google Cloud Console>
+PUBLIC_BASE_URL=https://202-58-120-93.sslip.io      # the OAuth redirect is built from THIS
+SESSION_SECRET=<openssl rand -hex 32>               # signs the session cookie
+# Welcome email (optional — leave MAIL_* empty to disable; outbox marks it skipped)
+MAIL_USERNAME=<you@gmail.com>
+MAIL_PASSWORD=<Google APP PASSWORD — 2FA required, NOT your login password>
+MAIL_FROM=<you@gmail.com>
+MAIL_SERVER=smtp.gmail.com
+MAIL_PORT=587
+MAIL_STARTTLS=true
+MAIL_SSL_TLS=false
+```
+
+> **Gmail requires an App Password.** Enable 2-Step Verification on the Google
+> account, then create an App Password (Google Account → Security → App passwords)
+> and use that 16-char value as `MAIL_PASSWORD`. The normal password will fail.
+
+### 10.2 Google Cloud Console — OAuth client setup
+
+In **APIs & Services → Credentials → OAuth 2.0 Client ID** (Web application), add:
+
+- **Authorized redirect URI:** `https://202-58-120-93.sslip.io/auth/google/callback`
+- **Authorized JavaScript origin:** `https://202-58-120-93.sslip.io`
+- (local dev, if used) `http://localhost:8000/auth/google/callback` and origin
+  `http://localhost:8000`
+
+The redirect URI is built from `PUBLIC_BASE_URL`, **not** the internal request host,
+so it matches even though the app sees `http://localhost:8000` behind the proxy. If
+Google returns `redirect_uri_mismatch`, the Console URI and `PUBLIC_BASE_URL` disagree.
+
+### 10.3 Proxy correctness (required behind nginx)
+
+- Run uvicorn with `--forwarded-allow-ips='*'` (the systemd unit / `update.sh` should
+  pass it) **and** the app adds `ProxyHeadersMiddleware` so generated URLs are https.
+- The session cookie is `secure` (HTTPS-only), `httponly`, `same_site=lax` — `secure`
+  is auto-derived from the `https://` `PUBLIC_BASE_URL`.
+- HTTPS must terminate for `202-58-120-93.sslip.io` → the app (see §8), with ports
+  **80 + 443** open. The mic (voice) already requires HTTPS; auth cookies require it too.
+
+### 10.4 Verify after deploy
+
+```
+curl -s -o /dev/null -w '%{http_code}\n' https://202-58-120-93.sslip.io/auth/me     # 401 (no session)
+curl -s -o /dev/null -w '%{redirect_url}\n' https://202-58-120-93.sslip.io/auth/google/login \
+  | grep -o 'redirect_uri=[^&]*'   # → .../auth/google/callback on the sslip host
+```
+
+Then open the site, click **Continue with Google**, and confirm you land back signed in.

@@ -1,29 +1,27 @@
 import { useCallback } from "react";
-import { useNavigate } from "react-router-dom";
 import { AuthPage } from "../components/AuthPage";
 import { requestMicAccess } from "../lib/audio";
-import { setEntered } from "../lib/session";
+import { loginWithGoogle } from "../lib/session";
 import { useTheme } from "../lib/theme";
 
-// The /login route. Presentation-only auth (see AuthPage); "continue" records
-// the session flag, warms up mic permission, and routes into the companion.
+// The /login route. Real Google SSO (sign-in AND sign-up are the same flow):
+// "Continue with Google" warms the mic permission, then hands off to the server's
+// OAuth start route (which redirects to Google and back to the app on success).
 export default function LoginPage() {
-  const navigate = useNavigate();
   const { pref: themePref, setPref: setThemePref } = useTheme();
 
-  const enter = useCallback(() => {
-    setEntered(true);
-    // Warm up the mic permission prompt before the companion mounts so the
-    // pipeline works on first Start (best-effort — ignore the result here).
+  const signIn = useCallback(() => {
+    // Warm up the mic permission prompt before we leave (best-effort), then start
+    // the OAuth flow — the browser navigates away to Google.
     void requestMicAccess();
-    navigate("/", { replace: true });
-  }, [navigate]);
+    loginWithGoogle();
+  }, []);
 
   return (
     <AuthPage
       themePref={themePref}
       onThemeChange={setThemePref}
-      onContinue={enter}
+      onGoogle={signIn}
     />
   );
 }

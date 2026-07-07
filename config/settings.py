@@ -83,6 +83,34 @@ class Settings(BaseSettings):
     ser_service_url: str = ""
     ser_timeout_s: float = 3.0
 
+    # ── Authentication (design doc §18/§26): real Google SSO replaces the static
+    # bearer-token stub. Secrets from env; never hard-coded. ──────────────────
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    # PUBLIC url the browser + Google see (behind the reverse proxy). The OAuth
+    # redirect URI is built from THIS, not the internal request host, so Google
+    # never sees http://localhost and returns redirect_uri_mismatch (brief §0).
+    public_base_url: str = "http://localhost:8000"
+    # Signs the session cookie (Starlette SessionMiddleware). MUST be strong in
+    # prod; a random dev default keeps local runs working without config.
+    session_secret: str = "dev-insecure-session-secret-change-me"
+    # Session cookie lifetime (seconds) and secure flag. secure=True in prod
+    # (HTTPS only); auto-derived from PUBLIC_BASE_URL scheme unless overridden.
+    session_max_age_s: int = 14 * 24 * 3600
+    session_cookie_secure: bool | None = None  # None → derive from public_base_url
+
+    # Welcome-email SMTP (fastapi-mail via Gmail). Gmail requires an APP PASSWORD
+    # (2FA enabled) — the normal account password will NOT work. Empty MAIL_*
+    # disables sending; the outbox still records (worker marks it skipped).
+    mail_username: str = ""
+    mail_password: str = ""
+    mail_from: str = ""
+    mail_from_name: str = "Your Companion"
+    mail_server: str = "smtp.gmail.com"
+    mail_port: int = 587
+    mail_starttls: bool = True
+    mail_ssl_tls: bool = False
+
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = "companion-dev"
@@ -90,6 +118,20 @@ class Settings(BaseSettings):
     # Task-queue key namespace (§14). Tests pass a unique namespace so an
     # isolated queue is never drained by a live worker on the default one.
     queue_namespace: str = "companion"
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Whether the session cookie is HTTPS-only. Explicit override wins; else
+        derived from PUBLIC_BASE_URL (https in prod → secure)."""
+        if self.session_cookie_secure is not None:
+            return self.session_cookie_secure
+        return self.public_base_url.lower().startswith("https")
+
+    @property
+    def google_redirect_uri(self) -> str:
+        """The OAuth redirect URI Google must be registered with — built from the
+        PUBLIC base url, NOT the internal request host (brief §0)."""
+        return f"{self.public_base_url.rstrip('/')}/auth/google/callback"
 
 
 @lru_cache

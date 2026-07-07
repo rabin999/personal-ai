@@ -19,7 +19,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from api.composition import Pipeline
 from api.streaming import merge_conversation
 from core.profile.models import AudioPrefs
-from ports.user_context import Unauthorized, UserRecord
+from ports.user_context import UserRecord
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
 from voice.pipeline import PipelineConfig, VADModel
@@ -146,6 +146,19 @@ def _start(
     return _Conversation(ws, session, trace, persist)
 
 
+async def _session_user(ws: WebSocket) -> UserRecord | None:
+    """Resolve the WS handshake's session cookie to a UserRecord (real auth §26).
+
+    Starlette SessionMiddleware populates ``ws.session`` from the signed cookie
+    the browser sends on the WS upgrade — so no bearer token in the message.
+    """
+    user_id = ws.session.get("user_id") if "session" in ws.scope else None
+    if not user_id:
+        return None
+    pipeline: Pipeline = ws.app.state.pipeline
+    return await pipeline.user_context.record_for(user_id)
+
+
 @router.websocket("/ws/voice")
 async def voice_ws(ws: WebSocket) -> None:
     await ws.accept()
@@ -155,10 +168,12 @@ async def voice_ws(ws: WebSocket) -> None:
         await ws.close()
         return
 
+    # Identity comes from the signed session cookie the browser sends on the WS
+    # handshake (real Google SSO, §26) — no token in the message. The first
+    # message still carries the voice selection.
     auth = await ws.receive_json()
-    try:
-        user = await pipeline.user_context.resolve(auth.get("token", ""))
-    except Unauthorized:
+    user = await _session_user(ws)
+    if user is None:
         await ws.send_json({"type": "error", "message": "unauthorized"})
         await ws.close()
         return

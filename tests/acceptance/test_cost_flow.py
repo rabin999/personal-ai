@@ -11,7 +11,7 @@ import pytest
 
 from adapters.db import Database
 from adapters.doc.mongo import MongoDocStore
-from adapters.user_context.static import StaticUserContext
+from adapters.user_context.accounts import AccountStore, GoogleIdentity
 from config.settings import Settings
 from core.cost import CostEntry, CostLedger, CostMetadata
 from core.profile import ProfileService
@@ -27,11 +27,16 @@ async def test_resolved_user_cost_attribution_end_to_end() -> None:
     try:
         await wait_until_healthy(database)
         store = MongoDocStore(database)
-        user_context = StaticUserContext.from_defaults(DEFAULTS_DIR, ProfileService(store))
+        accounts = AccountStore(store, ProfileService(store))
         ledger = CostLedger(store)
 
-        speaker = await user_context.resolve("static_token_abc")
-        bystander = await user_context.resolve("static_token_xyz")
+        # Two real Google sign-ups → two isolated internal user_ids (§26).
+        speaker = (
+            await accounts.upsert_from_google(GoogleIdentity(sub="cost-a", email="a@x.io"))
+        ).account
+        bystander = (
+            await accounts.upsert_from_google(GoogleIdentity(sub="cost-b", email="b@x.io"))
+        ).account
 
         ledger.log(
             CostEntry(

@@ -14,9 +14,13 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
+from api.auth import build_oauth
 from api.composition import Pipeline, build_pipeline
 from api.routes import (
+    auth,
     chat,
     conversations,
     debug,
@@ -64,21 +68,30 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     pipeline = await build_pipeline(settings)
     app.state.pipeline = pipeline
     app.state.user_context = pipeline.user_context
+    # Real-auth edge state (design §18): the OAuth client + account store the
+    # auth routes use. Built here (not in core) so the identity source stays in
+    # the adapter/edge layer.
+    app.state.accounts = pipeline.accounts
 
-    worker_task: asyncio.Task[None] | None = None
+    bg_tasks: list[asyncio.Task[None]] = []
     if settings.run_worker_in_process:
         from workers.consolidation_worker import build_worker
+        from workers.outbox_worker import OutboxWorker
 
         worker = build_worker(pipeline)
-        worker_task = asyncio.create_task(worker.run_forever())
-        logger.info("background worker running in-process (dev; §14)")
+        bg_tasks.append(asyncio.create_task(worker.run_forever()))
+        # Outbox poller delivers welcome emails off the signup path (§4).
+        outbox_worker = OutboxWorker(pipeline.outbox, pipeline.mailer)
+        bg_tasks.append(asyncio.create_task(outbox_worker.run_forever()))
+        logger.info("background worker + outbox poller running in-process (dev; §14/§4)")
 
     try:
         yield
     finally:
-        if worker_task is not None:
-            worker_task.cancel()
-            await asyncio.gather(worker_task, return_exceptions=True)
+        for task in bg_tasks:
+            task.cancel()
+        if bg_tasks:
+            await asyncio.gather(*bg_tasks, return_exceptions=True)
         await pipeline.aclose()
 
 
@@ -93,9 +106,31 @@ def create_app(*, wire_adapters: bool = True) -> FastAPI:
         version="0.1.0",
         lifespan=_lifespan if wire_adapters else None,
     )
+    settings = get_settings()
+    # Auth edge (design §18): OAuth client + settings live on app.state so the
+    # auth routes work; the account store is attached at startup (needs Mongo).
+    app.state.settings = settings
+    app.state.oauth = build_oauth(settings)
+    app.state.accounts = None
     if not wire_adapters:
         app.state.pipeline = None
         app.state.user_context = None
+
+    # Trust the reverse proxy's forwarded headers so generated URLs are https
+    # behind TLS termination (brief §0, belt-and-suspenders to PUBLIC_BASE_URL).
+    app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+    # Signed session cookie carrying our user_id (brief §3). Secure (HTTPS-only)
+    # in prod, httponly always; same_site=lax so the cookie survives the top-level
+    # OAuth redirect back from Google.
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.session_secret,
+        max_age=settings.session_max_age_s,
+        https_only=settings.cookie_secure,
+        same_site="lax",
+    )
+
+    app.include_router(auth.router)
     app.include_router(health.router)
     app.include_router(chat.router)
     app.include_router(profile.router)
@@ -141,7 +176,7 @@ def _mount_web(app: FastAPI) -> None:
         if (
             exc.status_code == 404
             and request.method == "GET"
-            and not path.startswith(("/api", "/ws", "/debug", "/assets", "/health"))
+            and not path.startswith(("/api", "/ws", "/auth", "/debug", "/assets", "/health"))
         ):
             return FileResponse(WEB_DIST / "index.html")
         return JSONResponse(

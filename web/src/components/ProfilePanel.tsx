@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { fetchProfile, type UserProfile } from "../lib/profile";
 
 interface Props {
   open: boolean;
-  token: string;
   onClose: () => void;
   onSignOut: () => void;
 }
 
-// Slide-over profile panel. Fetches the resolved user's static record from
-// `/api/me` each time it opens and renders it read-only. The bearer token is the
-// one the app already holds (also used by the WebSocket auth handshake).
-export function ProfilePanel({ open, token, onClose, onSignOut }: Props) {
+// Slide-over profile panel. Fetches the resolved user's record from `/api/me`
+// (session cookie / Google SSO) each time it opens and renders it read-only.
+export function ProfilePanel({ open, onClose, onSignOut }: Props) {
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
@@ -21,7 +21,7 @@ export function ProfilePanel({ open, token, onClose, onSignOut }: Props) {
     let cancelled = false;
     setStatus("loading");
     setError("");
-    fetchProfile(token)
+    fetchProfile()
       .then((p) => !cancelled && (setProfile(p), setStatus("idle")))
       .catch((e) => {
         if (cancelled) return;
@@ -31,7 +31,7 @@ export function ProfilePanel({ open, token, onClose, onSignOut }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [open, token]);
+  }, [open]);
 
   // Close on Escape.
   useEffect(() => {
@@ -74,6 +74,31 @@ export function ProfilePanel({ open, token, onClose, onSignOut }: Props) {
         </header>
 
         <div className="thin-scroll flex-1 overflow-y-auto px-5 py-5">
+          {/* Mobile-only navigation — the header nav is hidden on small screens. */}
+          <nav className="mb-5 grid grid-cols-1 gap-1.5 sm:hidden">
+            {(
+              [
+                ["/conversations", "Conversations"],
+                ["/memories", "Memories"],
+                ["/traces", "Traces"],
+              ] as const
+            ).map(([to, label]) => (
+              <button
+                key={to}
+                onClick={() => {
+                  onClose();
+                  navigate(to);
+                }}
+                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800/60"
+              >
+                {label}
+                <svg viewBox="0 0 24 24" className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 6l6 6-6 6" />
+                </svg>
+              </button>
+            ))}
+          </nav>
+
           {status === "loading" && <Skeleton />}
 
           {status === "error" && (

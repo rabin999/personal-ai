@@ -17,8 +17,6 @@ import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from ports.user_context import Unauthorized
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -33,13 +31,14 @@ async def voice_pipecat_ws(ws: WebSocket) -> None:
         await ws.close()
         return
 
+    # Identity from the signed session cookie on the WS handshake (real auth §26).
     auth = await ws.receive_json()
-    try:
-        user = await pipeline.user_context.resolve(auth.get("token", ""))
-    except Unauthorized:
+    user_id = ws.session.get("user_id") if "session" in ws.scope else None
+    if not user_id:
         await ws.send_json({"type": "error", "message": "unauthorized"})
         await ws.close()
         return
+    user = await pipeline.user_context.record_for(user_id)
 
     try:
         from voice.pipecat.runtime import build_pipeline, build_transport, run_pipeline

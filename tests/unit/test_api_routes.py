@@ -11,19 +11,18 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
+from api.deps import get_user_record
 from core.memory.extraction import ExtractionResult
 from core.memory.working import WorkingMemory
 from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt
 from core.reasoning.response_gen import GenerationResult
-from ports.user_context import Unauthorized, UserRecord
+from ports.user_context import UserRecord
 
 
 class FakeUserContext:
-    async def resolve(self, token: str) -> UserRecord:
-        if token != "static_token_abc":
-            raise Unauthorized("unknown token")
-        return UserRecord(user_id="u_demo_001", companion_name="Bro")
+    async def record_for(self, user_id: str) -> UserRecord:
+        return UserRecord(user_id=user_id, companion_name="Bro")
 
 
 class FakeAssembler:
@@ -160,8 +159,7 @@ class FakeTraces:
         self.records.append(event)
 
 
-@pytest.fixture
-def client() -> TestClient:
+def _build_app(*, authed: bool) -> "object":
     app = create_app(wire_adapters=False)
     user_context = FakeUserContext()
     app.state.user_context = user_context
@@ -182,11 +180,29 @@ def client() -> TestClient:
         procedural=FakeProcedural(),
         traces=FakeTraces(),
     )
-    return TestClient(app)
+    if authed:
+        # Real auth is session-based (§26); tests inject the authenticated user
+        # via FastAPI's dependency override (the standard pattern) instead of
+        # forging a signed session cookie.
+        app.dependency_overrides[get_user_record] = lambda: UserRecord(
+            user_id="u_demo_001", companion_name="Bro"
+        )
+    return app
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(_build_app(authed=True))
+
+
+@pytest.fixture
+def noauth_client() -> TestClient:
+    """No session → protected routes 401 (static stub is gone)."""
+    return TestClient(_build_app(authed=False))
 
 
 def _auth() -> dict[str, str]:
-    return {"Authorization": "Bearer static_token_abc"}
+    return {}  # auth now comes from the session/override, not a bearer header
 
 
 def test_voices_list_and_sample_wav(client: TestClient) -> None:
@@ -203,7 +219,6 @@ def test_voice_sample_unknown_voice_404(client: TestClient) -> None:
 
 
 def test_conversations_list_is_authed_and_paginated(client: TestClient) -> None:
-    assert client.get("/api/conversations").status_code == 401
     body = client.get("/api/conversations", headers=_auth()).json()
     assert body["total"] == 1 and body["conversations"][0]["session_id"] == "s1"
 
@@ -230,28 +245,23 @@ def test_chat_turn_returns_reply_and_trace(client: TestClient) -> None:
     assert "assembly" in stages and "generation" in stages and "response" in stages
 
 
-def test_chat_rejects_missing_token(client: TestClient) -> None:
-    assert client.post("/api/chat", json={"text": "hey"}).status_code == 401
+def test_protected_routes_reject_without_session(noauth_client: TestClient) -> None:
+    # No session cookie → 401 everywhere (real auth §26; static stub removed).
+    assert noauth_client.post("/api/chat", json={"text": "hey"}).status_code == 401
+    assert noauth_client.get("/api/conversations").status_code == 401
+    assert noauth_client.get("/auth/me").status_code == 401
 
 
-def test_chat_rejects_unknown_token(client: TestClient) -> None:
-    resp = client.post(
-        "/api/chat",
-        json={"text": "hey"},
-        headers={"Authorization": "Bearer nope"},
-    )
-    assert resp.status_code == 401
-
-
-def test_voice_ws_rejects_unauthorized(client: TestClient) -> None:
-    with client.websocket_connect("/ws/voice") as ws:
-        ws.send_json({"type": "auth", "token": "nope"})
+def test_voice_ws_rejects_without_session(noauth_client: TestClient) -> None:
+    with noauth_client.websocket_connect("/ws/voice") as ws:
+        ws.send_json({"type": "auth"})  # no session cookie on the handshake
         assert ws.receive_json() == {"type": "error", "message": "unauthorized"}
 
 
-def test_feedback_submit_and_list(client: TestClient) -> None:
+def test_feedback_submit_and_list(client: TestClient, noauth_client: TestClient) -> None:
     assert (
-        client.post("/api/feedback", json={"session_id": "s1", "rating": "down"}).status_code == 401
+        noauth_client.post("/api/feedback", json={"session_id": "s1", "rating": "down"}).status_code
+        == 401
     )
     r = client.post(
         "/api/feedback",
@@ -263,8 +273,8 @@ def test_feedback_submit_and_list(client: TestClient) -> None:
     assert listed["total"] == 1 and listed["feedback"][0]["rating"] == "down"
 
 
-def test_memories_grouped_by_type(client: TestClient) -> None:
-    assert client.get("/api/memories/semantic").status_code == 401
+def test_memories_grouped_by_type(client: TestClient, noauth_client: TestClient) -> None:
+    assert noauth_client.get("/api/memories/semantic").status_code == 401
     sem = client.get("/api/memories/semantic", headers=_auth()).json()
     assert sem["type"] == "semantic" and "8pm" in sem["items"][0]["fact"]
     epi = client.get("/api/memories/episodic", headers=_auth()).json()
@@ -278,8 +288,8 @@ def test_delete_episodic_memory(client: TestClient) -> None:
     assert client.delete("/api/memories/episodic/nope", headers=_auth()).status_code == 404
 
 
-def test_correct_semantic_fact(client: TestClient) -> None:
-    assert client.post("/api/memories/semantic", json={"fact": "I moved"}).status_code == 401
+def test_correct_semantic_fact(client: TestClient, noauth_client: TestClient) -> None:
+    assert noauth_client.post("/api/memories/semantic", json={"fact": "I moved"}).status_code == 401
     r = client.post("/api/memories/semantic", json={"fact": "I moved to Boston"}, headers=_auth())
     assert r.status_code == 200 and r.json()["recorded"] == "I moved to Boston"
     assert (

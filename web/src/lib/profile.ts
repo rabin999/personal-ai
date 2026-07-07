@@ -1,7 +1,7 @@
 // Client for the resolved-user profile endpoint (backend spec §26/§2). The UI
-// reads `/api/me` with the bearer token the app already holds and renders the
-// static UserRecord (companion name, comm/audio prefs, enabled traits) in the
-// profile panel. Read-only — no writes, no auth flow here.
+// reads `/api/me` with the session cookie (Google SSO) and renders the resolved
+// UserRecord (companion name, comm/audio prefs, enabled traits) in the profile
+// panel. Read-only — no writes, no auth flow here.
 
 export interface AudioPrefs {
   vad_threshold?: number;
@@ -30,14 +30,12 @@ export interface UserProfile {
 }
 
 /** Fetch the resolved user's profile. Throws on a non-2xx / network failure. */
-export async function fetchProfile(token: string): Promise<UserProfile> {
-  const res = await fetch("/api/me", {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function fetchProfile(): Promise<UserProfile> {
+  const res = await fetch("/api/me", { credentials: "include" });
   if (!res.ok) {
     throw new Error(
       res.status === 401 || res.status === 403
-        ? "That token isn't recognised."
+        ? "Your session has expired — please sign in again."
         : `Couldn't load profile (${res.status}).`,
     );
   }

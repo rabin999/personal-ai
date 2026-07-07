@@ -322,3 +322,45 @@ conversation (no mocks). Bundle commit references audit Parts 1.4/1.5/1.6/8.8/8.
 - **R16 Not-broken, re-verified.** Graphiti semantic retrieval (§1.1) is NOT broken — the
   live prompt contained "user takes blood-pressure medication daily around 8pm" retrieved
   from the graph. The audit's suspicion was stale.
+
+---
+
+## Auth feature (real Google SSO replaces the static stub) — R17
+
+Replaced the static bearer-token → static-user stub (§18/§26) with real Google
+OAuth2/OIDC + sessions + per-user account creation, using proven libraries (no
+hand-rolled OAuth/SMTP): **Authlib** (`authlib.integrations.starlette_client`),
+**Starlette SessionMiddleware** (+ itsdangerous), **fastapi-mail**.
+
+- **Session mechanism (decision):** ONE mechanism — a signed session cookie
+  (SessionMiddleware) carrying our internal `user_id`. Not a separate token.
+  Cookie is `httponly`, `same_site=lax` (survives the OAuth top-level redirect),
+  and `secure` derived from the `https://` `PUBLIC_BASE_URL`.
+- **Proxy correctness (brief §0):** the OAuth redirect URI is built from
+  `PUBLIC_BASE_URL` (→ `<base>/auth/google/callback`), never the internal request
+  host, so no `redirect_uri_mismatch` behind nginx. `ProxyHeadersMiddleware` +
+  `--forwarded-allow-ips='*'` are the belt-and-suspenders backup.
+- **Identity mapping:** OUR `u_...` internal id stays the stable multi-tenant key
+  everywhere; Google `sub` is only a lookup (`users` collection). Sign-in and
+  sign-up are one flow (found → sign in; new → create + seed §2 profile).
+- **Outbox (brief §4):** signup writes a pending `outbox` welcome-email record in
+  the same operation (never blocks signup); a poller in the worker (+ in-process
+  dev) sends via fastapi-mail → `sent`, retries with backoff → `failed` at the cap,
+  or `skipped` when SMTP is unconfigured. Idempotent on the outbox id.
+- **Seam held:** `core/` untouched — only the identity adapter changed
+  (`adapters/user_context/{accounts,session}.py`, `adapters/outbox/*`,
+  `api/auth/*`, `api/routes/auth.py`). `get_user_record` now reads the session;
+  the WS reads it from the handshake cookie (no token in the first message).
+- **New files:** `adapters/user_context/accounts.py` (AccountStore),
+  `adapters/user_context/session.py` (SessionUserContext),
+  `adapters/outbox/{store,mailer}.py`, `api/auth/oauth.py`, `api/routes/auth.py`,
+  `workers/outbox_worker.py`. **Removed:** `adapters/user_context/static.py`.
+- **Verified (real Mongo, no mocks):** login redirect built from PUBLIC_BASE_URL;
+  signup creates users record + seeds profile + pending welcome outbox; 2nd login
+  signs in with no duplicate; outbox worker resolves the record (sent/skipped);
+  session cookie → protected routes 200, none → 401; isolation (fresh user_id has
+  no other user's data). Only Google's consent screen needs a human/browser.
+- **Frontend:** real "Continue with Google" button (sign-in == sign-up),
+  session-cookie API client (`credentials:"include"`, 401 → /login), `/auth/me`
+  guard, logout; removed the token field. Mobile: mobile-first login, and the
+  data-page nav added to the profile slide-over (header nav is hidden on phones).

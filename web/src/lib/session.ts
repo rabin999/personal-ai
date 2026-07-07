@@ -1,42 +1,37 @@
-// Tiny client session flag used as the route guard. The demo app has no real
-// auth (the WebSocket authenticates with a static bearer token); this only
-// records whether the user has passed through the login screen so a refresh
-// keeps them on the companion route instead of bouncing back to /login.
+// Real session-based auth (Google SSO). The session is a secure, httpOnly cookie
+// the server sets on the OAuth callback — the client can't read it, so we learn
+// who we are by asking /auth/me. All API/WS calls send the cookie automatically
+// (same-origin); the WS handshake carries it too, so no bearer token anywhere.
 
-const KEY = "companion.entered";
-const TOKEN_KEY = "companion.token";
-const DEFAULT_TOKEN = "static_token_abc";
+export interface Me {
+  user_id: string;
+  email: string;
+  name?: string | null;
+  picture?: string | null;
+}
 
-/** The bearer token the app authenticates API + WS calls with. */
-export function getToken(): string {
+/** Current signed-in user, or null if there's no valid session. */
+export async function fetchMe(): Promise<Me | null> {
   try {
-    return localStorage.getItem(TOKEN_KEY) || DEFAULT_TOKEN;
+    const res = await fetch("/auth/me", { credentials: "include" });
+    if (!res.ok) return null;
+    return (await res.json()) as Me;
   } catch {
-    return DEFAULT_TOKEN;
+    return null;
   }
 }
 
-export function setToken(token: string): void {
-  try {
-    localStorage.setItem(TOKEN_KEY, token || DEFAULT_TOKEN);
-  } catch {
-    /* storage unavailable — non-fatal */
-  }
+/** Start the Google sign-in / sign-up flow (same route does both). */
+export function loginWithGoogle(): void {
+  window.location.href = "/auth/google/login";
 }
 
-export function isEntered(): boolean {
+/** Clear the session and return to the login screen. */
+export async function logout(): Promise<void> {
   try {
-    return localStorage.getItem(KEY) === "1";
+    await fetch("/auth/logout", { method: "POST", credentials: "include" });
   } catch {
-    return false;
+    /* best-effort — navigate away regardless */
   }
-}
-
-export function setEntered(entered: boolean): void {
-  try {
-    if (entered) localStorage.setItem(KEY, "1");
-    else localStorage.removeItem(KEY);
-  } catch {
-    /* storage unavailable — non-fatal */
-  }
+  window.location.href = "/login";
 }

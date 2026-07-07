@@ -12,7 +12,7 @@ import {
   listMicrophones,
   requestMicAccess,
 } from "../lib/audio";
-import { setEntered } from "../lib/session";
+import { fetchMe, logout, type Me } from "../lib/session";
 import { getModels, sendFeedback, setModel as saveModel } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
@@ -36,7 +36,7 @@ const VOICES = ["eve", "ara", "leo", "rex", "sal"]; // xAI Grok voices
 // talking orb, per-turn trace, and the profile panel.
 export default function CompanionPage() {
   const navigate = useNavigate();
-  const [token, setToken] = useState("static_token_abc");
+  const [me, setMe] = useState<Me | null>(null);
   const [voice, setVoice] = useState(VOICES[0]);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [micId, setMicId] = useState<string>();
@@ -140,7 +140,9 @@ export default function CompanionPage() {
       },
     );
 
-    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", token, voice }));
+    // Identity rides the session cookie sent on the WS handshake (Google SSO);
+    // the first message only carries the voice selection.
+    ws.onopen = () => ws.send(JSON.stringify({ type: "auth", voice }));
     ws.onclose = () => stopLocalCapture();
     ws.onerror = () => setConn("error");
     ws.onmessage = async (ev) => {
@@ -178,7 +180,15 @@ export default function CompanionPage() {
       }
     };
     wsRef.current = ws;
-  }, [token, voice, micId]);
+  }, [voice, micId]);
+
+  // Load the signed-in user for the header avatar; no session → back to login.
+  useEffect(() => {
+    fetchMe().then((u) => {
+      if (u) setMe(u);
+      else navigate("/login", { replace: true });
+    });
+  }, [navigate]);
 
   const startCapture = async () => {
     micRef.current = new MicCapture();
@@ -226,8 +236,7 @@ export default function CompanionPage() {
     setTraceOpen(false);
     if (conn === "active" || conn === "connecting") await stopConversation();
     setTurns([]);
-    setEntered(false);
-    navigate("/login", { replace: true });
+    await logout(); // clears the server session, then navigates to /login
   };
 
   const active = conn === "active" || conn === "connecting";
@@ -294,7 +303,16 @@ export default function CompanionPage() {
               title="Your profile"
               className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-xs font-semibold text-white shadow-sm outline-none ring-offset-2 ring-offset-white transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-indigo-500 dark:ring-offset-slate-950"
             >
-              {avatarInitials(token)}
+              {me?.picture ? (
+                <img
+                  src={me.picture}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="h-full w-full rounded-full object-cover"
+                />
+              ) : (
+                avatarInitials(me?.name || me?.email || "U")
+              )}
             </button>
           </div>
         </header>
@@ -312,16 +330,7 @@ export default function CompanionPage() {
         {/* Bottom action bar */}
         <div className="border-t border-slate-200 bg-white/80 px-4 py-4 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-900/50">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-3">
-              <label className="flex min-w-0 flex-col gap-1.5">
-                <span className={FIELD_LABEL}>Token</span>
-                <input
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  disabled={active}
-                  className={FIELD}
-                />
-              </label>
+            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
               <MicPicker devices={devices} value={micId} onChange={setMicId} disabled={active} />
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Voice</span>
@@ -424,7 +433,6 @@ export default function CompanionPage() {
 
       <ProfilePanel
         open={profileOpen}
-        token={token}
         onClose={() => setProfileOpen(false)}
         onSignOut={signOut}
       />

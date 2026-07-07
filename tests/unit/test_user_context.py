@@ -1,94 +1,69 @@
-"""Unit tests for User Context (spec §26) — profile store faked in memory."""
+"""Unit tests for real auth — AccountStore + SessionUserContext (spec §26).
 
-from pathlib import Path
+Profile/doc store faked in memory; the Google userinfo is supplied directly
+(the callback's real logic — create/lookup/session shape — without the browser).
+"""
 
 import pytest
 
-from adapters.user_context.static import StaticUserContext
+from adapters.outbox import OutboxStore
+from adapters.user_context.accounts import USERS_COLLECTION, AccountStore, GoogleIdentity
+from adapters.user_context.session import SessionUserContext
 from core.profile import ProfileService
-from ports.user_context import Unauthorized, UserContext, UserRecord
 from tests.fakes import FakeDocStore
 
-DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
 
-TOKEN_MAP = {"static_token_abc": "u_demo_001", "static_token_xyz": "u_demo_002"}
+@pytest.fixture
+def docs() -> FakeDocStore:
+    return FakeDocStore()
 
 
 @pytest.fixture
-def profiles() -> ProfileService:
-    return ProfileService(FakeDocStore())
+def store(docs: FakeDocStore) -> AccountStore:
+    return AccountStore(docs, ProfileService(docs), outbox=OutboxStore(docs))
 
 
-@pytest.fixture
-def user_context(profiles: ProfileService) -> StaticUserContext:
-    return StaticUserContext(TOKEN_MAP, profiles)
+def _identity(sub: str = "sub-123") -> GoogleIdentity:
+    return GoogleIdentity(sub=sub, email=f"{sub}@example.com", name="Ada Lovelace")
 
 
-# Acceptance: known token resolves to the correct UserRecord with profile.
-async def test_known_token_resolves_to_user_record_with_profile(
-    user_context: StaticUserContext,
+async def test_first_google_login_creates_account_and_seeds_profile(
+    store: AccountStore, docs: FakeDocStore
 ) -> None:
-    record = await user_context.resolve("static_token_abc")
-    assert record.user_id == "u_demo_001"
-    assert record.audio_prefs["vad_threshold"] == 0.6  # §2 profile shape
-    assert "directness" in record.comm_prefs
+    result = await store.upsert_from_google(_identity())
+    assert result.created is True
+    assert result.account.user_id.startswith("u_")  # OUR internal id, not google sub
+    assert result.account.google_sub == "sub-123"  # sub is only a mapping
+    assert await docs.get("user_profile", result.account.user_id) is not None  # §2 seed
 
 
-# Acceptance: unknown token → Unauthorized, no pipeline work runs.
-async def test_unknown_token_raises_unauthorized_before_any_work(
-    user_context: StaticUserContext, profiles: ProfileService
+async def test_welcome_email_queued_on_signup(store: AccountStore, docs: FakeDocStore) -> None:
+    result = await store.upsert_from_google(_identity())
+    outbox = await docs.find("outbox", {"status": "pending"})
+    mine = [o for o in outbox if o["payload"]["user_id"] == result.account.user_id]
+    assert len(mine) == 1 and mine[0]["type"] == "welcome_email"  # brief §4
+
+
+async def test_returning_login_signs_in_without_duplicate(
+    store: AccountStore, docs: FakeDocStore
 ) -> None:
-    with pytest.raises(Unauthorized):
-        await user_context.resolve("stolen-token")
-    # No profile was created as a side effect.
-    assert await profiles._docs.find("user_profile") == []
+    first = await store.upsert_from_google(_identity())
+    second = await store.upsert_from_google(_identity())
+    assert second.created is False
+    assert second.account.user_id == first.account.user_id
+    assert len(await docs.find(USERS_COLLECTION, {"google_sub": "sub-123"})) == 1
 
 
-# Acceptance: two tokens resolve to two different user_ids.
-async def test_two_tokens_resolve_to_distinct_users(
-    user_context: StaticUserContext,
+async def test_session_context_builds_record_for_authenticated_user(
+    store: AccountStore, docs: FakeDocStore
 ) -> None:
-    record_a = await user_context.resolve("static_token_abc")
-    record_b = await user_context.resolve("static_token_xyz")
-    assert record_a.user_id != record_b.user_id
+    result = await store.upsert_from_google(_identity())
+    ctx = SessionUserContext(ProfileService(docs))
+    record = await ctx.record_for(result.account.user_id)
+    assert record.user_id == result.account.user_id
 
 
-async def test_resolve_first_run_syncs_the_profile(
-    user_context: StaticUserContext, profiles: ProfileService
-) -> None:
-    await user_context.resolve("static_token_abc")
-    profile = await profiles.get("u_demo_001")
-    assert profile.onboarded is False
-
-
-async def test_resolved_record_reflects_profile_updates(
-    user_context: StaticUserContext, profiles: ProfileService
-) -> None:
-    await user_context.resolve("static_token_abc")
-    await profiles.update("u_demo_001", {"companion_name": "Bro"})
-    record = await user_context.resolve("static_token_abc")
-    assert record.companion_name == "Bro"
-
-
-def test_token_map_must_cover_two_users_for_isolation_checks(
-    profiles: ProfileService,
-) -> None:
-    with pytest.raises(ValueError, match="two distinct users"):
-        StaticUserContext({"only_token": "u_demo_001"}, profiles)
-
-
-def test_defaults_file_loads_with_spec_tokens(profiles: ProfileService) -> None:
-    user_context = StaticUserContext.from_defaults(DEFAULTS_DIR, profiles)
-    assert set(user_context._tokens.values()) == {"u_demo_001", "u_demo_002"}
-
-
-# Acceptance: swapping the static adapter for another implementation requires
-# zero changes in core/ — anything satisfying the port slots in.
-async def test_any_port_implementation_slots_into_the_edge_dependency() -> None:
-    class SwappedUserContext:
-        async def resolve(self, bearer_token: str) -> UserRecord:
-            return UserRecord(user_id="u_from_real_auth")
-
-    swapped: UserContext = SwappedUserContext()  # structural check against the port
-    record = await swapped.resolve("anything")
-    assert record.user_id == "u_from_real_auth"
+async def test_two_google_users_get_isolated_ids(store: AccountStore) -> None:
+    a = await store.upsert_from_google(_identity("sub-aaa"))
+    b = await store.upsert_from_google(_identity("sub-bbb"))
+    assert a.account.user_id != b.account.user_id  # distinct internal keys

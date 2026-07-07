@@ -11,7 +11,14 @@ A **multi-user**, voice-first AI companion. Each user talks to it; it listens, u
 
 **Multi-tenancy principle (important):** the app is multi-user, but we build **multi-tenant-ready and activate per-user features incrementally**. Concretely: every record and every query is scoped by `user_id` from day one; no data path assumes "only one user exists." We do *not* yet build per-user admin/billing/override UIs — those activate later. Retrofitting multi-tenancy into a single-user codebase is painful; building the *structure* multi-tenant-ready while the feature set is still small costs almost nothing. See §17 (Architecture).
 
-**Authentication is out of scope for now (deliberately).** We build **no auth system, no login, no auth API**. Instead, a **static bearer token maps to a static user-data record** (a `user_id` plus that user's profile/schema). The AI pipeline consumes that user schema exactly as it would in production — so all `user_id`-scoped logic is real and exercised — but the *identity* is hard-wired for now. Swapping in real auth later means replacing one resolver (token → user record) without touching the AI core. See §18 (Static User Context).
+**Authentication (UPDATED — real Google SSO is now built).** This originally
+shipped as a static bearer token → static user record. It has since been replaced
+by **real Google OAuth2/OIDC (Authlib) + signed sessions + real per-user account
+creation** — validating the §18 promise that swapping the identity source touches
+only one adapter, not the AI core. The AI pipeline still consumes the resolved
+`UserRecord` exactly the same way; identity now comes from a session cookie set by
+the Google sign-in flow instead of a hard-coded token. See §18 (now *Session* User
+Context) and `docs/DEPLOYMENT.md §10`.
 
 **Core budget constraint:** keep running cost low (target roughly $20–30/month for a single heavy user; the architecture keeps per-user marginal cost low so it scales), which shapes many architectural choices below. "Running" must not mean "constantly paying."
 

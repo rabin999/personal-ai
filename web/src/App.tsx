@@ -1,10 +1,11 @@
+import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-dom";
 import CompanionPage from "./pages/CompanionPage";
 import LoginPage from "./pages/LoginPage";
 import ConversationsPage from "./pages/ConversationsPage";
 import MemoriesPage from "./pages/MemoriesPage";
 import TracesPage from "./pages/TracesPage";
-import { isEntered } from "./lib/session";
+import { fetchMe } from "./lib/session";
 
 // App router. BrowserRouter with REAL named paths (not a hash router): the FastAPI
 // edge serves index.html for these client routes (api/app.py SPA fallback), so a
@@ -19,18 +20,18 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/" element={<RequireEntered><CompanionPage /></RequireEntered>} />
+        <Route path="/" element={<RequireAuth><CompanionPage /></RequireAuth>} />
         <Route
           path="/conversations"
-          element={<RequireEntered><Shell><ConversationsPage /></Shell></RequireEntered>}
+          element={<RequireAuth><Shell><ConversationsPage /></Shell></RequireAuth>}
         />
         <Route
           path="/memories"
-          element={<RequireEntered><Shell><MemoriesPage /></Shell></RequireEntered>}
+          element={<RequireAuth><Shell><MemoriesPage /></Shell></RequireAuth>}
         />
         <Route
           path="/traces"
-          element={<RequireEntered><Shell><TracesPage /></Shell></RequireEntered>}
+          element={<RequireAuth><Shell><TracesPage /></Shell></RequireAuth>}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
@@ -38,8 +39,21 @@ export default function App() {
   );
 }
 
-function RequireEntered({ children }: { children: React.ReactNode }) {
-  return isEntered() ? <>{children}</> : <Navigate to="/login" replace />;
+// Real auth guard: ask the server who we are (session cookie). While checking,
+// show a neutral splash; no session → bounce to /login (Google SSO).
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const [state, setState] = useState<"checking" | "in" | "out">("checking");
+  useEffect(() => {
+    fetchMe().then((u) => setState(u ? "in" : "out"));
+  }, []);
+  if (state === "checking") {
+    return (
+      <div className="grid min-h-screen place-items-center bg-slate-50 text-slate-400 dark:bg-slate-950 dark:text-slate-500">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent" />
+      </div>
+    );
+  }
+  return state === "in" ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
 // Shared chrome for the per-user data pages: a top nav with real links.

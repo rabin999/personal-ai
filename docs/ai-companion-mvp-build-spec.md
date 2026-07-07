@@ -14,7 +14,14 @@ A **multi-user**, voice-first AI companion (Python), built **multi-tenant-ready*
 
 **"MVP" here = the complete companion minus the backlog items** (§0.2) — not a thin slice. Full voice I/O, all memory layers, learning, psychological modeling, projects, tools, and cost tracking are all in scope, built multi-tenant-ready.
 
-**No authentication is built.** A static bearer token resolves to a static user record (`user_id` + profile schema) via the User Context module (§26). All `user_id`-scoped logic downstream is real; only the identity source is stubbed. Real auth later = replace one adapter, no AI-core changes.
+**Authentication (UPDATED — real Google SSO).** Originally a static bearer token
+resolved to a static user record; that stub has been **replaced by real Google
+OAuth2/OIDC (Authlib) + signed sessions**. On first sign-in a real `users` record
+is created (our internal `user_id` mapped from the Google `sub`), the §2 profile is
+seeded, and a welcome email is queued via a transactional outbox. Identity now
+flows from a signed session cookie → `SessionUserContext` → `UserRecord`; the
+`user_id`-scoped pipeline downstream is unchanged (exactly the §18 seam — only the
+identity source swapped, `core/` untouched). See §26 and `docs/DEPLOYMENT.md §10`.
 
 ## 0.2 Scope
 

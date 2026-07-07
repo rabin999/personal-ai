@@ -20,6 +20,7 @@ from adapters.graph.graphiti import GraphitiGraphStore
 from adapters.llm.openrouter import OpenRouterLLM
 from adapters.logging.factory import build_log_sinks
 from adapters.logging.trace_sink import TraceStoreLogSink
+from adapters.outbox import OutboxStore, WelcomeMailer
 from adapters.preference.mem0_adapter import Mem0PreferenceMemory
 from adapters.queue.redis import RedisTaskQueue
 from adapters.search.brave import BraveSearch
@@ -27,7 +28,8 @@ from adapters.search.serper import SerperSearch
 from adapters.ser.emotion2vec_client import Emotion2VecSER
 from adapters.stt.faster_whisper import FasterWhisperSTT
 from adapters.tts.grok import GrokTTS
-from adapters.user_context.static import StaticUserContext
+from adapters.user_context.accounts import AccountStore
+from adapters.user_context.session import SessionUserContext
 from adapters.vector.qdrant import QdrantVectorStore
 from config.settings import Settings
 from core.cost import CostLedger
@@ -74,7 +76,10 @@ class Pipeline:
     ledger: CostLedger
     profiles: ProfileService
     registry: TraitRegistry
-    user_context: StaticUserContext
+    user_context: SessionUserContext
+    accounts: AccountStore
+    outbox: OutboxStore
+    mailer: WelcomeMailer
     working: WorkingMemory
     episodic: EpisodicMemory
     semantic: SemanticMemory
@@ -128,6 +133,13 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     profiles = ProfileService(docs)
     registry = TraitRegistry(docs, profiles)
     await registry.seed_defaults(DEFAULTS_DIR)  # traits + project types + provider config
+
+    # Real auth (design §18): account store + transactional outbox + welcome
+    # mailer. On Google sign-up the account store creates the user, seeds the §2
+    # profile, and queues the welcome email via the outbox (brief §4).
+    outbox = OutboxStore(docs)
+    mailer = WelcomeMailer(settings)
+    accounts = AccountStore(docs, profiles, outbox=outbox)
 
     tiers = await _load_tiers(docs)
     pricing = await _load_pricing(docs)
@@ -192,7 +204,10 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         ledger=ledger,
         profiles=profiles,
         registry=registry,
-        user_context=StaticUserContext.from_defaults(DEFAULTS_DIR, profiles),
+        user_context=SessionUserContext(profiles),
+        accounts=accounts,
+        outbox=outbox,
+        mailer=mailer,
         working=working,
         episodic=episodic,
         semantic=semantic,
