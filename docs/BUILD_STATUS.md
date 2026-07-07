@@ -14,6 +14,20 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-07
 **Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅)_
 
+> **Autonomous hardening pass (2026-07-07):** root-cause fixes for reported voice/tool/
+> memory/style issues, driven by `docs/GAP_ANALYSIS.md`; decisions + full DoD status in
+> `docs/REMEDIATION_LOG.md`. Highlights: pre-roll buffer (first words no longer clipped),
+> background-delivery de-dup, `record_trade` (trades persist from a cold account), durable
+> trace store + `/debug/traces`, forbidden-assistant-speak detector + self-reflection
+> rewrite (live-verified the reply stops sounding like a service desk), tool-result store +
+> `recall_tool_result`, user-selectable fast model, durable raw conversation store +
+> `/api/conversations`, voice sample preview. New backend surfaces: `core/observability`,
+> `core/tools/results.py`, `core/memory/conversation_store.py`, `core/reasoning/style.py`,
+> and `/api/{models,voices,conversations}` + `/debug/traces`. FULL CHECK green
+> (unit + integration). Hardware/tuning items (live barge-in, TTS tag audibility, SER GPU)
+> and prompt caching are documented as blocked/deferred with rationale — not silently
+> skipped.
+
 ---
 
 ## Phase 0 — Scaffold & Tooling
