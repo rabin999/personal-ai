@@ -55,6 +55,11 @@ export default function CompanionPage() {
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
   const sessionIdRef = useRef("");
+  // Voice runtime to A/B before starting: "native" (our asyncio loop) or
+  // "pipecat" (framework VAD/endpointing/barge-in). Read at connect time.
+  const [runtime, setRuntime] = useState<"native" | "pipecat">("native");
+  const runtimeRef = useRef(runtime);
+  runtimeRef.current = runtime;
   const turnStateRef = useRef<TurnState>("idle");
 
   useEffect(() => {
@@ -105,7 +110,8 @@ export default function CompanionPage() {
     setTurns([]);
     setConn("connecting");
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const ws = new WebSocket(`${proto}://${location.host}/ws/voice`);
+    const path = runtimeRef.current === "pipecat" ? "/ws/voice-pipecat" : "/ws/voice";
+    const ws = new WebSocket(`${proto}://${location.host}${path}`);
     ws.binaryType = "arraybuffer";
     playerRef.current = new AudioPlayer(
       (l) => {
@@ -303,6 +309,19 @@ export default function CompanionPage() {
                       {v}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1.5">
+                <span className={FIELD_LABEL}>Voice engine</span>
+                <select
+                  value={runtime}
+                  onChange={(e) => setRuntime(e.target.value as "native" | "pipecat")}
+                  disabled={active}
+                  className={FIELD}
+                  title="Switch between the native asyncio runtime and the Pipecat pipeline (VAD/barge-in). Choose before starting."
+                >
+                  <option value="native">Native (asyncio)</option>
+                  <option value="pipecat">Pipecat (framework)</option>
                 </select>
               </label>
             </div>

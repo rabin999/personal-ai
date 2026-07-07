@@ -30,7 +30,7 @@ from ports.stt import STT
 from ports.tts import TTS
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
-from voice.pipeline import START_FRAMES, AudioInputPipeline, PipelineConfig, VADModel
+from voice.pipeline import AudioInputPipeline, PipelineConfig, VADModel
 from voice.trace import TraceEmitter
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,11 @@ _DELIVERY_POLL_FRAMES = 40
 # a pre-roll the first phoneme/word is clipped. 10 frames ≈ 320ms at 512-sample
 # (32ms) frames, comfortably covering the START_FRAMES(3) gate latency + onset.
 _PREROLL_FRAMES = 10
+# Barge-in needs *sustained* fresh speech, not the 3-frame gate onset: a brief
+# residual-echo blip (even with browser AEC on) can flip 3 frames and falsely
+# cancel the reply. ~8 frames ≈ 256ms — longer than an echo transient, shorter
+# than a real interruption — so the companion stops for the user, not for itself.
+_BARGE_IN_FRAMES = 8
 
 
 class VoiceSession:
@@ -152,11 +157,12 @@ class VoiceSession:
                     turn = None  # reply finished; back to listening
 
                 # Barge-in: user speaks while the companion is talking (§24).
-                # Requires START_FRAMES of *fresh* raw speech (not the just-ended
-                # utterance's hysteresis tail) so a reply isn't self-interrupted.
+                # Requires sustained *fresh* raw speech (not the just-ended
+                # utterance's hysteresis tail, and not a brief echo blip) so a
+                # reply isn't self-interrupted.
                 if turn is not None:
                     barge_frames = barge_frames + 1 if frame.is_speech else 0
-                    if self._barge_in and barge_frames >= START_FRAMES:
+                    if self._barge_in and barge_frames >= _BARGE_IN_FRAMES:
                         self._trace.emit("barge_in", "user interrupted — stopping playback")
                         turn.cancel()
                         await asyncio.gather(turn, return_exceptions=True)
