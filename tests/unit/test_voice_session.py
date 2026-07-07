@@ -237,6 +237,85 @@ async def test_background_result_delivered_at_most_once() -> None:
     assert delivery.calls == 2  # both pulls happened; only the first spoke
 
 
+class InterruptibleGenerator:
+    """First reply is long/in-flight (cancellable); the second answers the
+    interruption. Lets us prove barge-in cancels the in-flight generation and the
+    companion then responds to the NEW input (§24)."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.first_cancelled = False
+
+    async def generate(
+        self, prompt: object, dispatcher: object = None, context: object = None
+    ) -> GenerationResult:
+        self.calls += 1
+        if self.calls == 1:
+            try:
+                # A long response still "generating" when the user barges in.
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                self.first_cancelled = True  # barge-in cancelled the in-flight gen
+                raise
+            return GenerationResult(final_text="unreachable", action="respond", turn_id="t1")
+        return GenerationResult(
+            final_text="Got it — you jumped in.", action="respond", turn_id="t2"
+        )
+
+
+async def test_barge_in_stops_reply_cancels_generation_and_answers_new_input() -> None:
+    # §24 core: while the companion is replying, sustained fresh user speech must
+    # (1) fire a barge_in event, (2) CANCEL the in-flight generation (→ TTS stops),
+    # and (3) capture the new utterance and answer it. Drives the REAL _consume
+    # state machine + REAL pipeline is_speech logic (only the LLM/TTS are faked —
+    # barge-in doesn't depend on their content).
+    trace = TraceEmitter(SESSION)
+    working = WorkingMemory()
+    generator = InterruptibleGenerator()
+    #   4 idle → 20 speech (utterance 1) → 22 silence (first 3 endpoint the
+    #   utterance → turn starts; the rest let the in-flight generation reach its
+    #   await) → 14 speech (BARGE-IN, ≥ _BARGE_IN_FRAMES) → 6 silence (endpoint the
+    #   interrupting utterance → second turn answers it).
+    confidences = [0.02] * 4 + [0.9] * 20 + [0.02] * 22 + [0.9] * 14 + [0.02] * 6
+    session = VoiceSession(
+        user_id=USER,
+        session_id=SESSION,
+        vad=ScriptedVAD(confidences),
+        config=PipelineConfig(),
+        stt=FakeSTT("wait, actually listen to this"),
+        endpointer=SemanticEndpointer(short_pause_ms=48, long_pause_ms=160),
+        assembler=FakeAssembler(),  # type: ignore[arg-type]
+        generator=generator,  # type: ignore[arg-type]
+        tts=FakeTTS(),
+        working=working,
+        trace=trace,
+    )
+
+    # Real frames arrive over the WS with ~32ms gaps, which lets the turn task run
+    # between frames; the test stream must yield likewise or _consume drains every
+    # frame before the turn ever reaches generate (unrealistic).
+    async def _paced_frames() -> AsyncIterator[bytes]:
+        for _ in confidences:
+            await asyncio.sleep(0.002)
+            yield b"\x00" * 512
+
+    async for _ in session.converse(_paced_frames()):
+        pass
+    trace.close()
+
+    events = [e async for e in trace.events()]
+    barge = [e for e in events if e.stage == "barge_in"]
+    # (1) the interruption was detected and (2) the reply was cancelled.
+    assert any("interrupted" in e.message for e in barge), "no barge-in event fired"
+    assert any("cancelled" in e.message for e in barge), "reply was not cancelled"
+    # (2) the in-flight generation actually received cancellation (TTS never ran).
+    assert generator.first_cancelled, "in-flight generation was NOT cancelled by barge-in"
+    # (3) the companion answered the NEW input after interrupting.
+    assert generator.calls == 2, "no second turn after the interruption"
+    responses = [e for e in events if e.stage == "response"]
+    assert any("jumped in" in e.message for e in responses), "did not answer the new input"
+
+
 async def test_events_are_grouped_into_turns() -> None:
     trace = TraceEmitter(SESSION)
     working = WorkingMemory()

@@ -185,14 +185,15 @@ export default function CompanionPage() {
     await micRef.current.start(
       micId,
       (pcm) => {
-        // Half-duplex: pause the mic->server stream WHILE the companion is
-        // speaking. Browser AEC isn't perfect, so streaming during playback let
-        // the mic hear our own TTS and the VAD read it as a barge-in — the
-        // companion interrupting itself and wedging. Not sending frames during
-        // playback makes that impossible; the mic resumes the instant playback
-        // drains (onEnded -> idle), so the user is heard immediately after.
-        const speaking = turnStateRef.current === "speaking";
-        if (!speaking && wsRef.current?.readyState === WebSocket.OPEN) {
+        // FULL-DUPLEX (§24 barge-in): keep streaming the mic to the server WHILE
+        // the companion is speaking, so a user talking over the reply is actually
+        // heard and can interrupt. (The old half-duplex gate — muting the mic
+        // during playback — is exactly what made barge-in impossible: the server
+        // never saw the interrupting speech.) Browser echo cancellation
+        // (getUserMedia echoCancellation:true) keeps the mic from hearing our own
+        // TTS, and the server requires sustained *fresh* speech (_BARGE_IN_FRAMES,
+        // ~256ms) so a brief residual-echo blip can't self-interrupt the reply.
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(pcm);
         }
       },
