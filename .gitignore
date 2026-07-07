@@ -27,3 +27,4 @@ web/node_modules/
 web/dist/
 web/*.tsbuildinfo
 .claude/
+logs/

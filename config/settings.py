@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     preference_memory_enabled: bool = True
     preference_model: str = "google/gemini-2.5-flash-lite"
 
+    # Application logging transport (brief Part B): pluggable, config-driven sinks.
+    # Comma-separated list of active sinks: "file", "stdout" (both may be on).
+    log_sinks: str = "file"
+    log_file_path: str = "logs/companion.jsonl"
+
     # Speech synthesis (§23): Grok Voice TTS via the xAI TTS API
     # (https://api.x.ai/v1/tts) — the spec's chosen voice. Inline delivery
     # tags supported; ~$4.20 / 1M chars. Key env var is ``X-AI-API``.

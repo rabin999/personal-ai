@@ -11,7 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from api.app import create_app
+from core.memory.extraction import ExtractionResult
 from core.memory.working import WorkingMemory
+from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt
 from core.reasoning.response_gen import GenerationResult
 from ports.user_context import Unauthorized, UserRecord
@@ -59,6 +61,13 @@ class FakeTTS:
         yield b"\x01\x00" * 240  # a little PCM16
 
 
+class FakeExtractor:
+    async def extract_and_store(
+        self, user_id: str, session_id: str, user_text: str, assistant_text: str
+    ) -> ExtractionResult:
+        return ExtractionResult()
+
+
 class FakeEpisodic:
     def __init__(self) -> None:
         self.writes: list[tuple[str, str, list[str]]] = []
@@ -91,6 +100,8 @@ def client() -> TestClient:
         tts=FakeTTS(),
         conversations=FakeConversations(),
         episodic=FakeEpisodic(),
+        extractor=FakeExtractor(),
+        logs=StructuredLogger([]),
     )
     return TestClient(app)
 

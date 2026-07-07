@@ -69,7 +69,20 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
         )
         trace.emit("router", f"routing to {prompt.complexity_hint} tier")
 
+    with pipeline.logs.bind(
+        trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
+    ):
+        pipeline.logs.info("turn.request", text=body.text)
     result = await pipeline.generator.generate(prompt, pipeline.dispatcher, context)
+    with pipeline.logs.bind(
+        trace_id=body.session_id, turn_id=trace.current_turn, user_id=user.user_id
+    ):
+        pipeline.logs.info(
+            "turn.response",
+            action=result.action,
+            style_flags=result.style_flags,
+            reply_chars=len(result.final_text),
+        )
     trace.emit("generation", f"action={result.action}", action=result.action)
     if result.style_flags:  # §7: tone regression is visible, not silent
         trace.emit(

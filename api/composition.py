@@ -18,6 +18,7 @@ from typing import Any
 from adapters.db import Database
 from adapters.graph.graphiti import GraphitiGraphStore
 from adapters.llm.openrouter import OpenRouterLLM
+from adapters.logging.factory import build_log_sinks
 from adapters.preference.mem0_adapter import Mem0PreferenceMemory
 from adapters.queue.redis import RedisTaskQueue
 from adapters.search.brave import BraveSearch
@@ -38,6 +39,7 @@ from core.memory.semantic import SemanticMemory
 from core.memory.vocab import VocabProvider
 from core.memory.working import WorkingMemory
 from core.observability import TraceStore
+from core.observability.logger import StructuredLogger
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectService
 from core.psych.consolidation import Consolidator
@@ -95,11 +97,13 @@ class Pipeline:
     conversations: ConversationStore
     extractor: MemoryExtractor
     preferences: Mem0PreferenceMemory | None
+    logs: StructuredLogger
 
     async def aclose(self) -> None:
         await self.ledger.flush()
         await self.queue.aclose()
         await self.db.aclose()
+        self.logs.close()
 
 
 async def build_pipeline(settings: Settings) -> Pipeline:
@@ -202,6 +206,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         conversations=ConversationStore(docs),
         extractor=MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences),
         preferences=preferences,
+        logs=StructuredLogger(build_log_sinks(settings)),
     )
 
 
