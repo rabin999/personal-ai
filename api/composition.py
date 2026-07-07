@@ -28,6 +28,7 @@ from adapters.user_context.static import StaticUserContext
 from adapters.vector.qdrant import QdrantVectorStore
 from config.settings import Settings
 from core.cost import CostLedger
+from core.memory.conversation_store import ConversationStore
 from core.memory.entities import EntityResolver
 from core.memory.episodic import EpisodicMemory
 from core.memory.procedural import ProceduralMemory
@@ -87,6 +88,7 @@ class Pipeline:
     consolidator: Consolidator
     vocab: VocabProvider
     traces: TraceStore
+    conversations: ConversationStore
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -184,6 +186,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         consolidator=consolidator,
         vocab=VocabProvider(semantic, profiles),
         traces=TraceStore(docs),
+        conversations=ConversationStore(docs),
     )
 
 

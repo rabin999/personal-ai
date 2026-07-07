@@ -100,3 +100,15 @@ persistence, and the recall tool.
 `GET/PATCH /api/models` so the frontend can list + select. Config-driven end to end.
 **§2.3:** tightened `endpoint_short_pause_ms` default 700 → 600 (config-driven, per-user).
 Tests: `test_model_selection.py` (choices, non-complex-only override).
+
+### R9 — No durable raw conversation log (§6 "store ALL conversations") — FIXED
+**Root cause:** turns were written only to *derived* memory (episodic embeddings), so
+there was no verbatim, queryable history — if consolidation/embedding failed or was
+tuned, the raw exchange was gone, and there was nothing for a `/conversations` view.
+**Fix:** `core/memory/conversation_store.py` `ConversationStore` — append-only raw
+`conversation_turns` + a per-session `conversations` header, user-scoped, best-effort
+(never blocks a turn). Wired into `VoiceSession` (records each exchange alongside the
+episodic write, cross-referenced to the trace turn). `GET /api/conversations` (paginated
++ **server-side** ISO datetime-range filter) and `/api/conversations/{session}` expose a
+user's own history. Tests cover recording, pagination, server-side range filter, and
+two-user isolation. (Also lays the foundation the follow-up `/conversations` page needs.)

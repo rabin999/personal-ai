@@ -132,6 +132,7 @@ def _start(
         dispatcher=pipeline.dispatcher,
         delivery=pipeline.delivery,
         vocab=pipeline.vocab,
+        conversations=pipeline.conversations,
     )
 
     async def persist(event: dict[str, object]) -> None:

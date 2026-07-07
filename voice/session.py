@@ -18,6 +18,7 @@ from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
+from core.memory.conversation_store import ConversationStore
 from core.memory.episodic import EpisodicMemory
 from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
@@ -79,6 +80,7 @@ class VoiceSession:
         dispatcher: "ToolDispatch | None" = None,
         delivery: "Delivery | None" = None,
         vocab: VocabProvider | None = None,
+        conversations: ConversationStore | None = None,
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -97,6 +99,8 @@ class VoiceSession:
         self._dispatcher = dispatcher
         self._delivery = delivery
         self._vocab = vocab
+        self._conversations = conversations
+        self._turn_index = 0  # verbatim conversation-log turn counter (§6)
         self._vocab_terms: list[str] | None = None  # resolved once per session
         # Serialize background delivery: the idle poll and each turn both call
         # _deliver_pending; without this they can pull the same finished task
@@ -284,6 +288,7 @@ class VoiceSession:
             self._trace.emit("response", result.final_text, text=result.final_text)
             self._working.append(self._session_id, Turn(role="assistant", text=result.final_text))
             self._remember(transcript, result.final_text)
+            self._log_conversation(transcript, result.final_text, emotion)
             await self._synthesize(result.final_text, out)
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled")
@@ -383,4 +388,24 @@ class VoiceSession:
             return
         chunk = f"user: {user_text}\nassistant: {assistant_text}"
         task = asyncio.create_task(self._episodic.write(self._user_id, self._session_id, [chunk]))
+        task.add_done_callback(lambda t: t.exception())  # swallow; write is best-effort
+
+    def _log_conversation(
+        self, user_text: str, assistant_text: str, emotion: dict[str, Any] | None
+    ) -> None:
+        """Append the raw exchange to the durable conversation log (§6); best-effort."""
+        if self._conversations is None:
+            return
+        self._turn_index += 1
+        task = asyncio.create_task(
+            self._conversations.record_turn(
+                user_id=self._user_id,
+                session_id=self._session_id,
+                turn_index=self._turn_index,
+                user_text=user_text,
+                assistant_text=assistant_text,
+                trace_turn=self._trace.current_turn,
+                emotion=emotion,
+            )
+        )
         task.add_done_callback(lambda t: t.exception())  # swallow; write is best-effort

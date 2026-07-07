@@ -54,6 +54,11 @@ class TraceEmitter:
         self._turn += 1
         return self._turn
 
+    @property
+    def current_turn(self) -> int:
+        """The trace turn index events are currently grouped under (§6 cross-ref)."""
+        return self._turn
+
     def emit(
         self,
         stage: Stage,
