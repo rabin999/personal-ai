@@ -6,6 +6,7 @@ interface Props {
   openTurn: number | null;
   onToggle: (index: number) => void;
   onReplay: (turn: TurnGroup) => void;
+  onFeedback?: (turn: TurnGroup, rating: "up" | "down", note: string) => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }
@@ -18,6 +19,7 @@ export function TraceLog({
   openTurn,
   onToggle,
   onReplay,
+  onFeedback,
   mobileOpen,
   onCloseMobile,
 }: Props) {
@@ -85,6 +87,7 @@ export function TraceLog({
             open={openTurn === turn.index}
             onToggle={() => onToggle(turn.index)}
             onReplay={() => onReplay(turn)}
+            onFeedback={onFeedback ? (r, n) => onFeedback(turn, r, n) : undefined}
           />
         ))}
       </div>

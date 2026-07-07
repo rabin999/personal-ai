@@ -12,6 +12,7 @@ import {
   requestMicAccess,
 } from "../lib/audio";
 import { setEntered } from "../lib/session";
+import { sendFeedback } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
@@ -53,6 +54,7 @@ export default function CompanionPage() {
   const playerRef = useRef<AudioPlayer | null>(null);
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
+  const sessionIdRef = useRef("");
   const turnStateRef = useRef<TurnState>("idle");
 
   useEffect(() => {
@@ -133,6 +135,7 @@ export default function CompanionPage() {
       switch (msg.type) {
         case "ready":
           setConn("active");
+          sessionIdRef.current = msg.session_id || "";
           setCompanion(msg.companion_name || "Companion");
           sampleRateRef.current = msg.sample_rate ?? 24_000;
           playerRef.current?.configure(sampleRateRef.current);
@@ -340,6 +343,15 @@ export default function CompanionPage() {
         openTurn={openTurn}
         onToggle={(i) => setOpenTurn((cur) => (cur === i ? null : i))}
         onReplay={replay}
+        onFeedback={(turn, rating, note) => {
+          if (!sessionIdRef.current) return;
+          void sendFeedback({
+            session_id: sessionIdRef.current,
+            turn_id: String(turn.index),
+            rating,
+            note,
+          });
+        }}
         mobileOpen={traceOpen}
         onCloseMobile={() => setTraceOpen(false)}
       />

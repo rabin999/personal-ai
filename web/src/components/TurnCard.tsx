@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Stage, TurnGroup } from "../lib/types";
 
 const STAGE_META: Record<Stage, { color: string; glyph: string; label: string }> = {
@@ -20,11 +21,12 @@ interface Props {
   open: boolean;
   onToggle: () => void;
   onReplay: () => void;
+  onFeedback?: (rating: "up" | "down", note: string) => void;
 }
 
 // One collapsible conversation turn: header (what was heard / replied) plus the
 // per-stage pipeline trace, and a replay button for the reply audio.
-export function TurnCard({ turn, open, onToggle, onReplay }: Props) {
+export function TurnCard({ turn, open, onToggle, onReplay, onFeedback }: Props) {
   const title =
     turn.index === 0 ? "Listening…" : turn.heard ? `“${turn.heard}”` : `Turn ${turn.index}`;
 
@@ -95,7 +97,60 @@ export function TurnCard({ turn, open, onToggle, onReplay }: Props) {
               {turn.reply}
             </p>
           )}
+          {turn.reply && turn.index > 0 && onFeedback && <Feedback onFeedback={onFeedback} />}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Minimalistic per-response feedback: 👍 / 👎 (+ optional note on 👎), tied to
+// this turn. Optional for the user; every event is captured server-side.
+function Feedback({ onFeedback }: { onFeedback: (rating: "up" | "down", note: string) => void }) {
+  const [sent, setSent] = useState<"up" | "down" | null>(null);
+  const [note, setNote] = useState("");
+  const [noting, setNoting] = useState(false);
+  return (
+    <div className="mt-2 flex items-center gap-1.5 border-t border-slate-100 pt-2 dark:border-slate-800">
+      <button
+        onClick={() => {
+          setSent("up");
+          onFeedback("up", "");
+        }}
+        className={`rounded px-1.5 py-0.5 ${sent === "up" ? "bg-green-100 dark:bg-green-900/40" : "hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+        title="Good reply"
+      >
+        👍
+      </button>
+      <button
+        onClick={() => {
+          setSent("down");
+          setNoting(true);
+        }}
+        className={`rounded px-1.5 py-0.5 ${sent === "down" ? "bg-red-100 dark:bg-red-900/40" : "hover:bg-slate-100 dark:hover:bg-slate-800"}`}
+        title="Poor reply"
+      >
+        👎
+      </button>
+      {noting && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setNoting(false);
+            onFeedback("down", note);
+          }}
+          className="flex flex-1 items-center gap-1.5"
+        >
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="what was off? (optional)"
+            className="min-w-0 flex-1 rounded border border-slate-300 bg-transparent px-1.5 py-0.5 text-[11px] dark:border-slate-700"
+          />
+          <button type="submit" className="text-[11px] text-slate-500 underline">
+            save
+          </button>
+        </form>
       )}
     </div>
   );
