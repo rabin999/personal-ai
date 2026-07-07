@@ -53,14 +53,16 @@ def _turn_json(
 
 
 class Harness:
-    def __init__(self, responses: list[Any]) -> None:
+    def __init__(self, responses: list[Any], self_reflect: bool = True) -> None:
         self.docs = FakeDocStore()
         self.vectors = FakeVectorStore()
         self.llm = FakeLLM(responses)
         profiles = ProfileService(self.docs)
         self.registry = TraitRegistry(self.docs, profiles)
         self.self_model = SelfModel(self.docs, self.vectors, self.llm)
-        self.generator = ResponseGenerator(self.llm, self.self_model, self.registry)
+        self.generator = ResponseGenerator(
+            self.llm, self.self_model, self.registry, self_reflect=self_reflect
+        )
 
     async def seed(self) -> "Harness":
         await self.registry.seed_defaults(DEFAULTS_DIR)
@@ -225,3 +227,31 @@ async def test_no_disclosure_without_intent_or_regex() -> None:
     h = Harness([_turn_json(draft="Quick pasta sounds great.")])
     result = await h.generator.generate(_prompt("what should I cook tonight?"))
     assert "i'm an ai" not in result.final_text.lower()
+
+
+async def test_self_reflection_rewrites_assistant_speak_draft() -> None:
+    # §9.3: a draft that slipped into service-desk phrasing is re-said in-voice.
+    # LLM sequence: turn JSON (assistant-speak draft) → clean rewrite line.
+    clean = "Hey! Really good to hear your voice — how've you been?"
+    h = await Harness(
+        [_turn_json(draft="Hello! How can I help you today?"), clean]
+    ).seed()
+    result = await h.generator.generate(_prompt("hi"))
+    assert result.final_text == clean
+    assert result.style_flags == []  # post-rewrite it's clean
+
+
+async def test_self_reflection_keeps_original_if_rewrite_not_cleaner() -> None:
+    # A rewrite that is still assistant-speak (or empty) is rejected; original kept.
+    draft = "Hi there! How can I help you today?"
+    h = await Harness([_turn_json(draft=draft), "What can I do for you today?"]).seed()
+    result = await h.generator.generate(_prompt("hi"))
+    assert result.final_text == draft  # rewrite was not cleaner → original retained
+
+
+async def test_self_reflection_off_leaves_draft_untouched() -> None:
+    draft = "Hello! How can I help you today?"
+    h = await Harness([_turn_json(draft=draft)], self_reflect=False).seed()
+    result = await h.generator.generate(_prompt("hi"))
+    assert result.final_text == draft
+    assert result.style_flags  # still flagged for the trace, just not rewritten

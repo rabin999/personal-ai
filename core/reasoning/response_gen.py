@@ -182,11 +182,31 @@ class GenerationResult(BaseModel):
     style_flags: list[str] = []
 
 
+# Self-reflection rewrite (brief §9.3): generic, tone-neutral instruction — it
+# only removes the *shape* of assistant-speak, it does not dictate wording, so
+# the human still owns tone (§7). Config-gated via ``self_reflect``.
+_REWRITE_INSTRUCTIONS = (
+    "Re-say the following line in your own warm, natural voice as a close friend who "
+    "knows this person — same intent and content, but WITHOUT any service-desk or "
+    "assistant phrasing (no 'how can I help you', 'what's on your mind', 'I'm here to "
+    "assist', no bolted-on disclaimers). Keep it to one or two spoken sentences. "
+    "Reply with ONLY the rewritten line, no quotes, no preamble.\n\nLine: "
+)
+
+
 class ResponseGenerator:
-    def __init__(self, llm: LLM, self_model: SelfModel, registry: TraitRegistry) -> None:
+    def __init__(
+        self,
+        llm: LLM,
+        self_model: SelfModel,
+        registry: TraitRegistry,
+        *,
+        self_reflect: bool = True,
+    ) -> None:
         self._llm = llm
         self._self_model = self_model
         self._registry = registry
+        self._self_reflect = self_reflect
         # Action tools awaiting the user's yes/no, keyed by session (§8.3).
         self._pending: dict[str, ConfirmRequest] = {}
 
@@ -288,7 +308,29 @@ class ResponseGenerator:
         # No static string is bolted on here.
 
         text = _sanitize_tags(text)  # strip stray/echoed bracket tokens before TTS (V-TAGS-1)
+        # Self-reflection (§9.3): if the draft slipped into assistant-speak, have
+        # the model re-say it in-voice once. Mechanism only — tone stays human-tuned.
+        if self._self_reflect and find_forbidden(text):
+            text = await self._rewrite_assistant_speak(prompt, text)
         return await self._finish(prompt, text, action, turn.judgment)
+
+    async def _rewrite_assistant_speak(self, prompt: AssembledPrompt, text: str) -> str:
+        """One bounded rewrite pass to strip service-desk phrasing; keep the
+        original if the rewrite is empty, worse, or the provider is down."""
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [{"role": "user", "content": _REWRITE_INSTRUCTIONS + text}],
+                "simple",
+                session_id=prompt.session_id,
+            )
+        except LLMUnavailable:
+            return text
+        candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        # Only accept a rewrite that is non-empty and strictly cleaner.
+        if candidate and len(find_forbidden(candidate)) < len(find_forbidden(text)):
+            return candidate
+        return text
 
     async def _dispatch_tool(
         self, dispatcher: "ToolDispatch", context: "ToolContext", req: ToolRequest

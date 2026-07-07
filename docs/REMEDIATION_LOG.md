@@ -69,3 +69,15 @@ greetings still produced service-desk openers** even with the trait present, e.g
 suppress the opener — this reproduces the reported complaint. Recommended next lever
 (mechanism; final tuning yours): a **self-reflection/rewrite pass** (brief §9.3) that, when
 `style_flags` is non-empty, has the model re-say the line in-voice before it leaves.
+
+### R6 — Self-reflection rewrite pass (brief §9.3) — IMPLEMENTED, live-verified
+**What:** `ResponseGenerator._rewrite_assistant_speak` — one bounded, tone-neutral rewrite
+that fires only when `find_forbidden(text)` is non-empty. Generic instruction (strip the
+*shape* of assistant-speak, keep intent), accepts the rewrite only if strictly cleaner,
+else keeps the original; provider-down → keep original. Config-gated by a `self_reflect`
+constructor flag so the human can disable/tune it (§7).
+**Verified:** the paid real-model diagnostic that previously failed **4/5** bare greetings
+now passes **5/5** with reflection on — the model's `"How can I help you today?"` opener is
+re-said as e.g. a warm greeting. Unit tests cover rewrite-applied, rewrite-rejected-if-not-
+cleaner, and reflection-off. This directly fixes the reported #1 issue at the mechanism
+level; wording of the rewrite instruction remains human-tunable.
