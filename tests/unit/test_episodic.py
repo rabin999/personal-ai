@@ -153,3 +153,66 @@ def test_single_oversized_turn_becomes_its_own_chunk() -> None:
 
 def test_empty_transcript_produces_no_chunks() -> None:
     assert chunk_transcript([]) == []
+
+
+# ── dedup / consolidation (spec §5) ────────────────────────────────────────
+
+
+class DedupFakeStore:
+    """Tracks deletions and returns seeded entries so dedup can be asserted."""
+
+    def __init__(self, entries: list[VectorHit]) -> None:
+        self.entries = entries
+        self.deleted: list[str] = []
+
+    async def list_by_user(
+        self, collection: str, *, user_id: str, limit: int = 100
+    ) -> list[VectorHit]:
+        return [e for e in self.entries if e.id not in self.deleted]
+
+    async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
+        self.deleted.append(doc_id)
+        return True
+
+
+def _hit(doc_id: str, text: str, days_ago: float) -> VectorHit:
+    return VectorHit(id=doc_id, score=0.0, payload={"text": text, "timestamp": _iso(days_ago)})
+
+
+def test_dedup_key_normalizes_currency_prefix_and_punctuation() -> None:
+    from core.memory.episodic import _dedup_key
+
+    k = _dedup_key("bought 10 shares of SYPNL at 230")
+    assert _dedup_key("user bought 10 shares of SYPNL at 230") == k
+    assert _dedup_key("bought 10 shares of SYPNL at $230") == k
+    assert _dedup_key("  Bought 10 shares of SYPNL at 230!!  ") == k
+    # Distinct events keep distinct keys.
+    assert _dedup_key("bought 20 shares of SYPNL at 230") != k
+
+
+async def test_deduplicate_keeps_earliest_and_removes_duplicates() -> None:
+    entries = [
+        _hit("a", "user bought 10 shares of SYPNL at 230", days_ago=2),
+        _hit("b", "bought 10 shares of SYPNL at $230", days_ago=1),  # dup (newer)
+        _hit("c", "bought 10 shares of SYPNL at 230", days_ago=0.5),  # dup (newest)
+        _hit("d", "has a headache right now", days_ago=3),
+        _hit("e", "user has a headache right now", days_ago=1),  # dup (newer)
+        _hit("f", "user goes for a run every morning", days_ago=1),  # unique
+    ]
+    store = DedupFakeStore(entries)
+    memory = EpisodicMemory(store)  # type: ignore[arg-type]
+
+    removed = await memory.deduplicate("u_demo_001")
+
+    assert removed == 3  # 2 SYPNL dups + 1 headache dup
+    # Earliest of each group is kept; newer duplicates deleted.
+    assert set(store.deleted) == {"b", "c", "e"}
+    remaining = {e.id for e in entries if e.id not in store.deleted}
+    assert remaining == {"a", "d", "f"}  # canonical trade, canonical headache, unique run
+
+
+async def test_deduplicate_noop_when_all_unique() -> None:
+    entries = [_hit("a", "went hiking", 2), _hit("b", "got a promotion", 1)]
+    store = DedupFakeStore(entries)
+    removed = await EpisodicMemory(store).deduplicate("u")  # type: ignore[arg-type]
+    assert removed == 0 and store.deleted == []

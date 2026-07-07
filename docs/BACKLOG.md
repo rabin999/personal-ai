@@ -19,7 +19,7 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 - [x] **Item 3** — Real-call harness + LLM-as-judge — `real_call` marker + reusable judge +
   live-pipeline harness; judge PROVEN by an 8/8 calibration set (fails "hi→How can I help you?",
   passes warm replies); real companion suite 8/8; caught+fixed a cold-disclosure regression.
-- [ ] **Item 4** — Existing memory cleanup + conflict/consolidation
+- [x] **Item 4** — Memory cleanup + conflict/consolidation — live store deduped (SYPNL 3→1, headache 2→1); dedup wired into consolidation; Graphiti supersession verified (old superseded, new current, history kept); unit + real_call tests
 - [ ] **Item 5** — Unified structured RESULT envelope
 - [ ] **Item 6** — Full trace view: list → click → detail (backend-complete; UI minimal)
 - [ ] **Item 7** — Prompt versioning + performance attribution + caching

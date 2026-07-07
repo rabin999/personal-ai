@@ -6,6 +6,7 @@ Read path: hybrid dense+BM25 retrieval fused with RRF in the vector store,
 then gently recency-weighted here (rule 2).
 """
 
+import re
 import uuid
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -17,6 +18,21 @@ from core.memory.working import Turn
 from ports.vector_store import VectorDoc, VectorStore
 
 EPISODIC_COLLECTION = "episodic"
+
+# Dedup key normalization: same fact phrased slightly differently ("bought 10
+# shares of SYPNL at 230" / "user bought 10 shares of SYPNL at $230") collapses to
+# one key. Deliberately high-precision (exact normalized match) so distinct events
+# are never merged — currency/user-prefix/punctuation noise only.
+_DEDUP_STRIP = re.compile(r"[^a-z0-9 ]+")
+_DEDUP_LEAD = re.compile(r"^(the )?user[:\s]+")
+
+
+def _dedup_key(text: str) -> str:
+    t = text.strip().lower()
+    t = _DEDUP_LEAD.sub("", t)  # drop a leading "user:"/"user " subject prefix
+    t = _DEDUP_STRIP.sub(" ", t)  # currency signs, punctuation → space
+    return re.sub(r"\s+", " ", t).strip()
+
 
 # Chunking: accumulate whole turns until the budget is reached. Large enough
 # to keep an exchange together, small enough to stay a focused retrieval unit.
@@ -83,6 +99,32 @@ class EpisodicMemory:
     async def delete(self, user_id: str, memory_id: str) -> bool:
         """Delete one of this user's episodic memories (the 'forget this' right)."""
         return await self._vectors.delete(EPISODIC_COLLECTION, memory_id, user_id=user_id)
+
+    async def deduplicate(self, user_id: str, limit: int = 500) -> int:
+        """Collapse exact near-duplicate episodic entries (spec §5 consolidation).
+
+        Broken extraction runs accreted the SAME event several times ("bought 10
+        shares of SYPNL at 230" x3, "headache right now" x2). Group by a normalized
+        key, keep the EARLIEST entry of each group (canonical, preserves history —
+        rule: never lose the original), delete the rest. Returns entries removed.
+        High-precision (exact normalized match) so genuinely distinct events are
+        never merged. user_id-scoped; only ever touches this user's data."""
+        entries = await self.list_recent(user_id, limit=limit)
+        by_key: dict[str, list[EpisodicHit]] = {}
+        for e in entries:
+            if e.id and e.text.strip():
+                by_key.setdefault(_dedup_key(e.text), []).append(e)
+        removed = 0
+        for group in by_key.values():
+            if len(group) < 2:
+                continue
+            # Keep the earliest (oldest timestamp); delete the newer duplicates.
+            group.sort(key=lambda e: e.timestamp or "")
+            for dup in group[1:]:
+                assert dup.id is not None  # filtered above
+                if await self.delete(user_id, dup.id):
+                    removed += 1
+        return removed
 
     async def retrieve(self, user_id: str, query_text: str, k: int = 6) -> list[EpisodicHit]:
         """Hybrid RRF retrieval (adapter) + recency weighting, user-scoped."""

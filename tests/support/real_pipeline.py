@@ -107,5 +107,13 @@ class RealTurns:
     def llm(self):
         return self._p.llm
 
+    @property
+    def episodic(self):
+        return self._p.episodic
+
+    @property
+    def semantic(self):
+        return self._p.semantic
+
     async def aclose(self) -> None:
         await self._p.aclose()

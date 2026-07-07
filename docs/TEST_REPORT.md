@@ -259,6 +259,64 @@ harness doing its job — catching a real regression the mocked suite passed ove
 
 **Full non-paid suite: 328 passed; mypy + lint-imports clean.**
 
+---
+
+## Item 4 — Existing memory cleanup + conflict/consolidation (spec §5/§6)
+
+**App-goal verified:** the live store's accreted junk is cleaned; near-duplicate events don't
+re-accrete; a changed fact supersedes the old one (validity window), new value current, history kept.
+
+### Real live-store state (verified before touching code)
+Dumped `u_demo_001`'s episodic memory (33 entries). Confirmed pollution:
+- "bought 10 shares of SYPNL at 230" stored **x3** ("…at 230", "…at $230", "user bought…at 230");
+- "headache right now" stored **x2**.
+The hallucinated *semantic* "dark room belief" the earlier report flagged no longer appears in the
+graph; the remaining "user stated a dark room will help them" is a single, plausibly-real EPISODIC
+event (dark room helps a headache), so it was NOT deleted — deleting a possibly-real memory would be
+the wrong call.
+
+### Fixes
+- **`EpisodicMemory.deduplicate(user_id)`** — groups entries by a high-precision normalized key
+  (`_dedup_key`: strips a leading "user:"/"user " subject, currency signs, punctuation → collapses
+  "…at $230"/"user bought…" to one key), keeps the EARLIEST of each group (canonical, preserves
+  history), deletes the rest. High-precision so genuinely distinct events are never merged.
+- **Wired into session-end consolidation** (`Consolidator`, run in the worker off the latency path)
+  so duplicates get collapsed going forward instead of accreting.
+
+### Ran it over the live store (captured)
+```
+DUPLICATE GROUPS (keep earliest, delete rest):
+  key='has a headache right now'              count=2
+  key='bought 10 shares of sypnl at 230'      count=3   (…at 230 / …at $230 / user bought…at 230)
+REMOVED=3   entries before=33 after=30
+```
+Post-clean recall — `episodic.retrieve("SYPNL shares bought")` now returns the trade **once** (was 3).
+
+### Semantic conflict supersession (Graphiti, real, fresh isolated user)
+```
+add: "My name is Priya and I live in Kathmandu."
+add: "I moved out of Kathmandu; I now live in Pokhara."
+FACTS:
+  'Priya lives in Kathmandu'      valid_from=…40  valid_to=…46   ← SUPERSEDED (window closed)
+  'Priya now lives in Pokhara'    valid_from=…46  valid_to=None  ← CURRENT
+  'Priya moved out of Kathmandu'  valid_to=…46
+```
+The old value is superseded (not deleted — history preserved), the new value is current. Exactly the
+design intent (§6 rule 2/3).
+
+### Regression coverage
+- Unit (`tests/unit/test_episodic.py`): `_dedup_key` normalization (currency/prefix/punctuation
+  collapse; distinct events keep distinct keys) + `deduplicate` keeps earliest, removes the rest,
+  no-op when all unique.
+- Real-call (`tests/real_call/test_memory_cleanup.py`, 2 pass): dedup over the REAL Qdrant collapses
+  3 SYPNL variants → 1 while keeping a distinct event (idempotent on re-run); and a changed fact is
+  superseded in the REAL graph (new current, old window closed, history kept).
+- Full non-paid suite 331 passed; mypy + lint-imports clean.
+
+### Note on cross-user isolation
+Every dedup/consolidation call is `user_id`-scoped; the real-call tests use fresh users so cleanup
+never touches another user's data (invariant §3.1).
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply

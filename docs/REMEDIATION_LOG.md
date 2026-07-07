@@ -473,3 +473,25 @@ disclosure on the fast tier. Fix: `_warm_disclosure` warm-polishes any nature-di
 a stronger tier (leads with genuine attention, keeps the honest "I'm an AI"), and only accepts the
 polish if it still discloses (`_HAS_DISCLOSURE` guard — never drops the honesty; this also keeps the
 gs3 golden green under a scripted FakeLLM). Real reruns 4/4 warm; suite 8/8.
+
+---
+
+## Autonomous backlog run — Item 4: Memory cleanup + conflict/consolidation (2026-07-07)
+
+Verified the live store (u_demo_001) really was polluted: "bought 10 shares of SYPNL at 230" stored
+x3 and "headache right now" x2. (The hallucinated *semantic* "dark room belief" is already gone; the
+lone episodic "dark room" event is plausibly real — a dark room helps a headache — so NOT deleted.)
+
+Fixes:
+- `EpisodicMemory.deduplicate(user_id)` — high-precision normalized-key grouping (strip "user:"
+  subject, currency signs, punctuation), keep the EARLIEST of each group (preserve history), delete
+  the rest. Never merges distinct events. Wired into `Consolidator.consolidate` (worker, off the
+  latency path) so dupes don't re-accrete.
+- Ran it over the live store: removed 3 (SYPNL 3→1, headache 2→1), 33→30 entries; recall now
+  surfaces the trade once.
+
+Verified semantic supersession is Graphiti's job and works: a changed "lives in" fact closes the old
+validity window (superseded, not deleted) and the new value is current — captured on a fresh user.
+
+Tests: unit (`_dedup_key` + `deduplicate`) and real_call (`test_memory_cleanup.py`: real-Qdrant dedup
+idempotent + real-Graphiti supersession). Full non-paid suite 331 passed.

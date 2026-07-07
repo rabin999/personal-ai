@@ -19,6 +19,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from core.memory.episodic import EpisodicMemory
 from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn
@@ -79,6 +80,7 @@ class ConsolidationReport(BaseModel):
     mood_updated: bool = False
     traits_updated: int = 0
     candidate_correlations: int = 0
+    duplicates_removed: int = 0  # §5 episodic dedup during consolidation
 
 
 class Consolidator:
@@ -89,12 +91,14 @@ class Consolidator:
         psych: PsychUserModel,
         docs: DocStore,
         llm: LLM,
+        episodic: EpisodicMemory | None = None,
     ) -> None:
         self._semantic = semantic
         self._procedural = procedural
         self._psych = psych
         self._docs = docs
         self._llm = llm
+        self._episodic = episodic
 
     async def consolidate(
         self, user_id: str, session_id: str, transcript: list[Turn]
@@ -107,6 +111,15 @@ class Consolidator:
         # (a) semantic facts with validity windows — Graphiti extraction.
         await self._semantic.add_episode(user_id, text)
         report.facts_extracted = True
+
+        # (a2) episodic dedup (§5): collapse near-duplicate events accreted across
+        # sessions so retrieval doesn't surface the same fact 2-3 times. Off the
+        # latency path (this runs in the worker), user-scoped, best-effort.
+        if self._episodic is not None:
+            try:
+                report.duplicates_removed = await self._episodic.deduplicate(user_id)
+            except Exception:  # never let dedup break the rest of consolidation
+                logger.exception("episodic dedup failed during consolidation")
 
         analysis = await self._analyze(user_id, session_id, text)
         if analysis is None:
