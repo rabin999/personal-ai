@@ -12,7 +12,7 @@ import {
   requestMicAccess,
 } from "../lib/audio";
 import { setEntered } from "../lib/session";
-import { sendFeedback } from "../lib/api";
+import { getModels, sendFeedback, setModel as saveModel } from "../lib/api";
 import { useTheme } from "../lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
@@ -60,6 +60,17 @@ export default function CompanionPage() {
   const [runtime, setRuntime] = useState<"native" | "pipecat">("native");
   const runtimeRef = useRef(runtime);
   runtimeRef.current = runtime;
+  // Fast/flash LLM the user can pick (§4). Empty = the tier default.
+  const [models, setModels] = useState<string[]>([]);
+  const [model, setModel_] = useState<string>("");
+  useEffect(() => {
+    getModels()
+      .then((m) => {
+        setModels(m.choices);
+        setModel_(m.selected ?? "");
+      })
+      .catch(() => {});
+  }, []);
   const turnStateRef = useRef<TurnState>("idle");
 
   useEffect(() => {
@@ -322,6 +333,26 @@ export default function CompanionPage() {
                 >
                   <option value="native">Native (asyncio)</option>
                   <option value="pipecat">Pipecat (framework)</option>
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1.5">
+                <span className={FIELD_LABEL}>LLM model</span>
+                <select
+                  value={model}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setModel_(v);
+                    void saveModel(v || null);
+                  }}
+                  className={FIELD}
+                  title="Pick the fast/flash model for your turns. Applies from the next turn; changeable anytime."
+                >
+                  <option value="">Default (auto)</option>
+                  {models.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>

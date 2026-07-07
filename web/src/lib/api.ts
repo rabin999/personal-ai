@@ -92,6 +92,18 @@ export function getSessionTrace(sessionId: string): Promise<{ events: TraceEvent
   return authed(`/debug/traces/${encodeURIComponent(sessionId)}`);
 }
 
+// ── model selection (§4) ─────────────────────────────────────────────────
+export function getModels(): Promise<{
+  choices: string[];
+  selected: string | null;
+  default: string;
+}> {
+  return authed("/api/models");
+}
+export function setModel(fast_model: string | null): Promise<{ selected: string | null }> {
+  return authed("/api/models", { method: "PATCH", body: JSON.stringify({ fast_model }) });
+}
+
 // ── feedback ─────────────────────────────────────────────────────────────
 export function sendFeedback(body: {
   session_id: string; rating: "up" | "down"; turn_id?: string; note?: string;

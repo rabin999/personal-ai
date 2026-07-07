@@ -61,6 +61,19 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     deliveries = await pipeline.delivery.deliveries_for_pause(body.session_id, user.user_id, recent)
     for d in deliveries:
         trace.emit("response", d.line, delivered=True)
+        # Put the delivered result (news/search) into the conversation BEFORE we
+        # reason, so a follow-up "tell me more about that" has it in context
+        # instead of the companion asking "what news?" — in working memory AND the
+        # durable conversation log (§6: everything the companion says is stored).
+        pipeline.working.append(body.session_id, Turn(role="assistant", text=d.line))
+        await pipeline.conversations.record_turn(
+            user_id=user.user_id,
+            session_id=body.session_id,
+            turn_index=turn_no,
+            user_text="",
+            assistant_text=d.line,
+            trace_turn=turn_no,
+        )
 
     pipeline.working.append(body.session_id, Turn(role="user", text=body.text))
     prompt = await pipeline.assembler.assemble(user.user_id, body.session_id, body.text)

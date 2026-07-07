@@ -90,8 +90,14 @@ _NEGATIVE = (
 
 _JUDGMENT_INSTRUCTIONS = """
 Respond ONLY with a JSON object of this exact shape:
-{"draft_response": "<your reply; short, warm, natural spoken language; may
-   contain TTS tags like [sigh] or <pause>>",
+{"draft_response": "<your reply — short, warm, natural spoken language. The voice
+   ACTUALLY performs inline delivery tags, so WEAVE THEM IN to sound human, not
+   flat: [laugh] [chuckle] [sigh] [gasp] for feeling; [warm] [gentle] [soft] for
+   tone; <emphasis>word</emphasis> to stress a word; <slow> ... </slow> to slow
+   down; <pause> for a beat. Use 1-3 tags where they genuinely fit the moment
+   (a laugh when something's funny, a gentle tone when they're down) — never tag
+   every sentence, never force it. Example: 'Oh [laugh] that's amazing — <emphasis>
+   congrats</emphasis>!'>",
  "judgment": {"intent_confidence": <0..1 how sure you are of what the user wants>,
               "novelty_score": <0..1 how new this topic is for this user>,
               "emotional_salience": <0..1 emotional weight of this moment>,
@@ -568,7 +574,10 @@ def _sanitize_tags(text: str) -> str:
 
     def keep(match: re.Match[str]) -> str:
         inner = (match.group(1) or match.group(2) or "").strip().lower()
-        return match.group(0) if inner in _ALLOWED_TAGS else ""
+        # Keep closing tags too (</emphasis>, </slow>) so a paired tag survives
+        # intact to the voice — strip the leading slash before the whitelist check.
+        base = inner[1:] if inner.startswith("/") else inner
+        return match.group(0) if base in _ALLOWED_TAGS else ""
 
     cleaned = _BRACKET_TOKEN.sub(keep, text)
     return re.sub(r"\s{2,}", " ", cleaned).strip()

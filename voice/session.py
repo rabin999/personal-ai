@@ -389,6 +389,24 @@ class VoiceSession:
                 if task_id:
                     self._delivered_ids.add(task_id)
                 self._trace.emit("response", line, delivered=True, task_id=task_id)
+                # Remember what we told them (the news/search result): into working
+                # memory (same-session recall) AND the durable conversation log, so a
+                # follow-up like "tell me more about that" has context instead of
+                # "what news?". Everything the companion says is stored (§6).
+                self._working.append(self._session_id, Turn(role="assistant", text=line))
+                if self._conversations is not None:
+                    self._turn_index += 1
+                    t = asyncio.create_task(
+                        self._conversations.record_turn(
+                            user_id=self._user_id,
+                            session_id=self._session_id,
+                            turn_index=self._turn_index,
+                            user_text="",
+                            assistant_text=line,
+                            trace_turn=self._trace.current_turn,
+                        )
+                    )
+                    t.add_done_callback(lambda t: t.exception())
                 await self._synthesize(line, out)
 
     def _remember(self, user_text: str, assistant_text: str) -> None:
