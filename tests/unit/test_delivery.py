@@ -107,3 +107,52 @@ async def test_multiple_results_processed_independently() -> None:
 
     assert [i.task_id for i in interjections] == ["t1"]
     assert queue.delivered == ["t1"] and queue.suppressed == ["t2"]
+
+
+# ── Item 8: pileup cap (never machine-gun) ────────────────────────────────
+
+
+async def test_pileup_over_cap_becomes_one_summarize_and_offer() -> None:
+    # Four finished, all relevant → must NOT dump 4; offer once instead.
+    llm = FakeLLM([json.dumps({"relevant": True, "line": f"finding {i}"}) for i in range(4)])
+    tasks = [_task(f"t{i}") for i in range(4)]
+    queue = FakeQueue(tasks)
+    composer = DeliveryComposer(queue, llm, max_interjections=2)
+
+    interjections = await composer.deliveries_for_pause("s1", "u_demo_001", "...")
+
+    assert len(interjections) == 1, "backlog should collapse to a single offer, not a machine-gun"
+    assert "4 things" in interjections[0].line and "run through them" in interjections[0].line
+    # All four are marked delivered so they don't re-fire next pause.
+    assert set(queue.delivered) == {"t0", "t1", "t2", "t3"}
+
+
+async def test_within_cap_delivers_each_directly() -> None:
+    llm = FakeLLM([json.dumps({"relevant": True, "line": f"finding {i}"}) for i in range(2)])
+    queue = FakeQueue([_task("t0"), _task("t1")])
+    composer = DeliveryComposer(queue, llm, max_interjections=2)
+
+    interjections = await composer.deliveries_for_pause("s1", "u_demo_001", "...")
+
+    assert len(interjections) == 2
+    assert set(queue.delivered) == {"t0", "t1"}
+
+
+async def test_stale_ones_purged_before_cap_counts() -> None:
+    # 3 finished but 2 are stale → only 1 relevant remains → delivered directly,
+    # NOT collapsed to an offer (the cap counts relevant results only).
+    llm = FakeLLM(
+        [
+            json.dumps({"relevant": False, "line": ""}),
+            json.dumps({"relevant": True, "line": "the real one"}),
+            json.dumps({"relevant": False, "line": ""}),
+        ]
+    )
+    queue = FakeQueue([_task("t0"), _task("t1"), _task("t2")])
+    composer = DeliveryComposer(queue, llm, max_interjections=2)
+
+    interjections = await composer.deliveries_for_pause("s1", "u_demo_001", "...")
+
+    assert len(interjections) == 1 and interjections[0].line == "the real one"
+    assert set(queue.suppressed) == {"t0", "t2"}
+    assert queue.delivered == ["t1"]

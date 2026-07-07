@@ -39,24 +39,49 @@ class Interjection(BaseModel):
     line: str
 
 
+# Pileup cap (§8.8 / §14): never machine-gun a backlog of finished tasks at the
+# user. Up to this many resolved results are spoken at a pause; beyond it, we
+# summarize-and-offer ONE line instead of dumping them all.
+MAX_INTERJECTIONS = 2
+
+
 class DeliveryComposer:
-    def __init__(self, queue: TaskQueue, llm: LLM) -> None:
+    def __init__(
+        self, queue: TaskQueue, llm: LLM, max_interjections: int = MAX_INTERJECTIONS
+    ) -> None:
         self._queue = queue
         self._llm = llm
+        self._max = max(1, max_interjections)
 
     async def deliveries_for_pause(
         self, session_id: str, user_id: str, recent_context: str
     ) -> list[Interjection]:
-        """Compose interjections for resolved tasks; suppress stale ones."""
-        interjections: list[Interjection] = []
+        """Compose interjections for resolved tasks; suppress stale ones; and cap
+        the pileup so a backlog becomes a single summarize-and-offer, never a
+        machine-gun of results (§8.8)."""
+        relevant: list[Interjection] = []
         for task in await self._queue.pending_deliveries(session_id):
             line = await self._compose(user_id, task, recent_context)
-            if line is None:
+            if line is None:  # stale / user moved on → purge, don't deliver
                 await self._queue.mark_suppressed(task.task_id)
                 continue
-            await self._queue.mark_delivered(task.task_id)
-            interjections.append(Interjection(task_id=task.task_id, line=line))
-        return interjections
+            relevant.append(Interjection(task_id=task.task_id, line=line))
+
+        # Pileup: more finished than we'd ever say at once → mark them all
+        # delivered (so they don't re-fire) and offer ONCE instead of dumping.
+        if len(relevant) > self._max:
+            for item in relevant:
+                await self._queue.mark_delivered(item.task_id)
+            n = len(relevant)
+            offer = (
+                f"Oh — while we were talking I finished {n} things you'd asked about. "
+                "Want me to run through them?"
+            )
+            return [Interjection(task_id=relevant[0].task_id, line=offer)]
+
+        for item in relevant:
+            await self._queue.mark_delivered(item.task_id)
+        return relevant
 
     async def _compose(self, user_id: str, task: QueuedTask, recent_context: str) -> str | None:
         payload = json.dumps({"task_type": task.type, "params": task.params, "result": task.result})

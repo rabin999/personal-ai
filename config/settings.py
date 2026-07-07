@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     session_max_age_s: int = 14 * 24 * 3600
     session_cookie_secure: bool | None = None  # None → derive from public_base_url
 
+    # Conversation behaviors (§8/§14). Max background results delivered at a single
+    # pause before we summarize-and-offer instead of dumping them (anti-machine-gun).
+    delivery_max_interjections: int = 2
+
     # Welcome-email SMTP (fastapi-mail via Gmail). Gmail requires an APP PASSWORD
     # (2FA enabled) — the normal account password will NOT work. Empty MAIL_*
     # disables sending; the outbox still records (worker marks it skipped).

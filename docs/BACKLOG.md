@@ -23,7 +23,7 @@ committed locally, and logged in `docs/REMEDIATION_LOG.md`.
 - [x] **Item 5** — Unified structured RESULT envelope — StepResult + run_step wrapper; tool dispatch produces clean failure/timeout envelopes (never raises); real forced-failure turn completes gracefully; unit + real e2e
 - [x] **Item 6** — Full trace view — turn fully reconstructable from the trace (all stages, LLM tokens/cost/latency, tool envelope, self-reflection span every turn, raw voice_text, per-turn totals roll-up); minimal list→detail UI with a technical-trace breakdown. real_call + unit tests
 - [x] **Item 7** — Prompt versioning + attribution + caching — prompt_version (pt2.<traits-hash>) on every assembly span; cache hit/miss on llm spans; /debug/attribution groups thumbs-up rate by prompt_version (+ UI table). two-version comparison unit-tested
-- [ ] **Item 8** — Conversation behaviors (design §3.6 + §8.8)
+- [x] **Item 8** — Conversation behaviors — pileup cap (summarize-and-offer, config-driven, anti-machine-gun) + session-end→consolidation hook (verified: learned durable facts). correction-supersede/staleness/waiter already working+verified
 - [ ] **Item 9** — Memory routing moved to background worker (deferred architecture)
 - [ ] **Item 10** — Remaining edge cases (degradation, cost ceiling, ambiguity, feedback→trace)
 - [ ] **Item 11** — Engine/model selection + streaming input + acknowledge-first-parallel

@@ -541,3 +541,18 @@ non-paid suite 344.
   /debug/attribution + a minimal UI table on the Traces page.
 - Proven: attribution unit tests (two versions ranked by up-rate) + real_call trace assertions
   (prompt_version present, cache_hit present). Non-paid suite 348.
+
+---
+
+## Autonomous backlog run — Item 8: Conversation behaviors (2026-07-07)
+
+Verified existing behaviors (correction→supersede from Item 4; waiter delivery + staleness suppress;
+idle-is-free) and closed two concrete gaps:
+- Pileup cap: DeliveryComposer delivered every finished task (machine-gun). Now a config cap
+  (settings.delivery_max_interjections=2); beyond it, collapse to ONE summarize-and-offer and mark
+  all delivered. Cap counts relevant results only (stale purged first). Unit-tested.
+- Session-end consolidation: the handler existed but nothing enqueued it. Added an on_end hook on
+  the voice route's _Conversation (fires on stop/disconnect) that enqueues a consolidation task with
+  the working-memory transcript. Verified end-to-end (real queue+worker+Graphiti): learned "Momo is
+  a golden retriever" / "user adopted a puppy named Momo".
+Non-paid suite 351.

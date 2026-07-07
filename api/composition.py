@@ -166,7 +166,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     dispatcher = ToolDispatcher(
         tool_registry, queue, ledger=ledger, results=tool_results, logs=logs
     )
-    delivery = DeliveryComposer(queue, llm)
+    delivery = DeliveryComposer(queue, llm, max_interjections=settings.delivery_max_interjections)
     web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
     register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act
         tool_registry,

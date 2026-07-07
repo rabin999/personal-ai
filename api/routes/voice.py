@@ -19,6 +19,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from api.composition import Pipeline
 from api.streaming import merge_conversation
 from core.profile.models import AudioPrefs
+from core.psych.consolidation import CONSOLIDATION_TASK_TYPE
 from ports.user_context import UserRecord
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
@@ -68,11 +69,13 @@ class _Conversation:
         session: VoiceSession,
         trace: TraceEmitter,
         on_event: Callable[[dict[str, object]], Awaitable[None]] | None = None,
+        on_end: Callable[[], Awaitable[None]] | None = None,
     ) -> None:
         self._ws = ws
         self.session = session
         self._trace = trace
         self._on_event = on_event
+        self._on_end = on_end
         self._frames: asyncio.Queue[bytes | None] = asyncio.Queue()
         self._buffer = bytearray()
         self.task = asyncio.create_task(self._run())
@@ -106,6 +109,15 @@ class _Conversation:
             await self._ws.send_json({"type": "conversation_ended"})
         except (WebSocketDisconnect, RuntimeError):
             pass  # client went away mid-conversation
+        finally:
+            # Session end (explicit stop or disconnect) → post-session learning
+            # (§3.6/§18): consolidation runs off the conversation path, in the
+            # worker. Best-effort — a failure here never propagates to the socket.
+            if self._on_end is not None:
+                try:
+                    await self._on_end()
+                except Exception:
+                    logger.exception("session-end consolidation enqueue failed")
 
 
 def _start(
@@ -143,7 +155,22 @@ def _start(
     async def persist(event: dict[str, object]) -> None:
         await pipeline.traces.record(user.user_id, event)  # user-scoped (§0.5)
 
-    return _Conversation(ws, session, trace, persist)
+    async def consolidate() -> None:
+        """Enqueue post-session consolidation with the whole conversation (§3.6/§18).
+
+        Off the latency path (worker runs it); skipped for an empty session so a
+        connect/disconnect with no speech doesn't spawn work."""
+        turns = pipeline.working.recent(session_id, n=200)
+        if not turns:
+            return
+        await pipeline.queue.enqueue(
+            session_id=session_id,
+            user_id=user.user_id,
+            type=CONSOLIDATION_TASK_TYPE,
+            params={"transcript": [t.model_dump() for t in turns]},
+        )
+
+    return _Conversation(ws, session, trace, persist, on_end=consolidate)
 
 
 async def _session_user(ws: WebSocket) -> UserRecord | None:

@@ -453,6 +453,55 @@ versions can be compared.
   every llm span carries `cache_hit`.
 - Web `tsc` + full non-paid suite 348 passed; mypy + lint-imports clean.
 
+---
+
+## Item 8 — Conversation behaviors (design §3.6 + §8.8)
+
+**App-goal verified:** the lifecycle + delivery behaviors that make the companion feel present
+without being clingy. Verified the existing pieces and closed the two concrete gaps.
+
+### Already working (verified)
+- **Correction → supersede, history preserved** — verified in Item 4 (Graphiti closes the old
+  validity window, the new value is current, nothing deleted).
+- **Waiter delivery + staleness purge** — `DeliveryComposer` pulls resolved tasks at a pause, has
+  the model compose the ACTUAL finding (not "it's ready"), and suppresses results the user has moved
+  on from (relevance judge → `mark_suppressed`). Covered by `tests/unit/test_delivery.py`.
+- **Idle is free** — the VAD gate runs nothing paid during silence (§19), so "comfortable with
+  silence" holds structurally.
+
+### Gap 1 — pileup was a machine-gun → now summarize-and-offer, capped
+`DeliveryComposer` delivered EVERY resolved task at a pause. Fixed: a configurable cap
+(`settings.delivery_max_interjections`, default 2); beyond it the backlog collapses to ONE
+offer ("while we were talking I finished N things you'd asked about — want me to run through
+them?") and all are marked delivered so they don't re-fire. The cap counts only RELEVANT results
+(stale ones are purged first). Tests (`test_delivery.py`): 4 relevant → 1 offer; ≤2 → delivered
+directly; stale purged before the cap counts.
+
+### Gap 2 — session end never triggered consolidation → now it does
+The consolidation handler existed but nothing enqueued it. Fixed: the voice route's `_Conversation`
+gained an `on_end` hook (fires on explicit stop OR disconnect) that enqueues a `consolidation` task
+with the session transcript from working memory — off the latency path, skipped for an empty
+session, best-effort. Verified end-to-end (real queue + worker + Graphiti):
+```
+enqueued consolidation task: 5720bb6b…
+worker claimed: consolidation
+report: {facts_extracted: True, rules_added: 1, mood_updated: True}
+learned facts: ['Momo is a golden retriever', 'user adopted a puppy named Momo']
+```
+
+### Verification
+- Unit: pileup cap (3 tests) + existing delivery/staleness tests. Full non-paid suite 351 passed;
+  lint-imports clean.
+- Real: session-end consolidation learned durable facts into semantic memory (above).
+
+### Honest scope
+The mechanism-level behaviors (pileup cap, session-end consolidation, staleness purge, correction
+supersession, waiter delivery) are done + verified. The finer prompt-shaped behaviors —
+"offer-once then be comfortable with silence" and "heavy-mood re-engagement tone vs a chirp" — are
+driven by the emotion signal + persona already in the prompt; tuning their exact wording is §7
+human-tuning on top of the working mechanism, and the emotional read is present on the turn
+(`emotion` span) for that tone shaping.
+
 ### Residual / honest gaps
 - The fast tier (`gemini-2.5-flash-lite`) still intermittently returns malformed judgment JSON; the
   escalation + plain-reply fallback keep quality high, but on rare double-failures the plain reply
