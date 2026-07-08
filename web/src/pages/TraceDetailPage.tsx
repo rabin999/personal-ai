@@ -136,20 +136,20 @@ function TurnDetail({
           parallel-or-sequential" answer, before the full spans below. */}
       {calls.length > 0 && (
         <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
             {calls.length} model call{calls.length > 1 ? "s" : ""}
           </p>
           <ol className="space-y-1 text-xs">
             {calls.map((c) => (
               <li key={c.index} className="flex flex-wrap items-center gap-x-2">
-                <span className="font-mono text-neutral-400">#{c.index}</span>
+                <span className="font-mono text-neutral-500 dark:text-neutral-400">#{c.index}</span>
                 <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${purposeBadge(str(c.event.data?.purpose))}`}>
                   {str(c.event.data?.purpose) || "call"}
                 </span>
                 <span className="text-neutral-500">{shortModel(str(c.event.data?.model))}</span>
-                <span className="text-neutral-400">{num(c.event.data?.latency_ms)}ms</span>
-                <span className="text-neutral-400">${fmtCost(c.event.data?.cost_usd)}</span>
-                <span className={c.concurrent ? "text-amber-500" : "text-neutral-400"}>
+                <span className="text-neutral-500 dark:text-neutral-400">{num(c.event.data?.latency_ms)}ms</span>
+                <span className="text-neutral-500 dark:text-neutral-400">${fmtCost(c.event.data?.cost_usd)}</span>
+                <span className={c.concurrent ? "text-amber-500" : "text-neutral-500 dark:text-neutral-400"}>
                   {c.index === 1 ? "start" : c.concurrent ? "∥ parallel" : "→ sequential"}
                 </span>
               </li>
@@ -186,14 +186,14 @@ function SpanRow({ event, call }: { event: TraceEvent; call?: LlmCall }) {
     return (
       <li className="px-4 py-3 text-sm">
         <div className="flex flex-wrap items-center gap-2">
-          {call && <span className="font-mono text-xs text-neutral-400">#{call.index}</span>}
+          {call && <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400">#{call.index}</span>}
           <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${purposeBadge(str(d.purpose))}`}>
             {str(d.purpose) || "llm call"}
           </span>
           <span className="text-xs text-neutral-500">{str(d.model)}</span>
-          <span className="text-[11px] text-neutral-400">{str(d.tier)} tier</span>
+          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">{str(d.tier)} tier</span>
           {call && (
-            <span className={`text-[11px] ${call.concurrent ? "text-amber-500" : "text-neutral-400"}`}>
+            <span className={`text-[11px] ${call.concurrent ? "text-amber-500" : "text-neutral-500 dark:text-neutral-400"}`}>
               {call.index === 1 ? "" : call.concurrent ? "∥ parallel" : "→ after #" + (call.index - 1)}
             </span>
           )}
@@ -213,7 +213,7 @@ function SpanRow({ event, call }: { event: TraceEvent; call?: LlmCall }) {
             <div className="space-y-2">
               {messages.map((m, i) => (
                 <div key={i}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{str(m.role)}</p>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{str(m.role)}</p>
                   <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{str(m.content)}</pre>
                 </div>
               ))}
@@ -293,7 +293,7 @@ function SpanRow({ event, call }: { event: TraceEvent; call?: LlmCall }) {
         <dl className="mt-1.5 grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
           {rows.map(([k, v], i) => (
             <div key={i} className="contents">
-              <dt className="text-neutral-400">{k}</dt>
+              <dt className="text-neutral-500 dark:text-neutral-400">{k}</dt>
               <dd className="break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{v.slice(0, 800)}</dd>
             </div>
           ))}
@@ -304,7 +304,7 @@ function SpanRow({ event, call }: { event: TraceEvent; call?: LlmCall }) {
           <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{text}</pre>
         </Expandable>
       ))}
-      {voice && <p className="mt-1 break-words text-xs italic text-neutral-400">voice: {voice.slice(0, 400)}</p>}
+      {voice && <p className="mt-1 break-words text-xs italic text-neutral-500 dark:text-neutral-400">voice: {voice.slice(0, 400)}</p>}
     </li>
   );
 }

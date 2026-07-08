@@ -1602,3 +1602,29 @@ through `/api/me`. Web `tsc` green; 39 profile/prompt unit tests pass.
 slightly at higher rates (browser Web-Audio has no pitch-preserving time-stretch for a LIVE PCM
 stream). At the 1.2× default the shift is modest; a pitch-preserving WSOLA time-stretch (server-side)
 is the higher-fidelity follow-up if the raised pitch is noticeable to the user on a real device.
+
+## C8 — UI quality (desktop + mobile) ◑ (partial — verifiable improvements applied)
+
+**What was done / verified:**
+- **Trace + conversation detail** (the pages the brief flags): substantially rebuilt in C1 with a
+  clean hierarchy (purpose-badged model-call map, expandable verbatim prompts, structured spans) and
+  proper light/dark contrast tokens. Bumped 11 sub-AA `text-neutral-400` labels →
+  `text-neutral-500 dark:text-neutral-400` (light-mode #737373 ≈ 4.7:1, passes WCAG AA; dark
+  unchanged).
+- **Consistent shell:** confirmed every data/detail route (`/conversations`, `/conversations/:id`,
+  `/memories`, `/traces`, `/traces/:id`) wraps in the same `<Shell>` (one `<AppHeader>`, one theme,
+  one background); the companion page renders the same header — chrome never changes between routes.
+- **Nav highlighting:** `NavLink` active state uses high-contrast `bg-neutral-900 text-white`
+  (inverted per theme) with correct `end` flags (Companion exact-match, others prefix-match) — active
+  route is unambiguous and correct on detail sub-routes.
+- **Mobile-first (present + verified in CSS):** iOS safe-area insets on the sticky nav + content,
+  ≥40px touch targets, 16px inputs (no iOS zoom-on-focus), `touch-action: manipulation`, tap-flash
+  removed, reduced-motion honoured, theme-aware thin scrollbars, horizontally-scrolling nav that
+  never clips. Full production build (`vite build`) + `tsc` green.
+
+**Honest blocker (needs the human):** a full brand/theme REDESIGN with cross-viewport pixel QA
+(Playwright screenshots on desktop + mobile) requires viewing the AUTHENTICATED pages, which are
+gated behind real Google SSO — I can't complete that login unattended, so I did not fabricate
+"the theme looks great." The structural + accessibility + consistency + mobile improvements above are
+code-verifiable and shipped; subjective visual-polish sign-off is the remaining step, best done by
+you in the browser (or by granting a test session).
