@@ -86,11 +86,17 @@ async def run_pipeline(pipeline: Pipeline) -> None:
     ``allow_interruptions=True`` is what actually turns barge-in on: without it
     Pipecat keeps speaking over the user (its default is False), so the user
     talking mid-reply is ignored until the bot finishes (spec §24). With it on,
-    the VAD hearing the user during playback emits a StartInterruptionFrame that
+    the VAD hearing the user during playback emits an InterruptionFrame that
     stops TTS and — via CompanionProcessor — cancels the in-flight reply.
     """
     task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
-    await PipelineRunner().run(task)
+    # handle_sigint=False is REQUIRED here: PipelineRunner installs SIGINT/SIGTERM
+    # handlers by default, but a WebSocket handler runs inside a uvicorn worker —
+    # not the main thread — where asyncio.add_signal_handler raises. Left on, the
+    # runner blows up the instant the pipeline starts, the route's except-Exception
+    # closes the socket, and the browser's Start button snaps back to idle (the
+    # reported prod symptom). The edge already owns process signals.
+    await PipelineRunner(handle_sigint=False).run(task)
 
 
 def _context(user_id: str, session_id: str, prompt: AssembledPrompt) -> ToolContext:

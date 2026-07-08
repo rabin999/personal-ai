@@ -19,9 +19,9 @@ from typing import Any, Protocol
 from pipecat.frames.frames import (
     Frame,
     InterimTranscriptionFrame,
+    InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
-    StartInterruptionFrame,
     TextFrame,
     TranscriptionFrame,
 )
@@ -73,12 +73,13 @@ class CompanionProcessor(FrameProcessor):
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
         await super().process_frame(frame, direction)
-        # Barge-in (§24): the framework's VAD emits StartInterruptionFrame when the
-        # user speaks over the reply. Cancel the in-flight reply so we stop thinking
-        # about (and speaking) the abandoned turn — matching the native runtime,
-        # which cancels its turn task. TTS is stopped by the framework; this cancels
-        # OUR generation so a late TextFrame can't be pushed after the interruption.
-        if isinstance(frame, StartInterruptionFrame):
+        # Barge-in (§24): the framework's VAD emits an InterruptionFrame when the
+        # user speaks over the reply (pipecat 1.5 renamed StartInterruptionFrame →
+        # InterruptionFrame). Cancel the in-flight reply so we stop thinking about
+        # (and speaking) the abandoned turn — matching the native runtime, which
+        # cancels its turn task. TTS is stopped by the framework; this cancels OUR
+        # generation so a late TextFrame can't be pushed after the interruption.
+        if isinstance(frame, InterruptionFrame):
             self._cancel_reply()
             await self.push_frame(frame, direction)
             return

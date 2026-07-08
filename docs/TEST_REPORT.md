@@ -916,3 +916,48 @@ MEDIA/loud-speaker stream (hidden `<audio>` media element + `setSinkId` where su
   hexagonal boundary holds even after adding LangGraph/Langfuse/reranker — each imported only in its
   adapter). Real-call suites (barge-in engine, companion voice 8/8, memory cleanup, trace
   reconstruction, context carrying, deferred routing, judge calibration) green when run.
+
+---
+
+## F15 — Pipecat won't start in prod (Start button snaps back to idle)
+
+**App-goal verified:** selecting the Pipecat voice engine and pressing Start actually starts a
+conversation (Pipecat owns transport/VAD/endpointing/barge-in), instead of the WS closing and the
+button reverting to "Start conversation".
+
+**Root cause (found by installing the `voice` extra locally — `uv sync --extra voice`, pipecat-ai
+1.5.0 — and importing the runtime):**
+1. **Import crash.** `voice/pipecat/companion_processor.py` imported `StartInterruptionFrame`,
+   which pipecat **1.5.0 renamed to `InterruptionFrame`**. That import error propagates up through
+   `voice.pipecat.runtime`, so the prod route's `from voice.pipecat.runtime import …` hits its
+   `except ImportError` branch → sends `{"type":"error","message":"voice extra not installed"}` and
+   closes the socket → the browser `ws.onclose` runs `stopLocalCapture()` → `setConn("idle")` → the
+   Start button snaps back. Exactly the reported symptom. (This also silently mis-reported a live
+   API change as "voice extra not installed".)
+2. **Latent second failure.** `run_pipeline` used `PipelineRunner()`, whose default
+   `handle_sigint=True` installs SIGINT/SIGTERM handlers via `asyncio.add_signal_handler` — which
+   **raises when not on the main thread** (a uvicorn worker). Even past the import, the runner would
+   have blown up the instant the pipeline started, re-triggering the same close→revert.
+
+**Fix:**
+- `StartInterruptionFrame` → `InterruptionFrame` (import + the `isinstance` barge-in check in
+  `CompanionProcessor.process_frame`), with the comment noting the 1.5 rename.
+- `PipelineRunner(handle_sigint=False)` in `run_pipeline` (the FastAPI edge owns process signals).
+
+**Verified locally (no browser needed to catch the crash):**
+- `import voice.pipecat.runtime` + all pipecat modules import clean (previously an ImportError).
+- Full graph assembles against the real pipecat 1.5.0 API: `Source → FastAPIWebsocketInput →
+  VADProcessor(Silero) → CompanionSTT → CompanionProcessor → CompanionTTS → FastAPIWebsocketOutput
+  → Sink` (8 processors linked); `build_transport(fake_ws)` + `VADProcessor(vad_analyzer=
+  SileroVADAnalyzer(sample_rate=16000))` construct; `RawPCMSerializer` round-trips.
+- `uv run ruff check voice/pipecat/` clean; `uv run mypy voice/pipecat/` clean (5 files);
+  `tests/unit/test_pipecat_processor.py` 4/4 pass (real pipecat frames).
+- Probed the whole 1.5.0 API surface the code depends on (TranscriptionFrame ctor, `run_stt`/
+  `run_tts` signatures, `FastAPIWebsocketParams` fields, serializer signatures) — all match; the
+  frame rename was the only breakage.
+
+**Honest blocker:** the browser↔server audio round-trip on the Pipecat engine (real interruption
+audibly stopping) still needs a real mic in prod. The startup crash that made it impossible to even
+begin is fixed and locally proven; prod should now start and stream. Human step to confirm: deploy,
+select **Pipecat**, press Start — it should reach the talking state and take turns; then talk over a
+reply to confirm barge-in.
