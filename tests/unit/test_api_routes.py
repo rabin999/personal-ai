@@ -226,7 +226,8 @@ def _auth() -> dict[str, str]:
 
 def test_voices_list_and_sample_wav(client: TestClient) -> None:
     voices = client.get("/api/voices", headers=_auth()).json()["voices"]
-    assert "eve" in voices
+    # #19: the roster is now a list of {voice_id, name, gender} objects.
+    assert any(v["voice_id"] == "eve" for v in voices)
     resp = client.get("/api/voices/eve/sample", headers=_auth())
     assert resp.status_code == 200
     assert resp.headers["content-type"] == "audio/wav"
