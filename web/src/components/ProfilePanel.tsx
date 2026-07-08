@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
 import { fetchProfile, updatePrefs, type LocaleProfile, type UserProfile } from "../lib/profile";
-import { deleteAccount } from "../lib/session";
+import { deleteAccount, fetchMe, type Me } from "../lib/session";
 
 interface Props {
   open: boolean;
@@ -13,8 +12,8 @@ interface Props {
 // Slide-over profile panel. Fetches the resolved user's record from `/api/me`
 // (session cookie / Google SSO) each time it opens and renders it read-only.
 export function ProfilePanel({ open, onClose, onSignOut }: Props) {
-  const navigate = useNavigate();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [error, setError] = useState("");
 
@@ -23,6 +22,7 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
     let cancelled = false;
     setStatus("loading");
     setError("");
+    fetchMe().then((u) => !cancelled && setMe(u)).catch(() => {});
     fetchProfile()
       .then((p) => !cancelled && (setProfile(p), setStatus("idle")))
       .catch((e) => {
@@ -83,30 +83,6 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
         </header>
 
         <div className="thin-scroll flex-1 overflow-y-auto px-5 py-5">
-          {/* Mobile-only navigation — the header nav is hidden on small screens. */}
-          <nav className="mb-5 grid grid-cols-1 gap-1.5 sm:hidden">
-            {(
-              [
-                ["/conversations", "Conversations"],
-                ["/memories", "Memories"],
-              ] as const
-            ).map(([to, label]) => (
-              <button
-                key={to}
-                onClick={() => {
-                  onClose();
-                  navigate(to);
-                }}
-                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:border-slate-800 dark:text-slate-200 dark:hover:bg-slate-800/60"
-              >
-                {label}
-                <svg viewBox="0 0 24 24" className="h-4 w-4 text-slate-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 6l6 6-6 6" />
-                </svg>
-              </button>
-            ))}
-          </nav>
-
           {status === "loading" && <Skeleton />}
 
           {status === "error" && (
@@ -115,7 +91,7 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
             </div>
           )}
 
-          {status === "idle" && profile && <ProfileBody p={profile} />}
+          {status === "idle" && profile && <ProfileBody p={profile} me={me} />}
         </div>
 
         <footer className="space-y-2 border-t border-slate-200 px-5 py-4 dark:border-slate-800">
@@ -177,32 +153,37 @@ function DeleteAccount() {
   );
 }
 
-function ProfileBody({ p }: { p: UserProfile }) {
-  const name = p.companion_name || "Asaathi";
+function ProfileBody({ p, me }: { p: UserProfile; me: Me | null }) {
+  const companion = p.companion_name || "Asaathi";
+  const displayName = me?.name || me?.email?.split("@")[0] || "You";
   return (
     <div className="flex flex-col gap-6">
-      {/* Identity */}
-      <div className="flex items-center gap-3">
-        <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 text-base font-semibold text-white shadow-sm">
-          {initials(p.user_id)}
-        </div>
+      {/* Identity — the real signed-in user (name, email, avatar), not the id. */}
+      <div className="flex items-center gap-3.5">
+        {me?.picture ? (
+          <img src={me.picture} alt="" referrerPolicy="no-referrer"
+            className="h-14 w-14 shrink-0 rounded-full object-cover shadow-sm" />
+        ) : (
+          <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 text-lg font-semibold text-white shadow-sm">
+            {initials(displayName)}
+          </div>
+        )}
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {p.user_id}
+          <p className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
+            {displayName}
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Companion · <span className="font-medium text-slate-600 dark:text-slate-300">{name}</span>
+          {me?.email && (
+            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{me.email}</p>
+          )}
+          <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
+            Companion · <span className="font-medium text-slate-600 dark:text-slate-300">{companion}</span>
           </p>
         </div>
       </div>
 
-      {/* Communication prefs */}
+      {/* Communication prefs — editable (they actually shape the companion's tone). */}
       <Section title="Communication">
-        <Meter label="Directness" value={num(p.comm_prefs.directness)} />
-        <Meter
-          label="Emotional scaffolding"
-          value={num(p.comm_prefs.emotional_scaffolding)}
-        />
+        <CommPrefsEditor p={p} />
       </Section>
 
       {/* Enabled traits */}
@@ -293,12 +274,14 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
 
   return (
     <Section title="Voice & you">
-      <div>
+      <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 dark:border-slate-800 dark:bg-slate-900/40">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
             Speaking speed
           </span>
-          <span className="font-mono text-xs text-slate-500">{speed.toFixed(2)}×</span>
+          <span className="rounded-md bg-sky-100 px-2 py-0.5 font-mono text-xs font-semibold text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+            {speed.toFixed(2)}×
+          </span>
         </div>
         <input
           type="range"
@@ -313,10 +296,15 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
           }}
           onMouseUp={() => save({ voice_speed: speed })}
           onTouchEnd={() => save({ voice_speed: speed })}
-          className="mt-1.5 w-full accent-sky-500"
+          className="mt-2.5 block w-full accent-sky-500"
         />
-        <div className="flex justify-between text-[10px] text-slate-400">
-          <span>slower</span><span>1.0× default</span><span>faster</span>
+        {/* Marks aligned to their real slider positions: 1.0× sits at (1.0-0.8)/0.7 ≈ 28.6%. */}
+        <div className="relative mt-1 h-4 text-[11px] text-slate-400 dark:text-slate-500">
+          <span className="absolute left-0">0.8×</span>
+          <span className="absolute -translate-x-1/2 font-medium text-slate-500 dark:text-slate-400" style={{ left: "28.57%" }}>
+            1.0× default
+          </span>
+          <span className="absolute right-0">1.5×</span>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2.5">
@@ -364,22 +352,33 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function Meter({ label, value }: { label: string; value: number | null }) {
-  const pct = value === null ? 0 : Math.round(Math.max(0, Math.min(1, value)) * 100);
+// Directness + emotional-scaffolding sliders. These were static 50% (never set or
+// learned); now the user tunes them and they persist + shape the companion's tone.
+function CommPrefsEditor({ p }: { p: UserProfile }) {
+  const [directness, setDirectness] = useState(numOr(p.comm_prefs.directness, 0.5));
+  const [scaffold, setScaffold] = useState(numOr(p.comm_prefs.emotional_scaffolding, 0.5));
+  const save = (directness: number, emotional_scaffolding: number) =>
+    void updatePrefs({ comm_prefs: { directness, emotional_scaffolding } });
+  const row = (label: string, hint: string, val: number, set: (n: number) => void, other: number, isDirect: boolean) => (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="font-mono text-xs text-slate-500">{Math.round(val * 100)}%</span>
+      </div>
+      <input
+        type="range" min={0} max={1} step={0.05} value={val}
+        onChange={(e) => set(parseFloat(e.target.value))}
+        onMouseUp={() => save(isDirect ? val : other, isDirect ? other : val)}
+        onTouchEnd={() => save(isDirect ? val : other, isDirect ? other : val)}
+        className="mt-1.5 block w-full accent-sky-500"
+      />
+      <p className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>
+    </div>
+  );
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center justify-between text-xs">
-        <span className="text-slate-600 dark:text-slate-300">{label}</span>
-        <span className="font-medium tabular-nums text-slate-500 dark:text-slate-400">
-          {value === null ? "—" : `${pct}%`}
-        </span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-sky-500 to-cyan-500 transition-[width]"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+    <div className="space-y-3">
+      {row("Directness", "gentle & indirect ↔ blunt & to the point", directness, setDirectness, scaffold, true)}
+      {row("Emotional scaffolding", "just the facts ↔ lots of warmth & support", scaffold, setScaffold, directness, false)}
     </div>
   );
 }
@@ -431,9 +430,6 @@ function Skeleton() {
 }
 
 // ── formatting helpers ────────────────────────────────────────────────────
-function num(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
-}
 function fmt(v: unknown): string {
   return typeof v === "number" ? String(v) : "—";
 }

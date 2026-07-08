@@ -115,7 +115,7 @@ function TurnDetail({
           </span>
         </>}
         {!open && said && (
-          <span className="ml-auto hidden max-w-[45%] truncate text-[13px] text-neutral-500 dark:text-neutral-400 md:block">{said}</span>
+          <span className="ml-auto hidden max-w-[45%] truncate text-[15px] text-neutral-500 dark:text-neutral-400 md:block">{said}</span>
         )}
       </button>
 
@@ -126,13 +126,13 @@ function TurnDetail({
             <div className="space-y-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
               {said && (
                 <p className="text-[15px] leading-relaxed">
-                  <span className="mr-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">You</span>
+                  <span className="mr-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">You</span>
                   {said}
                 </p>
               )}
               {reply && (
                 <p className="text-[15px] leading-relaxed text-neutral-700 dark:text-neutral-200">
-                  <span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">Asaathi</span>
+                  <span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-sm font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">Asaathi</span>
                   {reply}
                 </p>
               )}
@@ -142,7 +142,7 @@ function TurnDetail({
           {/* Model calls map */}
           {calls.length > 0 && (
             <div className="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-              <p className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
+              <p className="mb-2.5 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
                 {calls.length} model call{calls.length > 1 ? "s" : ""}
               </p>
               <div className="space-y-2">
@@ -153,7 +153,7 @@ function TurnDetail({
 
           {/* Pipeline timeline */}
           <div className="px-5 py-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Pipeline</p>
+            <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Pipeline</p>
             <ol className="relative space-y-1 border-l border-neutral-200 pl-5 dark:border-neutral-800">
               {steps.map((e, i) => <Step key={i} event={e} />)}
             </ol>
@@ -177,9 +177,9 @@ function CallCard({ call }: { call: LlmCall }) {
   const completion = str(d.completion);
   return (
     <div className="rounded-xl border border-neutral-200 bg-neutral-50/50 dark:border-neutral-800 dark:bg-neutral-900/40">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-[13px]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-[15px]">
         <span className="font-mono text-neutral-500 dark:text-neutral-400">#{call.index}</span>
-        <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${purposeBadge(str(d.purpose))}`}>
+        <span className={`rounded-md px-2 py-0.5 text-sm font-semibold ${purposeBadge(str(d.purpose))}`}>
           {prettyPurpose(str(d.purpose))}
         </span>
         <span className="text-neutral-500">{shortModel(str(d.model))}</span>
@@ -191,14 +191,14 @@ function CallCard({ call }: { call: LlmCall }) {
         </span>
         {(messages.length > 0 || completion) && (
           <button onClick={() => setOpen((o) => !o)}
-            className="ml-auto text-xs font-medium text-sky-600 hover:underline dark:text-sky-400">
+            className="ml-auto text-sm font-medium text-sky-600 hover:underline dark:text-sky-400">
             {open ? "hide prompt" : "view prompt & reply"}
           </button>
         )}
       </div>
       {open && (
         <div className="space-y-3 border-t border-neutral-200 px-3 py-3 dark:border-neutral-800">
-          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-neutral-500">
             <span>temp {str(params.temperature) || "—"}</span>
             <span>max_tokens {str(params.max_tokens) || "—"}</span>
             <span>format {str(params.response_format) || "text"}</span>
@@ -207,14 +207,14 @@ function CallCard({ call }: { call: LlmCall }) {
           </div>
           {messages.map((m, i) => (
             <div key={i}>
-              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{str(m.role)}</p>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-2.5 font-mono text-xs leading-relaxed text-neutral-600 dark:bg-neutral-950/60 dark:text-neutral-300">{str(m.content)}</pre>
+              <p className="mb-0.5 text-[13px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{str(m.role)}</p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-2.5 font-mono text-sm leading-relaxed text-neutral-600 dark:bg-neutral-950/60 dark:text-neutral-300">{str(m.content)}</pre>
             </div>
           ))}
           {completion && (
             <div>
-              <p className="mb-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-500">reply</p>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-emerald-50/60 p-2.5 font-mono text-xs leading-relaxed text-neutral-700 dark:bg-emerald-950/20 dark:text-neutral-200">{completion}</pre>
+              <p className="mb-0.5 text-[13px] font-semibold uppercase tracking-wide text-emerald-500">reply</p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-emerald-50/60 p-2.5 font-mono text-sm leading-relaxed text-neutral-700 dark:bg-emerald-950/20 dark:text-neutral-200">{completion}</pre>
             </div>
           )}
         </div>
@@ -235,12 +235,12 @@ function Step({ event }: { event: TraceEvent }) {
     <li className="relative pb-4 pl-3 last:pb-0">
       <span className={`absolute -left-[26px] top-0.5 h-3.5 w-3.5 rounded-full ring-4 ring-white dark:ring-neutral-900/40 ${meta.dot}`} />
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className={`text-[13px] font-semibold ${warn ? "text-amber-600 dark:text-amber-400" : ""}`}>{meta.title}</span>
-        {meta.sub && <span className="text-[13px] text-neutral-500 dark:text-neutral-400">{meta.sub}</span>}
+        <span className={`text-[15px] font-semibold ${warn ? "text-amber-600 dark:text-amber-400" : ""}`}>{meta.title}</span>
+        {meta.sub && <span className="text-[15px] text-neutral-500 dark:text-neutral-400">{meta.sub}</span>}
         {warn && <span className="text-amber-500">⚠</span>}
       </div>
       {rows.length > 0 && (
-        <dl className="mt-1.5 grid grid-cols-[minmax(0,7rem),1fr] gap-x-3 gap-y-1 text-[13px]">
+        <dl className="mt-1.5 grid grid-cols-[minmax(0,7rem),1fr] gap-x-3 gap-y-1 text-[15px]">
           {rows.map(([k, v], i) => (
             <div key={i} className="contents">
               <dt className="text-neutral-500 dark:text-neutral-400">{k}</dt>
@@ -275,11 +275,11 @@ function Expandable({ label, text }: { label: string; text: string }) {
   return (
     <div className="mt-2">
       <button onClick={() => setOpen((o) => !o)}
-        className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400">
+        className="text-sm font-medium text-sky-600 hover:underline dark:text-sky-400">
         {open ? "▾" : "▸"} {label}
       </button>
       {open && (
-        <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-200 bg-neutral-50 p-2.5 font-mono text-xs leading-relaxed text-neutral-600 dark:border-neutral-800 dark:bg-neutral-950/50 dark:text-neutral-300">{text}</pre>
+        <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-200 bg-neutral-50 p-2.5 font-mono text-sm leading-relaxed text-neutral-600 dark:border-neutral-800 dark:bg-neutral-950/50 dark:text-neutral-300">{text}</pre>
       )}
     </div>
   );
@@ -398,7 +398,7 @@ function Feedback({ sessionId, turn }: { sessionId: string; turn: number }) {
   }
   return (
     <div className="flex items-center gap-2 py-3">
-      <span className="text-[13px] text-neutral-500 dark:text-neutral-400">Rate this turn</span>
+      <span className="text-[15px] text-neutral-500 dark:text-neutral-400">Rate this turn</span>
       <button onClick={() => void submit("up")}
         className={`rounded-lg px-2 py-1 text-sm ${sent === "up" ? "bg-emerald-100 dark:bg-emerald-900/50" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}>👍</button>
       <button onClick={() => { setSent("down"); setNoting(true); }}
@@ -421,7 +421,7 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: "fuchsia" 
     : tone === "rose"
     ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
     : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
-  return <span className={`rounded-md px-1.5 py-0.5 text-xs font-medium ${c}`}>{children}</span>;
+  return <span className={`rounded-md px-1.5 py-0.5 text-sm font-medium ${c}`}>{children}</span>;
 }
 
 function purposeBadge(p: string): string {

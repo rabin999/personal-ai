@@ -5,6 +5,7 @@ Returns the ``UserRecord`` the bearer token resolves to — the static user data
 in its profile panel. Read-only; identity is the static stub (§26).
 """
 
+import contextlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -110,8 +111,19 @@ async def set_prefs(body: dict[str, Any], user: CurrentUser, request: Request) -
     if isinstance(body.get("locale"), dict):
         allowed = {"timezone", "city", "country", "units", "currency", "language"}
         patch["locale"] = {k: v for k, v in body["locale"].items() if k in allowed}
+    if isinstance(body.get("comm_prefs"), dict):
+        # Communication style the companion actually uses (§2): directness +
+        # emotional scaffolding, each 0-1. Clamped to [0,1].
+        cp: dict[str, float] = {}
+        for k in ("directness", "emotional_scaffolding"):
+            if k in body["comm_prefs"]:
+                with contextlib.suppress(TypeError, ValueError):
+                    cp[k] = min(1.0, max(0.0, float(body["comm_prefs"][k])))
+        if cp:
+            patch["comm_prefs"] = cp
     updated = await pipeline.profiles.update(user.user_id, patch)
     return {
         "voice_speed": updated.audio_prefs.voice_speed,
         "locale": updated.locale.model_dump(),
+        "comm_prefs": updated.comm_prefs.model_dump(),
     }

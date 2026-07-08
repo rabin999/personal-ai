@@ -52,8 +52,22 @@ async def voice_pipecat_ws(ws: WebSocket) -> None:
     from adapters.tts.grok import resolve_voice
 
     voice = resolve_voice(auth.get("voice"))
+    from core.profile.models import AudioPrefs
+    from voice.pipecat.serializer import TTS_SAMPLE_RATE
+
+    try:
+        voice_speed = AudioPrefs.model_validate(user.audio_prefs).voice_speed
+    except Exception:
+        voice_speed = 1.0
     await ws.send_json(
-        {"type": "ready", "session_id": session_id, "user_id": user.user_id, "voice": voice}
+        {
+            "type": "ready",
+            "session_id": session_id,
+            "user_id": user.user_id,
+            "voice": voice,
+            "sample_rate": TTS_SAMPLE_RATE,
+            "voice_speed": voice_speed,
+        }
     )
 
     transport = build_transport(ws)

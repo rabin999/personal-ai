@@ -68,6 +68,9 @@ def build_pipeline(
         extractor=pipeline.extractor,
         dispatcher=pipeline.dispatcher,
         make_context=lambda p: _context(user_id, session_id, p),
+        logs=pipeline.logs,  # C1: deep per-LLM-call spans persist for Pipecat too
+        traces=pipeline.traces,  # stage spans → the /conversations Trace tab
+        evaluator=pipeline.evaluator,  # §6/§7: judge Pipecat turns (Langfuse eval)
     )
     tts = CompanionTTSService(pipeline.tts, user_id=user_id, session_id=session_id, voice=voice)
     # Pipecat 1.5 VAD/turn model (spec §19/§21/§24): the VADProcessor emits

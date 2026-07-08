@@ -41,7 +41,11 @@ export interface UserProfile {
 
 /** Save voice speed (C7) and/or locale (C5). Partial — only sent keys change. */
 export async function updatePrefs(
-  patch: { voice_speed?: number; locale?: LocaleProfile },
+  patch: {
+    voice_speed?: number;
+    locale?: LocaleProfile;
+    comm_prefs?: { directness?: number; emotional_scaffolding?: number };
+  },
 ): Promise<{ voice_speed: number; locale: LocaleProfile }> {
   const res = await fetch("/api/prefs", {
     method: "PATCH",

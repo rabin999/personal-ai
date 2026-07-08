@@ -40,6 +40,10 @@ class _Assembler(Protocol):
 class _Generator(Protocol):
     async def generate(self, prompt: Any, dispatcher: Any = None, context: Any = None) -> Any: ...
 
+    async def generate_spoken(
+        self, prompt: Any, dispatcher: Any, context: Any, speak: Any
+    ) -> Any: ...
+
 
 class _Extractor(Protocol):
     async def extract_and_store(
@@ -59,6 +63,9 @@ class CompanionProcessor(FrameProcessor):
         extractor: _Extractor | None = None,
         dispatcher: Any = None,
         make_context: Any = None,
+        logs: Any = None,
+        traces: Any = None,
+        evaluator: Any = None,
     ) -> None:
         super().__init__()
         self._user_id = user_id
@@ -69,6 +76,13 @@ class CompanionProcessor(FrameProcessor):
         self._extractor = extractor
         self._dispatcher = dispatcher
         self._make_context = make_context
+        # C1 parity with the native runtime: bind correlation ids per turn so the
+        # deep per-LLM-call spans persist, and persist stage spans so a Pipecat turn
+        # shows in the /conversations Trace tab; score it with the judge (Langfuse).
+        self._logs = logs
+        self._traces = traces
+        self._evaluator = evaluator
+        self._turn = 0
         self._reply_task: asyncio.Task[None] | None = None
 
     async def process_frame(self, frame: Frame, direction: FrameDirection) -> None:
@@ -110,24 +124,68 @@ class CompanionProcessor(FrameProcessor):
     async def _respond(self, text: str) -> None:
         if not text.strip():
             return
+        self._turn += 1
+        turn = self._turn
+        # Bind so every LLM call this turn logs its deep span into this trace (C1).
+        scope = (
+            self._logs.bind(trace_id=self._session_id, turn_id=turn, user_id=self._user_id)
+            if self._logs is not None
+            else contextlib.nullcontext()
+        )
+        with scope:
+            try:
+                self._working.append(self._session_id, Turn(role="user", text=text))
+                await self._trace(turn, "session", "voice turn", text=text)
+                prompt = await self._assembler.assemble(self._user_id, self._session_id, text)
+                await self.push_frame(LLMFullResponseStartFrame())
+                if isinstance(prompt, DisambiguationRequest):
+                    names = " or ".join(f'"{c.name}"' for c in prompt.candidates[:3])
+                    reply = f"Quick check — do you mean {names}?"
+                    await self.push_frame(TextFrame(reply))
+                else:
+                    context = self._make_context(prompt) if self._make_context else None
+
+                    # STREAM the reply into TTS sentence-by-sentence (§8.12): the first
+                    # sentence starts synthesizing while the rest is still generating —
+                    # low time-to-first-audio. (Was: generate the WHOLE reply, then push
+                    # one TextFrame → TTS waited for the entire turn → felt slow.)
+                    async def _speak(sentence: str) -> None:
+                        await self.push_frame(TextFrame(sentence))
+
+                    result = await self._generator.generate_spoken(
+                        prompt, self._dispatcher, context, _speak
+                    )
+                    reply = result.final_text
+                await self.push_frame(LLMFullResponseEndFrame())
+                self._working.append(self._session_id, Turn(role="assistant", text=reply))
+                await self._trace(turn, "response", reply, text=reply)
+                self._remember(text, reply)
+                if self._evaluator is not None:
+                    self._evaluator.schedule(
+                        session_id=self._session_id, turn=turn, user_msg=text, reply=reply
+                    )
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # never let one turn tear down the pipeline
+                logger.exception("companion turn failed")
+
+    async def _trace(self, turn: int, stage: str, message: str, **data: Any) -> None:
+        """Persist one stage span so a Pipecat turn shows in the Trace tab (best-effort)."""
+        if self._traces is None:
+            return
         try:
-            self._working.append(self._session_id, Turn(role="user", text=text))
-            prompt = await self._assembler.assemble(self._user_id, self._session_id, text)
-            if isinstance(prompt, DisambiguationRequest):
-                names = " or ".join(f'"{c.name}"' for c in prompt.candidates[:3])
-                reply = f"Quick check — do you mean {names}?"
-            else:
-                context = self._make_context(prompt) if self._make_context else None
-                result = await self._generator.generate(prompt, self._dispatcher, context)
-                reply = result.final_text
-            self._working.append(self._session_id, Turn(role="assistant", text=reply))
-            # Bracket the reply so the TTS service aggregates + speaks it as one turn.
-            await self.push_frame(LLMFullResponseStartFrame())
-            await self.push_frame(TextFrame(reply))
-            await self.push_frame(LLMFullResponseEndFrame())
-            self._remember(text, reply)
-        except Exception:  # never let one turn tear down the pipeline
-            logger.exception("companion turn failed")
+            await self._traces.record(
+                self._user_id,
+                {
+                    "session_id": self._session_id,
+                    "turn": turn,
+                    "stage": stage,
+                    "message": message,
+                    "data": data,
+                },
+            )
+        except Exception:
+            logger.debug("pipecat trace persist failed", exc_info=True)
 
     def _remember(self, user_text: str, assistant_text: str) -> None:
         """Run the §1 extraction write step off the reply path (best-effort)."""
