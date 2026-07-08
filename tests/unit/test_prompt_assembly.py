@@ -169,7 +169,7 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     # trimmed (not all 6 survive), while the persona floor + the non-trimmable
     # capability/self blocks stay. The ceiling sits just above that floor and well
     # below floor + all 6 chunks (~9.9k), proving episodic was dropped to fit.
-    assert len(result.system_prompt) <= 7_500
+    assert len(result.system_prompt) <= 7_700  # U5 pinned the user-local-time block
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

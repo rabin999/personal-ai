@@ -23,6 +23,7 @@ from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn, WorkingMemory
 from core.profile import ProfileService, TraitDef, TraitRegistry
 from core.profile.models import LocaleProfile
+from core.reasoning.localtime import day_part, local_now, resolve_timezone
 from core.reasoning.recall import (
     ConversationRecall,
     classify_recall,
@@ -242,11 +243,13 @@ class PromptAssembler:
         sections: dict[str, str] = {}
         locale = getattr(profile, "locale", None)
         user_ctx, ctx_signals = _user_context_section(locale)
-        # C4/C5: identity + user's local time + how-to-answer-them (humanize) are
-        # pinned into the identity block so they're never trimmed and shape every reply.
-        sections["identity"] = (
-            _identity_section(profile.companion_name) + _now_section(locale) + user_ctx
-        )
+        # U5/C4/C5: identity + the user's LOCAL time (+ explicit day-part) + how-to-
+        # answer-them are pinned into the identity block so they're never trimmed and
+        # shape every reply. The local-time signal is recorded on the trace as proof.
+        now_section, local_signal = _now_section(locale)
+        if local_signal:
+            ctx_signals = [*ctx_signals, local_signal]
+        sections["identity"] = _identity_section(profile.companion_name) + now_section + user_ctx
         sections["recall"] = recall_section  # F3/F4: authoritative transcript (may be "")
         # F14: the rolling summary of earlier turns compacted out of the live buffer,
         # so a long session stays coherent without every turn in the prompt.
@@ -428,12 +431,17 @@ def _prompt_version(traits: list[TraitDef]) -> str:
     return f"pt{PROMPT_TEMPLATE_VERSION}.{digest}"
 
 
-def _now_section(locale: "LocaleProfile | None" = None) -> str:
-    """Inject the current UTC time so the companion can answer time/date questions
-    directly (e.g. 'what time is it in Tokyo?') without a flaky web lookup, and knows
-    'today' for judging whether a fact is current. When the user's timezone is known
-    (C5), ALSO state the user's own local clock time so 'this evening', 'in 2 hours',
-    and 'how many hours ahead is X' resolve to THEIR time — not UTC."""
+def _now_section(locale: "LocaleProfile | None" = None) -> tuple[str, str | None]:
+    """Inject the current time so the companion answers time/date questions directly
+    (no flaky web lookup) and knows 'today'. Crucially (brief U5), it anchors ALL
+    time-of-day references to the USER's local clock — not the server's — computing
+    the user's local time + explicit day-part (morning/evening) from their timezone,
+    DERIVING that timezone from city/country when the IANA field isn't set. When the
+    local time truly can't be determined, it forbids guessing a time-of-day.
+
+    Returns ``(section_text, user_local_signal)`` — the signal (e.g.
+    'localtime=2026-07-08 18:12 evening Asia/Kathmandu') is recorded in the trace as
+    proof the user-local time was used (U5)."""
     now = datetime.now(UTC)
     base = (
         f"\n\n## Right now\nThe current time is {now.strftime('%Y-%m-%d %H:%M')} UTC "
@@ -443,20 +451,27 @@ def _now_section(locale: "LocaleProfile | None" = None) -> str:
         "human way (e.g. 'just past midnight', 'about half four in the afternoon'), never a "
         "UTC offset; don't deflect."
     )
-    tz = (locale.timezone if locale else "") or ""
-    if tz:
-        try:
-            from zoneinfo import ZoneInfo
-
-            local = now.astimezone(ZoneInfo(tz))
-            base += (
-                f"\nFOR THE USER it is currently {local.strftime('%H:%M')} "
-                f"({local.strftime('%A')}) in {tz}. Anchor times to THIS — when they ask the "
-                "time somewhere else, say it relative to them too (e.g. '~3 hours ahead of you')."
-            )
-        except Exception:
-            pass
-    return base
+    local = local_now(locale, now)
+    if local is not None:
+        tz = resolve_timezone(locale)
+        part = day_part(local)
+        base += (
+            f"\n**FOR THE USER it is currently {local.strftime('%H:%M')} on "
+            f"{local.strftime('%A, %d %b')} — it is {part} where they are** ({tz}). "
+            "Anchor EVERY time-of-day reference to THIS: greet and refer to the time of day "
+            f"by their clock (it is {part} for them, not whatever it is on the server), and "
+            "resolve 'tonight', 'tomorrow', 'in 2 hours', 'earlier today' against their local "
+            "time. When they ask the time elsewhere, also say it relative to them ('~3 hours "
+            "ahead of you')."
+        )
+        return base, f"localtime={local.strftime('%Y-%m-%d %H:%M')} {part} {tz}"
+    # No resolvable timezone → never guess a time of day (the U5 bug: "good morning"
+    # at the user's 6pm). Stay time-of-day-neutral until it's known.
+    base += (
+        "\nYou do NOT know the user's local time — do NOT greet or assume a time of day "
+        "('good morning'/'evening'); stay time-of-day-neutral or ask once if it matters."
+    )
+    return base, None
 
 
 def _user_context_section(locale: "LocaleProfile | None") -> tuple[str, list[str]]:

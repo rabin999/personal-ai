@@ -1727,3 +1727,24 @@ model), so the heavy end-to-end *generation* path (and Graphiti's internal
 extraction writes) can't complete right now. The persona routing/shaping proofs use
 the real extraction LLM + assembled prompt, which are unaffected; re-running the
 full generation-judged pass needs credits topped up.
+
+## U5 — User-local current-time awareness ✅
+
+**Problem (brief):** the app greeted "how's your morning" when it was already evening
+for the user — it used the server clock, and when the profile had city/country but no
+IANA `timezone` it computed no local time at all, so the model guessed (wrongly).
+
+**Fix:** `core/reasoning/localtime.py` — `resolve_timezone` derives the IANA zone from
+the explicit field, else from city/country (Kathmandu→Asia/Kathmandu); `local_now` +
+`day_part` compute the user's clock time and an explicit morning/afternoon/evening/
+night label. `_now_section` now injects "**FOR THE USER it is currently 20:15 … it is
+evening where they are**" and anchors every time-of-day reference to it; when the
+timezone is genuinely unknown it forbids guessing a time of day. The user-local time
+is recorded on the trace (`localtime=… evening Asia/Kathmandu` in `user_context_signals`).
+
+**Verified:**
+- Unit (`tests/unit/test_localtime.py`, 7) ✅ — incl. the exact bug: server 14:30 UTC
+  → Nepal user 20:15 = **evening, not morning**; city/country derivation; unknown→None.
+- Real store (`tests/real_call/test_localtime.py`) ✅ — a Kathmandu/Nepal profile (no
+  IANA tz) → the REAL assembled prompt anchors to Nepal's current day-part and records
+  the local time on the trace.
