@@ -17,11 +17,15 @@ export default function ConversationDetailPage() {
     void getConversation(sessionId).then((r) => setTurns(r.turns)).catch(() => setTurns([]));
   }, [sessionId]);
 
+  // Title = the first real user message (a short preview), not a generic label.
+  const firstMsg = turns?.find((t) => t.user_text?.trim())?.user_text?.trim() ?? "";
+  const title = firstMsg ? preview(firstMsg, 60) : "Conversation";
+
   return (
     <section className="mx-auto max-w-4xl">
       <div className="mb-4 flex items-center gap-3">
-        <Link to="/conversations" className="text-sm text-sky-600 hover:underline">← Conversations</Link>
-        <h1 className="truncate text-lg font-semibold">Conversation</h1>
+        <Link to="/conversations" className="shrink-0 text-sm text-sky-600 hover:underline">← Conversations</Link>
+        <h1 className="truncate text-lg font-semibold" title={firstMsg || undefined}>{title}</h1>
       </div>
 
       {/* Tabs: Conversation (default) · Trace */}
@@ -52,6 +56,10 @@ export default function ConversationDetailPage() {
       )}
     </section>
   );
+}
+
+function preview(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n).trimEnd() + "…" : s;
 }
 
 function TabButton({
