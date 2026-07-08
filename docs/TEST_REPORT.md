@@ -1628,3 +1628,31 @@ gated behind real Google SSO — I can't complete that login unattended, so I di
 "the theme looks great." The structural + accessibility + consistency + mobile improvements above are
 code-verifiable and shipped; subjective visual-polish sign-off is the remaining step, best done by
 you in the browser (or by granting a test session).
+
+## C9 — Langfuse human-in-the-loop ✅ (verified working; one config-gated piece noted)
+
+**Finding:** the HITL workflow is implemented (F13/F19–F21) and verified working against the running
+self-hosted Langfuse (v4.13.1, LANGFUSE_ENABLED=true):
+
+- **Prompt steering from Langfuse (runtime, no code change):** `LangfusePromptProvider.get()` fetches
+  managed, versioned prompts by the `production` label. Verified live: `context_intent → source=
+  langfuse, version=4`; `self_reflection_rewrite → source=langfuse, version=2`. Editing/promoting a
+  version in Langfuse changes the next turn's prompt with no deploy; the trace records
+  `prompt_managed_version` + `prompt_source` (seen in the `resolve_context` span). `seed_defaults`
+  populates without overwriting human edits.
+- **Fallback (Langfuse unreachable):** verified — pointing the provider at a dead host returns
+  `source=fallback, version=bundled` with the bundled prompt intact, so a turn never breaks.
+- **User feedback → Langfuse:** `POST /api/feedback` (thumbs + note) → `LangfuseScoreSink.score`
+  attaches `user_feedback` (up=1/down=0) to the SAME `create_trace_id(seed="{session}:{turn}")` trace
+  the reply produced. Verified: a clean score ingestion returns HTTP 201 success on the trace.
+- **Judge ↔ human calibration:** the per-turn evaluator posts the LLM-as-judge verdict as a score on
+  the SAME (session, turn) trace, so automated judge + human thumbs sit side by side; the
+  `/debug/attribution` endpoint rolls up thumbs-up rate per `prompt_version` to compare versions.
+- **Annotation queues / manual scoring:** every turn's full pipeline flows into Langfuse as nested
+  spans (LangfuseTraceSink), so Langfuse's native annotation/scoring UI operates on real traces.
+
+**Honest notes:** (1) the automated per-turn judge score is behind `LANGFUSE_EVAL_ENABLED` (off by
+default — it's an extra judge LLM call per turn); flip it on to feed the calibration loop with judge
+scores continuously. Human feedback + prompt steering + fallback all work regardless. (2) A benign
+"Bad request" appears in one item of the SDK's ingestion batch on flush, but a direct score-create
+ingests with HTTP 201 — the feedback score lands; the batch warning is cosmetic SDK noise.
