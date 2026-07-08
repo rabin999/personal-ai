@@ -19,6 +19,10 @@ class AudioPrefs(BaseModel):
     aec: bool = True
     noise_suppress: bool = True
     agc: bool = True
+    # §24: how far below the turn-start VAD gate barge-in listens while the
+    # companion speaks (AEC has removed our own TTS, so a lower bar catches the
+    # user's double-talk-attenuated speech). Per-user tunable; floored at vad_min.
+    barge_in_sensitivity: float = 0.2
 
 
 class CommPrefs(BaseModel):

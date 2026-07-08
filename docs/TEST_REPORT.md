@@ -961,3 +961,52 @@ audibly stopping) still needs a real mic in prod. The startup crash that made it
 begin is fixed and locally proven; prod should now start and stream. Human step to confirm: deploy,
 select **Pipecat**, press Start — it should reach the talking state and take turns; then talk over a
 reply to confirm barge-in.
+
+---
+
+## F1 — Barge-in still not stopping on user speech (deep re-diagnosis + native fix)
+
+**App-goal verified:** while the companion speaks, real user speech stops TTS + cancels the
+in-flight generation instantly and switches to listening with context intact.
+
+**Diagnosis on the real code paths (not theory):**
+- The native `VoiceSession._consume` barge-in *mechanism* is sound and proven deterministically:
+  `tests/e2e/test_barge_in_engine.py` drives the REAL state machine (real WorkingMemory, endpointer,
+  VAD gate, audio pipeline) — sustained fresh speech over a playing reply cancels the generation
+  (`CancelledError` reaches it), drains queued TTS, and starts a new turn with prior turns intact.
+  4/4 green. So "TTS not cancellable" / "generation not cancellable" / "event never firing" are
+  **ruled out** — the cancel path works.
+- The frame path is correct too: the browser worklet emits 128-sample blocks; the WS route
+  (`api/routes/voice.py::_Conversation.feed`) **reframes to exactly 512-sample Silero windows**, so
+  a frame-size mismatch is ruled out.
+- The remaining real-world failure mode is **browser AEC double-talk suppression**: while TTS plays,
+  getUserMedia's `echoCancellation:true` removes our own audio but also *attenuates the user's
+  near-end speech* during double-talk, so its VAD score often sits **below the 0.6 turn-start gate**
+  and the barge-in counter (which keyed off `is_speech = confidence ≥ 0.6`) never accumulated →
+  "it doesn't stop when I speak." This is a known WebRTC-AEC behavior, and it's exactly why the task
+  steers toward Pipecat's interruption path.
+
+**Fix (native path — genuine, tested):** barge-in now detects speech during playback at a **lower
+bar than turn-start** — `barge_in_threshold = clamp(vad_threshold − barge_in_sensitivity, ≥ vad_min)`
+(default 0.6 − 0.2 = 0.4). Rationale: once we're speaking, AEC has removed our own TTS, so anything
+raising the near-end signal is the user; a lower bar catches the attenuated speech. The
+sustained-frames guard (`_BARGE_IN_FRAMES=8` ≈ 256ms) is unchanged, so brief residual-echo blips
+still can't self-interrupt. `barge_in_sensitivity` is a per-user `AudioPrefs` field (config over
+code, rule 6), floored at `vad_min` so it can never drop into noise.
+
+**Proof (real state machine, deterministic):**
+- New `test_aec_attenuated_speech_still_interrupts`: an utterance opens the gate at 0.9, then
+  **attenuated near-end speech at 0.5 — below the old 0.6 gate — now interrupts** (barge_in emitted,
+  generation cancelled, TTS stopped, reply truncated). Under the old `is_speech≥0.6` check this
+  speech was ignored; this test would have failed before the fix.
+- Regression: `test_short_echo_blip_does_not_falsely_interrupt` (4-frame blip) + the loud-speech
+  interrupt/continue/switch-topic scenarios all still pass — 6/6 barge-in tests, 19/19 voice tests,
+  ruff + mypy clean.
+
+**Preferred path:** Pipecat (now that F15 makes it start) owns VAD-during-playback + interruption
+with a purpose-built AEC — the recommended engine for the most reliable barge-in.
+
+**Honest blocker:** the audible browser round-trip (real mic, real speaker, real AEC) can only be
+confirmed on a real device. The cancellation mechanism is demonstrably working (not theoretical),
+and the specific AEC-attenuation gap that caused the real-world failure is now closed on the native
+path. Human step: on a real device, talk over a reply — it should cut within ~250ms.

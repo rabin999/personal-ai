@@ -230,6 +230,69 @@ async def test_user_speech_mid_reply_interrupts_and_starts_a_new_turn() -> None:
     assert any("tokyo" in t.lower() for t in texts), f"new utterance missing: {texts}"
 
 
+# Near-end speech that browser AEC double-talk suppression has attenuated: still
+# non-silent, but its VAD score sits BELOW the turn-start gate (0.6) — the failure
+# mode behind "it doesn't stop when I speak". First sample = 1 (vs 2 for loud).
+ATTENUATED = b"\x01\x00" * 320
+
+
+class AttenuationVAD:
+    """Loud speech → 0.9 (opens the gate); attenuated near-end speech → 0.5 (below
+    the 0.6 gate but above the 0.4 barge-in bar); silence → 0.0."""
+
+    def voice_confidence(self, buffer: bytes) -> float:
+        if not any(buffer):
+            return 0.0
+        first = int.from_bytes(buffer[0:2], "little", signed=True)
+        return 0.9 if abs(first) >= 2 else 0.5
+
+
+@pytest.mark.asyncio
+async def test_aec_attenuated_speech_still_interrupts() -> None:
+    """The F1 fix: while the companion is speaking, AEC has removed our own TTS, so
+    barge-in detects at a LOWER bar (0.4) than turn-start (0.6). Near-end speech
+    attenuated to 0.5 by double-talk suppression — which the old is_speech>=0.6
+    check ignored — now interrupts the reply."""
+    stt = ScriptedSTT(["tell me a long story.", "actually stop"])
+    tts = SlowTTS(chunks=30, gap_s=0.02)
+    gen = ScriptedGenerator()
+    working = WorkingMemory()
+    session = VoiceSession(
+        user_id="u_test_bargein",
+        session_id="s_bargein",
+        vad=AttenuationVAD(),  # type: ignore[arg-type]
+        config=PipelineConfig(),  # gate 0.6, barge-in bar 0.4
+        stt=stt,  # type: ignore[arg-type]
+        endpointer=SemanticEndpointer(short_pause_ms=100, long_pause_ms=400),
+        assembler=ScriptedAssembler(),  # type: ignore[arg-type]
+        generator=gen,  # type: ignore[arg-type]
+        tts=tts,  # type: ignore[arg-type]
+        working=working,
+        trace=RecordingTrace("s_bargein"),
+        barge_in=True,
+    )
+
+    frames: list[tuple[bytes, float]] = []
+    frames += [(SPEECH, 0.0)] * 6  # loud utterance opens the gate (0.9 ≥ 0.6)
+    frames += [(SILENCE, 0.0)] * 8  # endpoint → turn 1
+    frames += [(SILENCE, 0.05)]  # let the reply start playing
+    # ATTENUATED interrupt: 0.5 is BELOW the 0.6 gate (old is_speech = False → no
+    # barge-in) but ABOVE the 0.4 barge-in bar; sustained past _BARGE_IN_FRAMES.
+    frames += [(ATTENUATED, 0.005)] * 12
+    frames += [(SILENCE, 0.01)] * 10  # endpoint the interrupting utterance
+    frames += [(SILENCE, 0.05)] * 4
+
+    chunks = [c async for c in session.converse(_script(frames))]
+    stages = [e.stage for e in session._trace.recorded]  # type: ignore[attr-defined]
+
+    assert "barge_in" in stages, f"attenuated near-end speech didn't interrupt: {stages}"
+    assert gen.interrupted >= 1, "generation not cancelled by attenuated barge-in"
+    assert tts.cancelled, "TTS not stopped by attenuated barge-in"
+    # Two uninterrupted 30-chunk replies would be 60; a truncated turn-1 + full
+    # turn-2 is fewer, proving turn 1 was cut short by the attenuated interrupt.
+    assert len(chunks) < 60, f"first reply not truncated: {len(chunks)} chunks"
+
+
 @pytest.mark.asyncio
 async def test_short_echo_blip_does_not_falsely_interrupt() -> None:
     """A brief speech blip during playback (shorter than _BARGE_IN_FRAMES, e.g. a

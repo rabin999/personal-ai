@@ -96,6 +96,9 @@ class VoiceSession:
         self._user_id = user_id
         self._session_id = session_id
         self._pipeline = AudioInputPipeline(config, vad)
+        # Barge-in detects speech during playback at a lower bar than turn-start
+        # (§24 + browser-AEC double-talk attenuation) — see PipelineConfig.
+        self._barge_threshold = config.barge_in_threshold
         self._stt = stt
         self._endpointer = endpointer
         self._assembler = assembler
@@ -179,7 +182,11 @@ class VoiceSession:
                 # utterance's hysteresis tail, and not a brief echo blip) so a
                 # reply isn't self-interrupted.
                 if turn is not None:
-                    barge_frames = barge_frames + 1 if frame.is_speech else 0
+                    # Lower bar than turn-start: AEC has removed our own TTS, so a
+                    # near-end signal over this threshold is the user — even when
+                    # double-talk suppression has attenuated it below is_speech.
+                    speaking_over = frame.confidence >= self._barge_threshold
+                    barge_frames = barge_frames + 1 if speaking_over else 0
                     if self._barge_in and barge_frames >= _BARGE_IN_FRAMES:
                         self._trace.emit("barge_in", "user interrupted — stopping playback")
                         turn.cancel()

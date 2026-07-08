@@ -40,6 +40,15 @@ class PipelineConfig(BaseModel):
     vad_threshold: float = 0.6
     vad_min: float = 0.4
     vad_max: float = 0.8
+    # Barge-in (§24) uses a LOWER detection bar than the turn-start gate. While the
+    # companion is speaking, AEC has removed our own TTS from the mic, so the only
+    # thing that raises the near-end signal is the user — and browser AEC's
+    # double-talk suppression *attenuates* that near-end speech, so it often sits
+    # below the normal turn-start threshold and the interrupt never fires (the
+    # reported "it doesn't stop when I speak"). Detecting barge-in this much below
+    # the gate threshold catches that attenuated speech; the sustained-frames guard
+    # (START/_BARGE_IN_FRAMES) still rejects brief residual-echo blips.
+    barge_in_sensitivity: float = 0.2
 
     @classmethod
     def from_prefs(cls, prefs: AudioPrefs) -> "PipelineConfig":
@@ -50,12 +59,20 @@ class PipelineConfig(BaseModel):
             vad_threshold=prefs.vad_threshold,
             vad_min=prefs.vad_min,
             vad_max=prefs.vad_max,
+            barge_in_sensitivity=prefs.barge_in_sensitivity,
         )
 
     @property
     def clamped_threshold(self) -> float:
         """Rule 4: user-tunable but never outside [vad_min, vad_max]."""
         return min(self.vad_max, max(self.vad_min, self.vad_threshold))
+
+    @property
+    def barge_in_threshold(self) -> float:
+        """Detection bar for speech *during playback* — lower than the turn-start
+        gate (see ``barge_in_sensitivity``), floored at ``vad_min`` so it never goes
+        below the profile's minimum and starts self-interrupting on noise."""
+        return max(self.vad_min, self.clamped_threshold - self.barge_in_sensitivity)
 
     def enabled_stages(self) -> list[str]:
         return [stage for stage in STAGES if getattr(self, stage)]
@@ -102,6 +119,7 @@ class AudioFrame(BaseModel):
     speech_active: bool  # hysteretic gate state (idle-is-free paid-path gate)
     is_speech: bool = False  # raw this-frame verdict (endpointing silence timing)
     event: GateEvent | None = None
+    confidence: float = 0.0  # raw VAD score (barge-in uses a lower bar than is_speech)
 
 
 class AudioInputPipeline:
@@ -140,7 +158,11 @@ class AudioInputPipeline:
             if ambient:
                 self._ambient_frames_left -= 1
             frame = AudioFrame(
-                pcm=pcm, speech_active=self._gate.active, is_speech=is_speech, event=event
+                pcm=pcm,
+                speech_active=self._gate.active,
+                is_speech=is_speech,
+                event=event,
+                confidence=confidence,
             )
             if (self._gate.active or ambient) and on_paid_path is not None:
                 await on_paid_path(frame)
