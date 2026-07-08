@@ -11,6 +11,7 @@ import asyncio
 import hashlib
 import logging
 from collections.abc import Awaitable, Mapping
+from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
@@ -194,7 +195,7 @@ class PromptAssembler:
         # Step 9 — compose sections; trim order = reverse priority.
         cold_start = not profile.onboarded  # §3.1: first conversation
         sections: dict[str, str] = {}
-        sections["identity"] = _identity_section(profile.companion_name)
+        sections["identity"] = _identity_section(profile.companion_name) + _now_section()
         if cold_start:
             sections["cold_start"] = _COLD_START_GUIDANCE
             # Greet-once: mark onboarded so later turns aren't cold-start; the
@@ -317,6 +318,19 @@ def _prompt_version(traits: list[TraitDef]) -> str:
     sig = ",".join(f"{t.id}:{t.version}" for t in sorted(traits, key=lambda t: t.id))
     digest = hashlib.sha1(sig.encode()).hexdigest()[:8]
     return f"pt{PROMPT_TEMPLATE_VERSION}.{digest}"
+
+
+def _now_section() -> str:
+    """Inject the current UTC time so the companion can answer time/date questions
+    directly (e.g. 'what time is it in Tokyo?') without a flaky web lookup, and knows
+    'today' for judging whether a fact is current. Common offsets given as anchors."""
+    now = datetime.now(UTC)
+    return (
+        f"\n\n## Right now\nThe current time is {now.strftime('%Y-%m-%d %H:%M')} UTC "
+        f"({now.strftime('%A')}). Convert to whatever timezone the user asks about — "
+        "e.g. Tokyo = UTC+9, Kathmandu = UTC+5:45, New York = UTC-4/-5, London = UTC+0/+1. "
+        "When asked the time or date somewhere, STATE the actual clock time; don't deflect."
+    )
 
 
 def _identity_section(companion_name: str | None) -> str:
