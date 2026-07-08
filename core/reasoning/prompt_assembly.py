@@ -114,6 +114,11 @@ class AssembledPrompt(BaseModel):
     session_id: str
     utterance: str
     system_prompt: str
+    # L6 prompt caching: the STABLE leading portion of ``system_prompt`` (identity +
+    # traits + comm-prefs + how-to-answer) — byte-identical across a user's turns, so
+    # providers serve it from cache. Passed to the LLM to place the Anthropic
+    # cache_control breakpoint; empty disables explicit caching for the turn.
+    cache_prefix: str = ""
     messages: list[dict[str, str]]
     complexity_hint: Tier
     # Item 7: which prompt template + trait-version set produced this turn, e.g.
@@ -266,7 +271,13 @@ class PromptAssembler:
         now_section, local_signal = _now_section(locale)
         if local_signal:
             ctx_signals = [*ctx_signals, local_signal]
-        sections["identity"] = _identity_section(profile.companion_name) + now_section + user_ctx
+        # Prompt caching (L6): keep the STABLE prefix (identity + how-to-answer-them)
+        # separate from the VOLATILE per-turn `now` (time), so the stable prefix is
+        # byte-identical across turns and the provider can serve it from cache. The
+        # time block moves into its own volatile section rendered after the stable one.
+        sections["identity"] = _identity_section(profile.companion_name)
+        sections["user_context"] = user_ctx  # stable: who they are + how to answer them
+        sections["now"] = now_section  # volatile: current time (changes every minute)
         sections["recall"] = recall_section  # F3/F4: authoritative transcript (may be "")
         # F14: the rolling summary of earlier turns compacted out of the live buffer,
         # so a long session stays coherent without every turn in the prompt.
@@ -327,7 +338,7 @@ class PromptAssembler:
         sections["preferences"] = "\n".join(f"- {p}" for p in preferences)
         sections["episodic"] = "\n\n".join(h.text for h in episodic_hits)
 
-        system_prompt = _render_system_prompt(
+        system_prompt, cache_prefix = _render_system_prompt(
             sections, budget=self._budget, reserved=_chars_of(recent, utterance)
         )
 
@@ -347,6 +358,7 @@ class PromptAssembler:
             session_id=session_id,
             utterance=utterance,
             system_prompt=system_prompt,
+            cache_prefix=cache_prefix,  # L6: stable prefix for prompt caching
             messages=messages,
             complexity_hint=complexity_hint,
             prompt_version=prompt_version,
@@ -399,13 +411,22 @@ class PromptAssembler:
 
 # Rendering order is priority order; _TRIM_ORDER is which sections give way
 # first when over budget (rule 9: episodic snippets and older facts first).
+# Rendering order: the STABLE prefix first (identity + traits + comm-prefs + how-to-
+# answer), then everything VOLATILE (time + memory + per-turn context). This ordering
+# is load-bearing for prompt caching (L6): the stable prefix is byte-identical across
+# a user's turns, so a provider serves it from cache (implicit on Gemini/OpenAI,
+# explicit cache_control on Anthropic — see AssembledPrompt.cache_prefix).
 _SECTION_TITLES: dict[str, str] = {
+    # ── stable prefix (cacheable) ──
     "identity": "",
+    "traits": "Behavior traits",
+    "comm_prefs": "Communication preferences",
+    "user_context": "",  # C4/C5: who they are + how to answer them (self-titled)
+    # ── volatile per-turn context ──
+    "now": "",  # U5: current time (self-titled); changes every minute
     "recall": "",  # F3/F4: authoritative conversation transcript (self-titled, non-trimmed)
     "session_summary": "",  # F14: running summary of compacted-out earlier turns
     "cold_start": "First contact",
-    "traits": "Behavior traits",
-    "comm_prefs": "Communication preferences",
     "health": "",  # U10: caring health-sound check-in directive (self-contained)
     "mirror": "",  # U11: mirror the user's vocal register this turn
     "surroundings": "",  # U12: ambient awareness (surroundings mode)
@@ -419,21 +440,32 @@ _SECTION_TITLES: dict[str, str] = {
     "self_statements": "Your own relevant prior statements",
     "episodic": "Relevant conversation memories",
 }
+# The contiguous stable-prefix sections (must stay first in _SECTION_TITLES above).
+_STABLE_SECTIONS = ("identity", "traits", "comm_prefs", "user_context")
 _TRIM_ORDER = ("episodic", "facts", "self_statements", "psych", "project", "rules", "preferences")
 
 
-def _render_system_prompt(sections: Mapping[str, str], *, budget: int, reserved: int) -> str:
+def _render_system_prompt(
+    sections: Mapping[str, str], *, budget: int, reserved: int
+) -> tuple[str, str]:
+    """Render the system prompt, returning ``(full_prompt, cache_prefix)`` — the
+    cache_prefix being the rendered STABLE block, a byte-exact prefix of full_prompt
+    (for prompt caching, L6)."""
     parts = dict(sections)
     available = budget - reserved
 
-    def render() -> str:
+    def render_names(names: "tuple[str, ...] | list[str]") -> list[str]:
         blocks = []
-        for name, title in _SECTION_TITLES.items():
+        for name in names:
+            title = _SECTION_TITLES.get(name, "")
             body = parts.get(name, "").strip()
             if not body:
                 continue
             blocks.append(body if not title else f"## {title}\n{body}")
-        return "\n\n".join(blocks)
+        return blocks
+
+    def render() -> str:
+        return "\n\n".join(render_names(list(_SECTION_TITLES.keys())))
 
     rendered = render()
     for section in _TRIM_ORDER:
@@ -444,7 +476,8 @@ def _render_system_prompt(sections: Mapping[str, str], *, budget: int, reserved:
             items = parts[section].rsplit("\n\n" if section == "episodic" else "\n", 1)
             parts[section] = items[0] if len(items) == 2 else ""
             rendered = render()
-    return rendered
+    cache_prefix = "\n\n".join(render_names(_STABLE_SECTIONS))
+    return rendered, cache_prefix
 
 
 # First-contact guidance (§3.1): warm, ask their name + what they'd like to call
