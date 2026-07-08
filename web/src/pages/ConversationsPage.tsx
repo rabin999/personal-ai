@@ -5,6 +5,7 @@ import {
   listConversations,
   type ConversationHeader,
 } from "../lib/api";
+import { EmptyState, Loader } from "../components/States";
 
 const PAGE = 10;
 
@@ -18,9 +19,11 @@ export default function ConversationsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setError(null);
+    setLoading(true);
     try {
       const res = await listConversations({
         offset,
@@ -32,6 +35,8 @@ export default function ConversationsPage() {
       setTotal(res.total);
     } catch (e) {
       setError(String(e));
+    } finally {
+      setLoading(false);
     }
   }, [offset, from, to]);
 
@@ -48,7 +53,12 @@ export default function ConversationsPage() {
           <input
             type="datetime-local"
             value={from}
-            onChange={(e) => { setOffset(0); setFrom(e.target.value); }}
+            max={to || undefined}
+            onChange={(e) => {
+              setOffset(0);
+              setFrom(e.target.value);
+              if (to && e.target.value > to) setTo(""); // keep From ≤ To
+            }}
             className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
           />
         </Field>
@@ -56,6 +66,7 @@ export default function ConversationsPage() {
           <input
             type="datetime-local"
             value={to}
+            min={from || undefined} // can't pick a time before From
             onChange={(e) => { setOffset(0); setTo(e.target.value); }}
             className="rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
           />
@@ -71,8 +82,15 @@ export default function ConversationsPage() {
       </div>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-      {items.length === 0 && !error && <p className="text-sm text-neutral-500">No conversations yet.</p>}
+      {loading && <Loader label="Loading conversations…" />}
+      {!loading && items.length === 0 && !error && (
+        <EmptyState
+          title={from || to ? "No conversations in this range" : "No conversations yet"}
+          hint={from || to ? "Try widening the date range." : "Start talking on the home page — your conversations show up here."}
+        />
+      )}
 
+      {!loading && items.length > 0 && (
       <ul className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
         {items.map((c) => (
           <li key={c.session_id}>
@@ -96,6 +114,7 @@ export default function ConversationsPage() {
           </li>
         ))}
       </ul>
+      )}
 
       <Pager offset={offset} total={total} page={PAGE} onChange={setOffset} />
     </section>

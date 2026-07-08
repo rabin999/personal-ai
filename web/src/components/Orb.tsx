@@ -83,7 +83,23 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
           <>
             <Ripple color={p.accent} delay="0s" />
             <Ripple color={p.accent} delay="1.1s" />
+            {thinking && <Ripple color="#a78bfa" delay="0.55s" />}
           </>
+        )}
+
+        {/* Multi-colour FUSION halo — only while thinking: a soft blend of sky /
+            violet / cyan / amber that slowly drifts in hue + counter-rotates, so
+            the "processing" moment feels alive without being a disco. */}
+        {thinking && (
+          <div
+            className="absolute inset-3 rounded-full blur-md"
+            style={{
+              background:
+                "conic-gradient(from 0deg, #38bdf8, #a78bfa, #22d3ee, #fbbf24, #38bdf8)",
+              opacity: 0.55,
+              animation: "orb-spin-rev 6s linear infinite, orb-hue 8s linear infinite",
+            }}
+          />
         )}
 
         {/* Rotating conic sheen — most visible while thinking */}
@@ -103,7 +119,11 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
             background: p.sphere,
             transform: `scale(${scale})`,
             transition: "transform 110ms ease-out",
-            animation: idle ? "orb-breathe 4.5s ease-in-out infinite" : undefined,
+            animation: idle
+              ? "orb-breathe 4.5s ease-in-out infinite"
+              : thinking
+                ? "orb-pulse 2.2s ease-in-out infinite, orb-hue 10s linear infinite"
+                : undefined,
             boxShadow: `0 20px 60px -12px ${p.glow}99`,
           }}
         >

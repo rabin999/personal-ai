@@ -137,3 +137,61 @@ input {
     font-size: 16px;
   }
 }
+
+/* ── Smooth range slider (voice speed / comm prefs) ─────────────────────────
+   A clean modern slider: pill track + soft round thumb, no boxy default. */
+input[type="range"].slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 9999px;
+  background: rgb(226 232 240); /* slate-200 */
+  outline: none;
+  cursor: pointer;
+}
+:root[data-theme="dark"] input[type="range"].slider {
+  background: rgb(51 65 85); /* slate-700 */
+}
+input[type="range"].slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: rgb(14 165 233); /* sky-500 */
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgb(2 132 199 / 0.4);
+  transition: transform 0.12s ease;
+}
+input[type="range"].slider::-webkit-slider-thumb:active {
+  transform: scale(1.15);
+}
+:root[data-theme="dark"] input[type="range"].slider::-webkit-slider-thumb {
+  border-color: rgb(15 23 42); /* slate-900 */
+}
+input[type="range"].slider::-moz-range-thumb {
+  height: 18px;
+  width: 18px;
+  border-radius: 9999px;
+  background: rgb(14 165 233);
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgb(2 132 199 / 0.4);
+}
+:root[data-theme="dark"] input[type="range"].slider::-moz-range-thumb {
+  border-color: rgb(15 23 42);
+}
+
+/* ── Orb "thinking" fusion — a slow living hue drift + counter-rotation, so the
+   processing state holds attention without being flashy. */
+@keyframes orb-hue {
+  from { filter: hue-rotate(0deg); }
+  to { filter: hue-rotate(360deg); }
+}
+@keyframes orb-spin-rev {
+  to { transform: rotate(-360deg); }
+}
+@keyframes orb-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.045); }
+}

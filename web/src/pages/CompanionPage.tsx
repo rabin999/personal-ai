@@ -22,7 +22,7 @@ import {
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
 const FIELD =
-  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
+  "w-auto max-w-full self-start rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
 const FIELD_LABEL =
   "text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400";
 
@@ -52,7 +52,9 @@ export default function CompanionPage() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
   const [showSetup, setShowSetup] = useState(false); // mobile: collapse config so the orb + Start are the hero
+  const [micMuted, setMicMuted] = useState(false); // user-controlled mic mute
 
+  const micMutedRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicCapture | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -234,12 +236,12 @@ export default function CompanionPage() {
         // (getUserMedia echoCancellation:true) keeps the mic from hearing our own
         // TTS, and the server requires sustained *fresh* speech (_BARGE_IN_FRAMES,
         // ~256ms) so a brief residual-echo blip can't self-interrupt the reply.
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
+        if (!micMutedRef.current && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(pcm);
         }
       },
       // Don't let the mic level fight the companion's playback level on the orb.
-      (l) => turnStateRef.current !== "speaking" && setLevel(l),
+      (l) => turnStateRef.current !== "speaking" && !micMutedRef.current && setLevel(l),
     );
     if (devices.length === 0) listMicrophones().then(setDevices).catch(() => {});
   };
@@ -247,16 +249,35 @@ export default function CompanionPage() {
   const stopLocalCapture = async () => {
     await micRef.current?.stop();
     micRef.current = null;
+    micMutedRef.current = false;
+    setMicMuted(false);
     setLevel(0);
     setTurn("idle");
     setConn("idle");
   };
 
   const stopConversation = async () => {
-    wsRef.current?.send(JSON.stringify({ type: "stop_conversation" }));
+    // Stop the OUTGOING AUDIO immediately (buffered playback was draining for a
+    // beat after Stop) + stop sending mic, THEN tell the server + close the socket.
+    playerRef.current?.interrupt(); // flush + mute playback now
+    micRef.current?.stop().catch(() => {});
+    setLevel(0);
+    setTurn("idle");
+    try {
+      wsRef.current?.send(JSON.stringify({ type: "stop_conversation" }));
+    } catch {
+      /* socket may already be closing */
+    }
     wsRef.current?.close();
     wsRef.current = null;
     await stopLocalCapture();
+  };
+
+  const toggleMute = () => {
+    const next = !micMutedRef.current;
+    micMutedRef.current = next;
+    setMicMuted(next);
+    if (next) setLevel(0);
   };
 
   const replay = (turn: TurnGroup) =>
@@ -397,8 +418,8 @@ export default function CompanionPage() {
                   className={FIELD}
                   title="Switch between the native asyncio runtime and the Pipecat pipeline (VAD/barge-in). Choose before starting."
                 >
-                  <option value="native">Native (asyncio)</option>
-                  <option value="pipecat">Pipecat (framework)</option>
+                  <option value="native">Native</option>
+                  <option value="pipecat">Pipecat</option>
                 </select>
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
@@ -443,28 +464,53 @@ export default function CompanionPage() {
               </label>
             </div>
 
-            <button
-              onClick={active ? stopConversation : connect}
-              className={`group flex shrink-0 items-center justify-center gap-2.5 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-md transition-all active:scale-[0.98] lg:min-w-[13rem] ${
-                active
-                  ? "bg-rose-600 shadow-rose-600/20 hover:bg-rose-500"
-                  : "bg-sky-600 shadow-sky-600/20 hover:bg-sky-500"
-              }`}
-            >
-              {active ? (
-                <>
-                  <span className="h-3 w-3 rounded-[3px] bg-white" />
-                  Stop conversation
-                </>
-              ) : (
-                <>
-                  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
-                    <path d="M8 5v14l11-7z" />
-                  </svg>
-                  Start conversation
-                </>
+            <div className="flex shrink-0 items-center gap-2">
+              {active && (
+                <button
+                  onClick={toggleMute}
+                  aria-label={micMuted ? "Unmute microphone" : "Mute microphone"}
+                  title={micMuted ? "Unmute mic" : "Mute mic"}
+                  className={`grid h-12 w-12 shrink-0 place-items-center rounded-xl border transition-colors ${
+                    micMuted
+                      ? "border-rose-300 bg-rose-50 text-rose-600 dark:border-rose-500/40 dark:bg-rose-950/40 dark:text-rose-300"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {micMuted ? (
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 2l20 20M9 9v3a3 3 0 0 0 5.1 2.1M15 9.3V5a3 3 0 0 0-5.9-.7M17 11v1a5 5 0 0 1-.4 2M12 19v3" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+                      <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
+                    </svg>
+                  )}
+                </button>
               )}
-            </button>
+              <button
+                onClick={active ? stopConversation : connect}
+                className={`group flex shrink-0 items-center justify-center gap-2.5 rounded-xl px-8 py-3 text-sm font-semibold text-white shadow-md transition-all active:scale-[0.98] lg:min-w-[13rem] ${
+                  active
+                    ? "bg-rose-600 shadow-rose-600/20 hover:bg-rose-500"
+                    : "bg-sky-600 shadow-sky-600/20 hover:bg-sky-500"
+                }`}
+              >
+                {active ? (
+                  <>
+                    <span className="h-3 w-3 rounded-[3px] bg-white" />
+                    Stop conversation
+                  </>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Start conversation
+                  </>
+                )}
+              </button>
+            </div>
           </div>
           {/* Only surface the non-obvious bit (barge-in); no filler when idle. */}
           {active && (

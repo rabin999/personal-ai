@@ -172,9 +172,6 @@ function ProfileBody({ p, me }: { p: UserProfile; me: Me | null }) {
           <p className="truncate text-base font-semibold text-slate-900 dark:text-slate-100">
             {displayName}
           </p>
-          {me?.email && (
-            <p className="truncate text-sm text-slate-500 dark:text-slate-400">{me.email}</p>
-          )}
           <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">
             Companion · <span className="font-medium text-slate-600 dark:text-slate-300">{companion}</span>
           </p>
@@ -274,7 +271,7 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
 
   return (
     <Section title="Voice & you">
-      <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-3.5 py-3 dark:border-slate-800 dark:bg-slate-900/40">
+      <div>
         <div className="flex items-center justify-between">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
             Speaking speed
@@ -296,7 +293,7 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
           }}
           onMouseUp={() => save({ voice_speed: speed })}
           onTouchEnd={() => save({ voice_speed: speed })}
-          className="mt-2.5 block w-full accent-sky-500"
+          className="slider mt-2.5"
         />
         {/* Marks aligned to their real slider positions: 1.0× sits at (1.0-0.8)/0.7 ≈ 28.6%. */}
         <div className="relative mt-1 h-4 text-[11px] text-slate-400 dark:text-slate-500">
@@ -370,7 +367,7 @@ function CommPrefsEditor({ p }: { p: UserProfile }) {
         onChange={(e) => set(parseFloat(e.target.value))}
         onMouseUp={() => save(isDirect ? val : other, isDirect ? other : val)}
         onTouchEnd={() => save(isDirect ? val : other, isDirect ? other : val)}
-        className="mt-1.5 block w-full accent-sky-500"
+        className="slider mt-1.5"
       />
       <p className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>
     </div>

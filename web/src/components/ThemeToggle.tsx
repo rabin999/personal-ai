@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import type { ThemePref } from "../lib/theme";
 
 interface Props {
@@ -6,40 +7,60 @@ interface Props {
 }
 
 const OPTIONS: { value: ThemePref; label: string; icon: React.ReactNode }[] = [
-  { value: "light", label: "Light theme", icon: <SunIcon /> },
-  { value: "system", label: "System theme", icon: <AutoIcon /> },
-  { value: "dark", label: "Dark theme", icon: <MoonIcon /> },
+  { value: "light", label: "Light", icon: <SunIcon /> },
+  { value: "system", label: "System", icon: <AutoIcon /> },
+  { value: "dark", label: "Dark", icon: <MoonIcon /> },
 ];
 
-// Segmented light / system / dark control. Purely presentational — the parent
-// owns the persisted preference via useTheme.
+// Compact theme dropdown (light / system / dark): a single trigger showing the
+// current choice, opening a small menu. Replaces the inline 3-icon segmented
+// control so the header stays tidy on mobile + desktop.
 export function ThemeToggle({ pref, onChange }: Props) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = OPTIONS.find((o) => o.value === pref) ?? OPTIONS[1];
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
   return (
-    <div
-      role="radiogroup"
-      aria-label="Color theme"
-      className="flex items-center gap-0.5 rounded-full border border-slate-200 bg-slate-100/70 p-0.5 dark:border-slate-700 dark:bg-slate-800/70"
-    >
-      {OPTIONS.map((o) => {
-        const active = pref === o.value;
-        return (
-          <button
-            key={o.value}
-            role="radio"
-            aria-checked={active}
-            aria-label={o.label}
-            title={o.label}
-            onClick={() => onChange(o.value)}
-            className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${
-              active
-                ? "bg-white text-sky-600 shadow-sm dark:bg-slate-950 dark:text-sky-300"
-                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-            }`}
-          >
-            {o.icon}
-          </button>
-        );
-      })}
+    <div ref={ref} className="relative shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Color theme"
+        title={`Theme: ${current.label}`}
+        className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+      >
+        {current.icon}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-30 w-36 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900">
+          {OPTIONS.map((o) => {
+            const active = o.value === pref;
+            return (
+              <button
+                key={o.value}
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                className={`flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors ${
+                  active
+                    ? "font-medium text-sky-600 dark:text-sky-400"
+                    : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                }`}
+              >
+                {o.icon}
+                {o.label}
+                {active && <span className="ml-auto text-sky-500">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
