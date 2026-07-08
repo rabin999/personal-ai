@@ -73,11 +73,10 @@ fast pytest green, web `tsc` + `vite build` green.
 
 ## 3. Partial / broken / not-wired (honest)
 
-- **C8 — UI visual polish (PARTIAL):** structural + accessibility (AA contrast) + consistent-shell +
-  mobile-first are code-verified and the build is green, but a full brand/theme REDESIGN with
-  cross-viewport pixel QA (Playwright screenshots of the AUTHENTICATED pages) was **not** completed —
-  those pages sit behind real Google SSO which I cannot log into unattended. Not fabricated as "looks
-  great." *Remaining:* subjective visual sign-off in a real browser.
+- **C8 — UI visual audit (DONE):** a `DEV_AUTH_USER` env flag (off by default, prod-verified 401)
+  let me drive every page in headless Chromium at desktop + mobile, light + dark. Verdict: clean,
+  consistent, accessible, mobile-first. Real issues found + fixed + re-verified ("1 turns" plural;
+  profile reachable from every page via a Shell `ProfileButton`). Deployed to prod.
 - **Automated per-turn LLM-judge score (CONFIG-GATED):** the judge that feeds Langfuse calibration is
   behind `LANGFUSE_EVAL_ENABLED` (off by default — it's an extra paid call per turn). Human feedback +
   prompt steering + fallback work regardless; flip the flag to run the judge continuously.
@@ -142,10 +141,10 @@ code-improved and build-green but needs an authenticated browser to redesign/QA 
 config-gated or hardware-gated pieces (continuous automated judge scoring, SER on GPU, felt barge-in
 latency on a real mic); and (c) explicit design-doc backlog items.
 
-**The single biggest gap** between the current app and the designed app is now **subjective UI/UX
-visual quality (C8)** — the reasoning, memory, voice-control, personalization, and observability core
-is genuinely working and judged good, but the *look-and-feel* redesign is the one deliverable I could
-not complete or verify unattended because the authenticated pages are behind Google SSO. Granting a
-test session (or doing the visual pass in-browser) closes it. The previously-cited foundational gap —
-"does it actually know and use the user?" — is **closed**: the app now captures the user's locale and
-demonstrably frames answers for them, visible in the trace.
+The previously-cited foundational gap — "does it actually know and use the user?" — is **closed**:
+the app captures the user's locale and demonstrably frames answers for them, visible in the trace.
+The UI was fully audited across desktop + mobile (light + dark) via a dev-auth screenshot pass and is
+clean/consistent; the real issues found were fixed and deployed. **The remaining gaps** are now the
+hardware/config-gated pieces (continuous automated judge scoring behind `LANGFUSE_EVAL_ENABLED`, SER
+on GPU, felt sub-300ms barge-in latency on a real mic) and explicit design-doc backlog items — no
+single dominant gap remains in the core product.

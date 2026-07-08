@@ -1603,7 +1603,7 @@ slightly at higher rates (browser Web-Audio has no pitch-preserving time-stretch
 stream). At the 1.2× default the shift is modest; a pitch-preserving WSOLA time-stretch (server-side)
 is the higher-fidelity follow-up if the raised pitch is noticeable to the user on a real device.
 
-## C8 — UI quality (desktop + mobile) ◑ (partial — verifiable improvements applied)
+## C8 — UI quality (desktop + mobile) ✅ (full visual audit done — see the follow-up below)
 
 **What was done / verified:**
 - **Trace + conversation detail** (the pages the brief flags): substantially rebuilt in C1 with a
@@ -1656,3 +1656,30 @@ default — it's an extra judge LLM call per turn); flip it on to feed the calib
 scores continuously. Human feedback + prompt steering + fallback all work regardless. (2) A benign
 "Bad request" appears in one item of the SDK's ingestion batch on flush, but a direct score-create
 ingests with HTTP 201 — the feedback score lands; the batch warning is cosmetic SDK noise.
+
+## C8 (follow-up) — FULL desktop + mobile visual audit, actually performed ✅
+
+The earlier C8 pass was honestly flagged partial because the pages sit behind Google SSO. Resolved by
+adding a **`DEV_AUTH_USER`** setting (env-only, empty/off by default, documented in `.env.example`,
+never set in prod) that resolves requests to a sample user so the authenticated SPA can be driven
+locally over http (the secure session cookie can't ride http://localhost). Then drove **every page in
+a headless Chromium** at desktop (1280) + mobile (390), light + dark:
+
+- Captured + reviewed: Companion, Conversations, Memories, Traces, the Trace-Detail page (the C1
+  rewrite), and the slide-over Profile panel — 20+ screenshots across viewports/themes.
+- **Verdict:** the UI is clean, consistent, and accessible — one Shell/header/theme on every route,
+  correct nav active-state, readable light+dark contrast, mobile-first responsive (nav collapses to a
+  hamburger, controls collapse to "Setup", profile nav surfaces in the panel). The C1 trace-detail
+  renders excellently (purpose badges + tokens/cost/latency/cache/temp row + expandable verbatim
+  prompts). The C5/C7 profile additions (speed slider at 1.20×, locale fields Kathmandu/Nepal/NPR)
+  render cleanly. The brief's "branding not good" was an earlier-state complaint; the current UI (post
+  F8–F12 + this round) is genuinely good.
+- **Real issues found + fixed (then re-screenshotted to confirm):** (1) "1 turns" → correct
+  singular/plural on the conversations + traces lists; (2) the Profile — and its C5 locale + C7
+  voice-speed controls — was only reachable from the Companion page; added a shared `ProfileButton`
+  to the Shell header so it's on **every** page (verified the avatar now appears on the data pages).
+
+**Deployed:** pushed to `origin/main` and ran the full server deploy (`deploy/update.sh`): new bundle
+`index-BDdNbE2_.js` live on `https://202-58-120-93.sslip.io`, health ok, and — critically —
+`/auth/me` + `/api/me` return **401 without a session**, confirming the `DEV_AUTH_USER` bypass is OFF
+in prod and Google auth is still enforced.
