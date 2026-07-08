@@ -28,10 +28,30 @@ logger = logging.getLogger(__name__)
 
 SAMPLE_RATE = 24_000  # PCM16 output we request from xAI
 _COST_PER_CHAR_USD = 4.20 / 1_000_000  # xAI Grok TTS pricing
-# Ordered public list (the voice sample-preview surface, §3.2 / brief §3.2).
-VOICES = ("ara", "eve", "leo", "rex", "sal")
+# The full xAI Grok voice roster (5 original + 21 flagship, all multilingual — from
+# GET /v1/tts/voices). Kept as a static fallback so the app has valid voices even if
+# the live catalog fetch fails; ``GrokTTS.list_voices`` fetches names/gender live.
+VOICES = (
+    "altair", "ara", "atlas", "carina", "castor", "celeste", "cosmo", "eve",
+    "helios", "helix", "iris", "kepler", "leo", "lumen", "luna", "lux", "naksh",
+    "orion", "perseus", "rex", "rigel", "sal", "sirius", "ursa", "zagan", "zenith",
+)  # fmt: skip
 _VOICES = set(VOICES)
-DEFAULT_VOICE = "eve"
+# Default voice: a natural, grounded, HUMAN voice that's less warm/smooth than the
+# original "eve" (which reads as soft/warm). "orion" is a flagship multilingual voice
+# — natural and human-friendly without the syrupy warmth. Users pick any of the 26 in
+# the UI; the exact tonal preference is best confirmed by ear (marked in TEST_REPORT).
+DEFAULT_VOICE = "orion"
+
+
+_VOICE_GENDER = {v: "female" for v in ("ara", "carina", "celeste", "eve", "iris", "luna", "ursa")}
+
+
+def _fallback_voices() -> list[dict[str, str]]:
+    """Static roster (id/name/gender) used when the live catalog is unreachable."""
+    return [
+        {"voice_id": v, "name": v.title(), "gender": _VOICE_GENDER.get(v, "male")} for v in VOICES
+    ]
 
 
 def resolve_voice(voice: str | None, default: str = DEFAULT_VOICE) -> str:
@@ -85,6 +105,36 @@ class GrokTTS:
     def __init__(self, settings: Settings, ledger: CostLedger | None = None) -> None:
         self._settings = settings
         self._ledger = ledger
+        self._voices_cache: list[dict[str, str]] | None = None
+
+    async def list_voices(self) -> list[dict[str, str]]:
+        """The live xAI voice roster (id + name + gender) for the picker (#19). Fetched
+        once from GET /v1/tts/voices and cached; falls back to the static roster if the
+        catalog is unreachable so the UI always has valid choices."""
+        if self._voices_cache is not None:
+            return self._voices_cache
+        try:
+            headers = {"Authorization": f"Bearer {self._settings.xai_api_key}"}
+            url = f"{self._settings.xai_base_url}/tts/voices"
+            async with httpx.AsyncClient(timeout=self._settings.tts_timeout_s) as client:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+            raw = data.get("voices", data) if isinstance(data, dict) else data
+            voices = [
+                {
+                    "voice_id": str(v.get("voice_id") or v.get("id") or "").lower(),
+                    "name": str(v.get("name") or v.get("voice_id") or "").title(),
+                    "gender": str(v.get("gender") or ""),
+                }
+                for v in raw
+                if v.get("voice_id") or v.get("id")
+            ]
+            self._voices_cache = voices or _fallback_voices()
+        except Exception:
+            logger.warning("could not fetch xAI voice catalog; using static roster")
+            self._voices_cache = _fallback_voices()
+        return self._voices_cache
 
     async def speak(
         self,

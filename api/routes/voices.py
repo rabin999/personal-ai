@@ -31,13 +31,20 @@ def _pcm16_to_wav(pcm: bytes, sample_rate: int) -> bytes:
 
 
 @router.get("/voices")
-async def list_voices(user: CurrentUser) -> dict[str, Any]:
-    return {"voices": list(VOICES)}
+async def list_voices(user: CurrentUser, request: Request) -> dict[str, Any]:
+    """The full live Grok voice roster (id + name + gender) for the picker (#19)."""
+    pipeline = request.app.state.pipeline
+    if pipeline is not None:
+        try:
+            return {"voices": await pipeline.tts.list_voices()}
+        except Exception:  # never fail the settings UI on a catalog hiccup
+            pass
+    return {"voices": [{"voice_id": v, "name": v.title(), "gender": ""} for v in VOICES]}
 
 
 @router.get("/voices/{voice}/sample")
 async def voice_sample(voice: str, user: CurrentUser, request: Request) -> Response:
-    if voice not in VOICES:
+    if voice.lower() not in set(VOICES):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="unknown voice")
     pipeline = request.app.state.pipeline
     if pipeline is None:

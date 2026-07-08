@@ -14,6 +14,8 @@ import {
 import { fetchMe, logout, type Me } from "../lib/session";
 import {
   getModels,
+  getVoices,
+  type VoiceItem,
   sendFeedback,
   setModel as saveModel,
   setReasoningModel as saveReasoningModel,
@@ -33,7 +35,7 @@ const CONN_LABEL: Record<ConnState, string> = {
   error: "Error",
 };
 
-const VOICES = ["eve", "ara", "leo", "rex", "sal"]; // xAI Grok voices
+const DEFAULT_VOICE = "orion"; // natural, less-warm default (26 available, fetched live)
 
 // Live caption is a single-line ticker: only the last N words (yours or the
 // reply's) are shown at once, so it never wraps or grows into a paragraph.
@@ -45,7 +47,8 @@ const CAPTION_WINDOW = 8;
 export default function CompanionPage() {
   const navigate = useNavigate();
   const [me, setMe] = useState<Me | null>(null);
-  const [voice, setVoice] = useState(VOICES[0]);
+  const [voice, setVoice] = useState(DEFAULT_VOICE);
+  const [voices, setVoices] = useState<VoiceItem[]>([]);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [micId, setMicId] = useState<string>();
   const [conn, setConn] = useState<ConnState>("idle");
@@ -105,6 +108,10 @@ export default function CompanionPage() {
   // Tear down the caption reveal timer on unmount.
   useEffect(() => () => {
     if (captionIvRef.current !== null) clearInterval(captionIvRef.current);
+  }, []);
+  // Load the full live voice roster (#19) for the picker.
+  useEffect(() => {
+    getVoices().then((r) => setVoices(r.voices)).catch(() => {});
   }, []);
   const turnStateRef = useRef<TurnState>("idle");
 
@@ -481,11 +488,11 @@ export default function CompanionPage() {
                   value={voice}
                   onChange={(e) => setVoice(e.target.value)}
                   disabled={active}
-                  className={`${FIELD} capitalize`}
+                  className={FIELD}
                 >
-                  {VOICES.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
+                  {(voices.length ? voices : [{ voice_id: DEFAULT_VOICE, name: "Orion", gender: "" }]).map((v) => (
+                    <option key={v.voice_id} value={v.voice_id}>
+                      {v.name}{v.gender ? ` (${v.gender})` : ""}
                     </option>
                   ))}
                 </select>

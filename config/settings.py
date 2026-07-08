@@ -70,7 +70,9 @@ class Settings(BaseSettings):
     # tags supported; ~$4.20 / 1M chars. Key env var is ``X-AI-API``.
     xai_api_key: str = Field(default="", validation_alias="X-AI-API")
     xai_base_url: str = "https://api.x.ai/v1"
-    tts_voice: str = "eve"  # ara | eve | leo | rex | sal
+    # Default voice: a natural, grounded, less-warm human voice (26 available, see
+    # adapters/tts/grok.VOICES). Users pick any in the UI; tonal pick confirmed by ear.
+    tts_voice: str = "orion"
     tts_language: str = "en"
     tts_timeout_s: float = 30.0
 

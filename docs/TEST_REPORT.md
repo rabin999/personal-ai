@@ -1884,3 +1884,19 @@ doesn't surface `cached_tokens`, but stable-prefix ordering enables its server-s
 implicit caching. Unit: `tests/unit/test_prompt_cache.py` (6) — prefix is a real
 byte-exact prefix, stable across turns, Anthropic gets markers, non-Anthropic left
 plain, mismatch falls back safely, stable sections render first.
+
+## #19 — Full Grok voice roster + natural, less-warm default ✅
+
+xAI now exposes 26 voices (5 original + 21 flagship, all multilingual, 25+ languages)
+via `GET /v1/tts/voices`. The TTS adapter fetches the live roster (`list_voices`,
+cached, static fallback), `/api/voices` returns id+name+gender, and the UI voice picker
+lists all 26 (with gender). Default voice changed from "eve" (soft/warm) to **"orion"**
+— a natural, grounded, less-warm human voice (per user request); `resolve_voice`
+accepts any of the 26. Confirmed `optimize_streaming_latency` is already set (=2) on the
+streaming path; the xAI docs also expose a `speed` param (0.7–1.5) — noted as a future
+improvement over the current client-side playback resample (which shifts pitch).
+
+**Verified:** the adapter fetches 26 voices from the live endpoint; unit/e2e voice
+suites green (they read DEFAULT_VOICE dynamically). NOTE — the exact "which voice sounds
+most natural/least-warm" is a human-ear call; orion is a defensible default and the user
+can switch to any of the 26 instantly in the picker.

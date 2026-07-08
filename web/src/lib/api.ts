@@ -172,6 +172,12 @@ export function setVoiceEngine(voice_engine: string): Promise<{ voice_engine: st
   return authed("/api/models", { method: "PATCH", body: JSON.stringify({ voice_engine }) });
 }
 
+// ── voices (#19) ───────────────────────────────────────────────────────────
+export interface VoiceItem { voice_id: string; name: string; gender: string }
+export function getVoices(): Promise<{ voices: VoiceItem[] }> {
+  return authed("/api/voices");
+}
+
 // ── external tool UIs (F9) ─────────────────────────────────────────────────
 export function getTools(): Promise<{ tools: { langfuse?: string; langgraph?: string } }> {
   return authed("/api/tools");
