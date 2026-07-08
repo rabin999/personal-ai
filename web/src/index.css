@@ -19,6 +19,12 @@ body,
   margin: 0;
 }
 
+/* Reserve the scrollbar gutter always, so navigating between a short page (no
+   scrollbar) and a tall one (scrollbar) doesn't shift the centered layout width. */
+html {
+  scrollbar-gutter: stable;
+}
+
 :root {
   --font-sans:
     "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, -apple-system,

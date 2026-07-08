@@ -34,41 +34,48 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
 
   const hasTools = Boolean(tools.langfuse || tools.langgraph);
 
+  const navLink = (n: (typeof NAV)[number]) => (
+    <NavLink
+      key={n.to}
+      to={n.to}
+      end={n.end}
+      className={({ isActive }) =>
+        `whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
+          isActive
+            ? "text-sky-600 dark:text-sky-400"
+            : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+        }`
+      }
+    >
+      {n.label}
+    </NavLink>
+  );
+
   return (
-    <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/85 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/85">
-      <div className="mx-auto flex max-w-5xl items-center gap-2 px-3 py-2.5 sm:gap-3 sm:px-4">
-        {/* Brand */}
-        <NavLink to="/" className="flex shrink-0 items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-sm">
-            <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-              <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
-            </svg>
-          </span>
-          <span className="hidden text-sm font-semibold sm:inline">Asaathi</span>
-        </NavLink>
+    <header className="sticky top-0 z-20 border-b border-neutral-200 bg-white/90 backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/90">
+      <div className="mx-auto max-w-5xl px-3 sm:px-4">
+        {/* Top row: brand + (desktop nav) + controls. Mobile keeps this row short. */}
+        <div className="flex items-center gap-2 py-2.5 sm:gap-3">
+          {/* Brand */}
+          <NavLink to="/" className="flex shrink-0 items-center gap-2">
+            <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-sm">
+              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
+                <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
+              </svg>
+            </span>
+            <span className="text-sm font-semibold">Asaathi</span>
+          </NavLink>
 
-        {/* Primary nav — scrolls horizontally on narrow screens (never clips). */}
-        <nav className="thin-scroll -mx-1 flex flex-1 items-center gap-0.5 overflow-x-auto px-1">
-          {NAV.map((n) => (
-            <NavLink
-              key={n.to}
-              to={n.to}
-              end={n.end}
-              className={({ isActive }) =>
-                `shrink-0 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
-                  isActive
-                    ? "text-sky-600 dark:text-sky-400"
-                    : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-                }`
-              }
-            >
-              {n.label}
-            </NavLink>
-          ))}
-        </nav>
+          {/* Desktop nav — inline; hidden on mobile (moves to its own row below). */}
+          <nav className="ml-1 hidden flex-1 items-center gap-0.5 sm:flex">
+            {NAV.map(navLink)}
+          </nav>
 
-        {right}
+          {/* push controls right on mobile (no inline nav there) */}
+          <div className="flex-1 sm:hidden" />
+
+          {right}
 
         {/* External tool UIs (F9): Langfuse dashboard + LangGraph Studio. */}
         {hasTools && (
@@ -107,7 +114,13 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
           </div>
         )}
 
-        <ThemeToggle pref={pref} onChange={setPref} />
+          <ThemeToggle pref={pref} onChange={setPref} />
+        </div>
+
+        {/* Mobile nav — its own row so it never fights the controls for space. */}
+        <nav className="flex items-center gap-1 overflow-x-auto pb-2 sm:hidden">
+          {NAV.map(navLink)}
+        </nav>
       </div>
     </header>
   );

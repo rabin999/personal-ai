@@ -7,30 +7,25 @@ import {
   type TurnTotals,
 } from "../lib/api";
 
-// Full end-to-end TRACE DETAIL for one session: every turn, every pipeline span,
-// with the COMPLETE internal story (C1) — voice/emotion perception, every LLM call
-// with its PURPOSE, full params, verbatim prompt + reply, tokens/cost/latency/cache,
-// parallel-vs-sequential ordering, the reasoning + intent + why-search decisions,
-// the assembled prompt, self-reflection (draft→critique→revise), and what was
-// written to memory. Reconstructable from this page alone. The timeline is exported
-// as <TraceTimeline> so the conversation detail page reuses the same component.
+// Full end-to-end TRACE for one session, redesigned to READ as the story of each
+// turn (C1): each turn is a COLLAPSIBLE card (first open by default) with a metrics
+// header, the exchange, a model-call map (purpose · model · cost · parallel/
+// sequential), then a vertical TIMELINE of the pipeline — every step titled in plain
+// language, key facts as tidy lists/rows (never raw JSON walls), verbatim prompts one
+// click away. Exported as <TraceTimeline> so the conversation Trace tab reuses it.
 export default function TraceDetailPage() {
   const { sessionId = "" } = useParams();
   return (
-    <section className="mx-auto max-w-4xl">
+    <section>
       <div className="mb-4 flex items-center gap-3">
-        <Link to="/traces" className="text-sm text-sky-600 hover:underline">← Traces</Link>
-        <h1 className="truncate text-lg font-semibold">
-          Trace · <span className="font-mono text-sm">{sessionId}</span>
-        </h1>
+        <Link to="/conversations" className="text-sm text-sky-600 hover:underline">← Conversations</Link>
+        <h1 className="truncate text-lg font-semibold">Trace</h1>
       </div>
       <TraceTimeline sessionId={sessionId} />
     </section>
   );
 }
 
-// The reusable full-trace timeline for one session. Fetches the durable trace
-// store (Mongo turn_traces) — works on prod with no Langfuse.
 export function TraceTimeline({ sessionId }: { sessionId: string }) {
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [totals, setTotals] = useState<TurnTotals[]>([]);
@@ -56,42 +51,36 @@ export function TraceTimeline({ sessionId }: { sessionId: string }) {
   const turns = [...byTurn.keys()].filter((t) => t > 0).sort((a, b) => a - b);
 
   if (loading) return <p className="text-sm text-neutral-500">Loading…</p>;
-  if (turns.length === 0) return <p className="text-sm text-neutral-500">No trace events for this session.</p>;
+  if (turns.length === 0) return <p className="text-sm text-neutral-500">No trace for this session yet.</p>;
 
   return (
-    <div className="space-y-5">
-      {turns.map((turn) => (
+    <div className="space-y-4">
+      {turns.map((turn, i) => (
         <TurnDetail
           key={turn}
           sessionId={sessionId}
           turn={turn}
           spans={byTurn.get(turn) ?? []}
           totals={totalsByTurn.get(turn)}
+          defaultOpen={i === 0} // first turn open by default
         />
       ))}
     </div>
   );
 }
 
-type LlmCall = {
-  event: TraceEvent;
-  index: number;      // 1-based order within the turn
-  concurrent: boolean; // overlapped the previous call's window → ran in parallel
-};
+type LlmCall = { event: TraceEvent; index: number; concurrent: boolean };
 
 function TurnDetail({
-  sessionId, turn, spans, totals,
-}: { sessionId: string; turn: number; spans: TraceEvent[]; totals?: TurnTotals }) {
-  const said = str(find(spans, "session")?.data?.text)
-    || str(find(spans, "stt")?.data?.text);
+  sessionId, turn, spans, totals, defaultOpen,
+}: { sessionId: string; turn: number; spans: TraceEvent[]; totals?: TurnTotals; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const said = str(find(spans, "session")?.data?.text) || str(find(spans, "stt")?.data?.text);
   const reply = str(find(spans, "response")?.data?.text) || str(find(spans, "response")?.message);
 
-  // C1: order the LLM calls and mark which ran concurrently (parallel) vs. one
-  // after another (sequential), from the precise start/end windows on each call.
   const calls: LlmCall[] = useMemo(() => {
     const cs = spans
       .filter((e) => e.message === "llm.call")
-      .map((e) => e)
       .sort((a, b) => num(a.data?.start_ts) - num(b.data?.start_ts));
     let prevEnd = 0;
     return cs.map((event, i) => {
@@ -101,294 +90,341 @@ function TurnDetail({
       return { event, index: i + 1, concurrent };
     });
   }, [spans]);
-  const callIndex = useMemo(() => new Map(calls.map((c) => [c.event, c])), [calls]);
   const anyParallel = calls.some((c) => c.concurrent);
+  const steps = spans.filter((e) => e.message !== "llm.call" && !isNoise(e));
 
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 dark:border-neutral-800">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-100 bg-neutral-50 px-4 py-3 text-xs dark:border-neutral-800 dark:bg-neutral-900/50">
-        <span className="font-semibold">Turn {turn}</span>
+    <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900/40">
+      {/* Collapsible header: turn + headline metrics + the gist */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center gap-2 px-5 py-3.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900/60"
+      >
+        <span className="text-neutral-400">{open ? "▾" : "▸"}</span>
+        <span className="text-sm font-semibold">Turn {turn}</span>
         {totals && <>
-          <M>{totals.total_ms ? `${Math.round(totals.total_ms)} ms` : "—"}</M>
-          <M>{totals.tokens_in + totals.tokens_out} tok</M>
-          <M>${totals.cost_usd.toFixed(5)}</M>
-          <M>{totals.llm_calls} LLM · {totals.tool_calls} tool</M>
-          {calls.length > 1 && (
-            <M>{anyParallel ? "some parallel" : "sequential"}</M>
-          )}
-          {totals.failures > 0 && <span className="text-rose-500">{totals.failures} failed</span>}
-          {totals.reflected && <M>self-reflected</M>}
-          {totals.langfuse_url && (
-            <a href={totals.langfuse_url} target="_blank" rel="noreferrer" className="text-indigo-500 underline">Langfuse ↗</a>
-          )}
+          <span className="mx-1 hidden h-3.5 w-px bg-neutral-300 sm:block dark:bg-neutral-700" />
+          <span className="hidden flex-wrap items-center gap-1.5 sm:flex">
+            <Pill>{totals.total_ms ? fmtMs(totals.total_ms) : "—"}</Pill>
+            <Pill>{fmtNum(totals.tokens_in + totals.tokens_out)} tok</Pill>
+            <Pill>${totals.cost_usd.toFixed(4)}</Pill>
+            <Pill>{totals.llm_calls} LLM · {totals.tool_calls} tool</Pill>
+            {calls.length > 1 && <Pill>{anyParallel ? "some parallel" : "sequential"}</Pill>}
+            {totals.reflected && <Pill tone="fuchsia">self-reflected</Pill>}
+            {totals.failures > 0 && <Pill tone="rose">{totals.failures} failed</Pill>}
+          </span>
         </>}
-      </div>
+        {!open && said && (
+          <span className="ml-auto hidden max-w-[45%] truncate text-xs text-neutral-400 md:block">{said}</span>
+        )}
+      </button>
 
-      {(said || reply) && (
-        <div className="border-b border-neutral-100 px-4 py-3 text-sm dark:border-neutral-800">
-          {said && <p className="text-neutral-600 dark:text-neutral-300"><b>You:</b> {said}</p>}
-          {reply && <p className="mt-1"><b>Companion:</b> {reply}</p>}
+      {open && (
+        <div className="border-t border-neutral-100 dark:border-neutral-800">
+          {/* Exchange */}
+          {(said || reply) && (
+            <div className="space-y-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+              {said && (
+                <p className="text-[15px] leading-relaxed">
+                  <span className="mr-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">You</span>
+                  {said}
+                </p>
+              )}
+              {reply && (
+                <p className="text-[15px] leading-relaxed text-neutral-700 dark:text-neutral-200">
+                  <span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">Asaathi</span>
+                  {reply}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Model calls map */}
+          {calls.length > 0 && (
+            <div className="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+              <p className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                {calls.length} model call{calls.length > 1 ? "s" : ""}
+              </p>
+              <div className="space-y-2">
+                {calls.map((c) => <CallCard key={c.index} call={c} />)}
+              </div>
+            </div>
+          )}
+
+          {/* Pipeline timeline */}
+          <div className="px-5 py-4">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-neutral-400">Pipeline</p>
+            <ol className="relative space-y-1 border-l border-neutral-200 pl-5 dark:border-neutral-800">
+              {steps.map((e, i) => <Step key={i} event={e} />)}
+            </ol>
+          </div>
+
+          <div className="border-t border-neutral-100 px-5 dark:border-neutral-800">
+            <Feedback sessionId={sessionId} turn={turn} />
+          </div>
         </div>
       )}
-
-      {/* C1: at-a-glance map of every model call this turn, in order, with role,
-          model, and whether it ran in parallel — the "how many LLM calls / why /
-          parallel-or-sequential" answer, before the full spans below. */}
-      {calls.length > 0 && (
-        <div className="border-b border-neutral-100 px-4 py-3 dark:border-neutral-800">
-          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">
-            {calls.length} model call{calls.length > 1 ? "s" : ""}
-          </p>
-          <ol className="space-y-1 text-xs">
-            {calls.map((c) => (
-              <li key={c.index} className="flex flex-wrap items-center gap-x-2">
-                <span className="font-mono text-neutral-500 dark:text-neutral-400">#{c.index}</span>
-                <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${purposeBadge(str(c.event.data?.purpose))}`}>
-                  {str(c.event.data?.purpose) || "call"}
-                </span>
-                <span className="text-neutral-500">{shortModel(str(c.event.data?.model))}</span>
-                <span className="text-neutral-500 dark:text-neutral-400">{num(c.event.data?.latency_ms)}ms</span>
-                <span className="text-neutral-500 dark:text-neutral-400">${fmtCost(c.event.data?.cost_usd)}</span>
-                <span className={c.concurrent ? "text-amber-500" : "text-neutral-500 dark:text-neutral-400"}>
-                  {c.index === 1 ? "start" : c.concurrent ? "∥ parallel" : "→ sequential"}
-                </span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-
-      {/* Full ordered pipeline — every span, every field, verbatim. */}
-      <ol className="divide-y divide-neutral-100 dark:divide-neutral-800">
-        {spans.map((e, i) => <SpanRow key={i} event={e} call={callIndex.get(e)} />)}
-      </ol>
-
-      <div className="border-t border-neutral-100 px-4 dark:border-neutral-800">
-        <Feedback sessionId={sessionId} turn={turn} />
-      </div>
     </div>
   );
 }
 
-// One pipeline span, fully expanded per stage. LLM calls get the purpose, full
-// params, verbatim prompt (each message) + reply; reasoning/reflection/judgment/
-// assembly/tool/memory each render their own meaningful fields — nothing important
-// truncated away (C1).
-function SpanRow({ event, call }: { event: TraceEvent; call?: LlmCall }) {
-  const d = (event.data ?? {}) as Record<string, unknown>;
-  const stage = event.stage;
-  const node = str(d.node);
-
-  // ── LLM call: the richest span — purpose, params, prompt, reply ──────────
-  if (event.message === "llm.call") {
-    const params = (d.params ?? {}) as Record<string, unknown>;
-    const messages = Array.isArray(d.messages) ? (d.messages as Array<Record<string, unknown>>) : [];
-    return (
-      <li className="px-4 py-3 text-sm">
-        <div className="flex flex-wrap items-center gap-2">
-          {call && <span className="font-mono text-xs text-neutral-500 dark:text-neutral-400">#{call.index}</span>}
-          <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${purposeBadge(str(d.purpose))}`}>
-            {str(d.purpose) || "llm call"}
-          </span>
-          <span className="text-xs text-neutral-500">{str(d.model)}</span>
-          <span className="text-[11px] text-neutral-500 dark:text-neutral-400">{str(d.tier)} tier</span>
-          {call && (
-            <span className={`text-[11px] ${call.concurrent ? "text-amber-500" : "text-neutral-500 dark:text-neutral-400"}`}>
-              {call.index === 1 ? "" : call.concurrent ? "∥ parallel" : "→ after #" + (call.index - 1)}
-            </span>
+// ── one LLM call, as a card ────────────────────────────────────────────────
+function CallCard({ call }: { call: LlmCall }) {
+  const d = (call.event.data ?? {}) as Record<string, unknown>;
+  const [open, setOpen] = useState(false);
+  const params = (d.params ?? {}) as Record<string, unknown>;
+  const messages = Array.isArray(d.messages) ? (d.messages as Array<Record<string, unknown>>) : [];
+  const completion = str(d.completion);
+  return (
+    <div className="rounded-xl border border-neutral-200 bg-neutral-50/50 dark:border-neutral-800 dark:bg-neutral-900/40">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-xs">
+        <span className="font-mono text-neutral-400">#{call.index}</span>
+        <span className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${purposeBadge(str(d.purpose))}`}>
+          {prettyPurpose(str(d.purpose))}
+        </span>
+        <span className="text-neutral-500">{shortModel(str(d.model))}</span>
+        <span className="text-neutral-400">{fmtMs(num(d.latency_ms))}</span>
+        <span className="text-neutral-400">${fmtCost(d.cost_usd)}</span>
+        <span className="text-neutral-400">{num(d.input_tokens)}→{num(d.output_tokens)} tok</span>
+        <span className={call.concurrent ? "font-medium text-amber-500" : "text-neutral-400"}>
+          {call.index === 1 ? "" : call.concurrent ? "∥ parallel" : "→ sequential"}
+        </span>
+        {(messages.length > 0 || completion) && (
+          <button onClick={() => setOpen((o) => !o)}
+            className="ml-auto text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">
+            {open ? "hide prompt" : "view prompt & reply"}
+          </button>
+        )}
+      </div>
+      {open && (
+        <div className="space-y-3 border-t border-neutral-200 px-3 py-3 dark:border-neutral-800">
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-500">
+            <span>temp {str(params.temperature) || "—"}</span>
+            <span>max_tokens {str(params.max_tokens) || "—"}</span>
+            <span>format {str(params.response_format) || "text"}</span>
+            <span>{d.cache_hit ? `cache hit (${num(d.cached_tokens)})` : "cache miss"}</span>
+            {params.streamed ? <span>streamed</span> : null}
+          </div>
+          {messages.map((m, i) => (
+            <div key={i}>
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-neutral-400">{str(m.role)}</p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-white p-2.5 font-mono text-[11px] leading-relaxed text-neutral-600 dark:bg-neutral-950/60 dark:text-neutral-300">{str(m.content)}</pre>
+            </div>
+          ))}
+          {completion && (
+            <div>
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">reply</p>
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-emerald-50/60 p-2.5 font-mono text-[11px] leading-relaxed text-neutral-700 dark:bg-emerald-950/20 dark:text-neutral-200">{completion}</pre>
+            </div>
           )}
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-neutral-500">
-          <span>in {num(d.input_tokens)} / out {num(d.output_tokens)} tok</span>
-          <span>${fmtCost(d.cost_usd)}</span>
-          <span>{num(d.latency_ms)} ms</span>
-          <span>{d.cache_hit ? `cache hit (${num(d.cached_tokens)})` : "cache miss"}</span>
-          <span>temp {str(params.temperature) || "—"}</span>
-          <span>max_tokens {str(params.max_tokens) || "—"}</span>
-          <span>format {str(params.response_format) || "text"}</span>
-          {params.streamed ? <span>streamed</span> : null}
-        </div>
-        {messages.length > 0 && (
-          <Expandable label={`prompt sent — ${messages.length} message${messages.length > 1 ? "s" : ""}`}>
-            <div className="space-y-2">
-              {messages.map((m, i) => (
-                <div key={i}>
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">{str(m.role)}</p>
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{str(m.content)}</pre>
-                </div>
-              ))}
-            </div>
-          </Expandable>
-        )}
-        {str(d.completion) && (
-          <Expandable label="reply">
-            <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{str(d.completion)}</pre>
-          </Expandable>
-        )}
-      </li>
-    );
-  }
+      )}
+    </div>
+  );
+}
 
-  // ── every other stage: labelled fields (+ expandable long text) ──────────
-  const rows: [string, string][] = [];
-  const add = (label: string, v: unknown) => {
-    if (v === undefined || v === null || v === "") return;
-    if (Array.isArray(v) && v.length === 0) return;
-    rows.push([label, typeof v === "object" ? JSON.stringify(v, null, 1) : String(v)]);
-  };
-  // reasoning / graph nodes (perceive · resolve_context · respond · reflect_log)
-  add("node", node);
-  add("intent", d.intent); add("emotional read", d.emotional_read);
-  add("needs live info", d.needs_live_info); add("live query", d.live_query);
-  add("relation", d.relation); add("refers to", d.refers_to); add("note", d.note);
-  add("live-search suppressed", d.suppress_live_search ?? d.live_search_suppressed);
-  add("emotion", d.emotion); add("persona context", d.persona_context);
-  add("recent turns", d.recent_turns);
-  add("prompt (managed)", d.prompt_name && `${str(d.prompt_name)} v${str(d.prompt_managed_version)} (${str(d.prompt_source)})`);
-  add("action", d.action); add("available tools", d.available_tools);
-  add("tool why-not", d.tool_why_not);
-  // judgment
-  add("salience", d.salience); add("novelty", d.novelty); add("complexity", d.complexity);
-  add("ambiguity", d.ambiguity); add("boundary", d.boundary_flag);
-  // reflection
-  add("ran", d.ran); add("triggered by", d.triggered_by);
-  add("checked", d.checked); add("revised", d.revised);
-  add("scrubbed", d.scrubbed); add("clean after", d.clean_after);
-  // tools
-  add("tool", d.tool); add("type", d.tool_type); add("mode", d.mode);
-  add("status", d.status); add("ok", d.ok); add("args", d.args);
-  // memory / assembly
-  add("stored", d.semantic || d.episodic || d.trades);
-  add("entities", d.entities); add("recall source", d.recall_source);
-  add("preferences", d.preferences); add("procedural", d.procedural); add("semantic facts", d.semantic_facts);
-  add("prompt version", d.prompt_version);
-  if (d.prompt_chars) add("prompt chars", d.prompt_chars);
-  add("sections", d.sections); add("active traits", d.active_traits);
-  add("style flags", Array.isArray(d.style_flags) && d.style_flags.length ? d.style_flags : undefined);
-  add("total", d.total_ms !== undefined ? `${d.total_ms} ms` : undefined);
-
-  // long verbatim blobs get their own expandable panels, never truncated
-  const longs: [string, string][] = [];
-  const addLong = (label: string, v: unknown) => {
-    const s = typeof v === "string" ? v : v ? JSON.stringify(v, null, 2) : "";
-    if (s) longs.push([label, s]);
-  };
-  addLong("draft", d.draft); addLong("critique", d.critique); addLong("revised text", d.revised_text);
-  addLong("system prompt", d.system_prompt);
-  addLong("trait text", d.trait_text);
-  addLong("result", d.result);
-  if (Array.isArray(d.messages) && stage === "assembly") addLong("assembled messages", d.messages);
-  const voice = str(d.voice_text);
+// ── one pipeline step on the timeline ──────────────────────────────────────
+function Step({ event }: { event: TraceEvent }) {
+  const d = (event.data ?? {}) as Record<string, unknown>;
+  const meta = stageMeta(event.stage, str(d.node));
+  const rows = fieldRows(event.stage, d);
+  const longs = longFields(d);
+  const warn = event.level === "warn" || event.stage === "error";
 
   return (
-    <li className="px-4 py-2.5 text-sm">
-      <div className="flex items-center gap-2">
-        <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${badge(stage)}`}>
-          {stage}{node ? `·${node}` : ""}
-        </span>
-        {event.level === "warn" && <span className="text-amber-500">⚠</span>}
-        {event.message && <span className="truncate text-neutral-500">{event.message.slice(0, 120)}</span>}
+    <li className="relative pb-4 pl-3 last:pb-0">
+      <span className={`absolute -left-[26px] top-0.5 h-3.5 w-3.5 rounded-full ring-4 ring-white dark:ring-neutral-900/40 ${meta.dot}`} />
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className={`text-[13px] font-semibold ${warn ? "text-amber-600 dark:text-amber-400" : ""}`}>{meta.title}</span>
+        {meta.sub && <span className="text-xs text-neutral-400">{meta.sub}</span>}
+        {warn && <span className="text-amber-500">⚠</span>}
       </div>
       {rows.length > 0 && (
-        <dl className="mt-1.5 grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
+        <dl className="mt-1.5 grid grid-cols-[minmax(0,7rem),1fr] gap-x-3 gap-y-1 text-xs">
           {rows.map(([k, v], i) => (
             <div key={i} className="contents">
-              <dt className="text-neutral-500 dark:text-neutral-400">{k}</dt>
-              <dd className="break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{v.slice(0, 800)}</dd>
+              <dt className="text-neutral-400">{k}</dt>
+              <dd className="min-w-0 text-neutral-700 dark:text-neutral-300">{v}</dd>
             </div>
           ))}
         </dl>
       )}
-      {longs.map(([label, text], i) => (
-        <Expandable key={i} label={label}>
-          <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-neutral-600 dark:text-neutral-300">{text}</pre>
-        </Expandable>
-      ))}
-      {voice && <p className="mt-1 break-words text-xs italic text-neutral-500 dark:text-neutral-400">voice: {voice.slice(0, 400)}</p>}
+      {longs.map(([label, text], i) => <Expandable key={i} label={label} text={text} />)}
     </li>
   );
 }
 
-// Collapsible verbatim block — closed by default so a long prompt doesn't flood
-// the page, one click to read the whole thing (C1: full prompt must be reachable).
-function Expandable({ label, children }: { label: string; children: React.ReactNode }) {
+function Cell({ value }: { value: unknown }) {
+  if (Array.isArray(value)) {
+    const items = value.filter((x) => str(x).trim());
+    if (items.length === 0) return <span className="text-neutral-400">none</span>;
+    const shown = items.slice(0, 6);
+    return (
+      <ul className="space-y-0.5">
+        {shown.map((it, i) => <li key={i} className="break-words">• {clean(str(it))}</li>)}
+        {items.length > shown.length && <li className="text-neutral-400">+{items.length - shown.length} more</li>}
+      </ul>
+    );
+  }
+  if (typeof value === "boolean") return <span>{value ? "yes" : "no"}</span>;
+  return <span className="break-words">{clean(str(value))}</span>;
+}
+
+function Expandable({ label, text }: { label: string; text: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-2">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400"
-      >
+      <button onClick={() => setOpen((o) => !o)}
+        className="text-[11px] font-medium text-sky-600 hover:underline dark:text-sky-400">
         {open ? "▾" : "▸"} {label}
       </button>
       {open && (
-        <div className="mt-1 max-h-[28rem] overflow-auto rounded-md border border-neutral-200 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-900/60">
-          {children}
-        </div>
+        <pre className="mt-1 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-neutral-200 bg-neutral-50 p-2.5 font-mono text-[11px] leading-relaxed text-neutral-600 dark:border-neutral-800 dark:bg-neutral-950/50 dark:text-neutral-300">{text}</pre>
       )}
     </div>
   );
 }
 
-// Thumbs up/down per turn, tied to session_id + turn_id so a rating is
-// inspectable with its trace (feeds prompt-version attribution).
+function fieldRows(stage: string, d: Record<string, unknown>): [string, React.ReactNode][] {
+  const rows: [string, React.ReactNode][] = [];
+  const add = (label: string, v: unknown) => {
+    if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) return;
+    rows.push([label, <Cell value={v} />]);
+  };
+  const node = str(d.node);
+  if (node === "resolve_context") {
+    add("intent", d.intent); add("feeling", d.emotional_read);
+    add("relation", d.relation); add("refers to", d.refers_to);
+    if (d.needs_live_info) add("needs live info", `yes — “${str(d.live_query)}”`);
+    add("note", d.note);
+    if (d.prompt_name) add("prompt", `${str(d.prompt_name)} v${str(d.prompt_managed_version)} · ${str(d.prompt_source)}`);
+  } else if (node === "perceive") {
+    add("persona used", d.persona_context); add("recent turns", d.recent_turns);
+    if (d.emotion) add("voice emotion", d.emotion);
+  } else if (node === "reflect_log") {
+    add("action", d.action); add("tools available", d.available_tools);
+    add("style flags", Array.isArray(d.style_flags) && d.style_flags.length ? d.style_flags : undefined);
+  } else if (node === "respond") {
+    add("model tier", d.model_tier); add("used context", d.context_used);
+  } else if (stage === "retrieval") {
+    add("episodic", d.episodic); add("facts", d.semantic_facts ?? d.semantic);
+    add("preferences", d.preferences); add("procedures", d.procedural);
+    add("entities", d.entities); add("recall source", d.recall_source);
+    add("user context", d.user_context_signals);
+  } else if (stage === "assembly") {
+    add("complexity", d.complexity); add("prompt version", d.prompt_version);
+    add("sections", d.sections); add("active traits", d.active_traits);
+    add("user context", d.user_context_signals);
+  } else if (stage === "judgment") {
+    add("intent", d.intent); add("salience", d.salience); add("novelty", d.novelty);
+    add("complexity", d.complexity); add("ambiguity", d.ambiguity); add("boundary", d.boundary_flag);
+  } else if (stage === "reflection") {
+    add("ran", d.ran); add("revised", d.revised);
+    add("critique", d.critique); add("checked", d.checked);
+  } else if (stage === "tool") {
+    add("tool", d.tool); add("status", d.status); add("mode", d.mode);
+    add("args", d.args); add("latency", d.latency_ms ? fmtMs(num(d.latency_ms)) : undefined);
+  } else if (stage === "memory") {
+    add("stored", d.semantic || d.episodic || d.trades);
+  } else if (stage === "router") {
+    add("tier", d.tier); add("model override", d.model_override);
+  } else if (stage === "session") {
+    if (d.total_ms) add("total", fmtMs(num(d.total_ms)));
+  }
+  return rows;
+}
+
+function longFields(d: Record<string, unknown>): [string, string][] {
+  const out: [string, string][] = [];
+  const add = (label: string, v: unknown) => {
+    const s = typeof v === "string" ? v : v ? JSON.stringify(v, null, 2) : "";
+    if (s.trim()) out.push([label, s]);
+  };
+  add("draft", d.draft);
+  if (!d.revised_text) add("critique (full)", d.critique);
+  add("revised reply", d.revised_text);
+  add("system prompt", d.system_prompt); add("trait text", d.trait_text);
+  add("tool result", d.result);
+  return out;
+}
+
+function stageMeta(stage: string, node: string): { title: string; sub: string; dot: string } {
+  const gray = "bg-neutral-300 dark:bg-neutral-600";
+  if (stage === "reasoning") {
+    const m: Record<string, [string, string]> = {
+      perceive: ["Perceived the message", "read persona + recent context"],
+      resolve_context: ["Worked out intent & context", "what you meant + what it connects to"],
+      respond: ["Reasoned & responded", "the main thinking step"],
+      reflect_log: ["Logged the decision", "action + why-not tools"],
+    };
+    const [title, sub] = m[node] ?? ["Reasoned", node];
+    return { title, sub, dot: "bg-sky-400" };
+  }
+  const map: Record<string, [string, string, string]> = {
+    session: ["Turn", "", gray],
+    vad: ["Detected speech", "", gray],
+    stt: ["Transcribed", "speech → text", gray],
+    endpoint: ["Endpointed", "decided you finished", gray],
+    emotion: ["Read your tone", "acoustic emotion", "bg-rose-300"],
+    retrieval: ["Recalled from memory", "before reasoning", "bg-teal-400"],
+    assembly: ["Built the prompt", "", "bg-indigo-400"],
+    router: ["Chose a model", "", gray],
+    judgment: ["Judged the message", "salience · novelty · intent", "bg-indigo-400"],
+    reflection: ["Reviewed its own draft", "self-reflection", "bg-fuchsia-400"],
+    memory: ["Saved to memory", "", "bg-teal-400"],
+    generation: ["Produced the reply", "", "bg-emerald-400"],
+    response: ["Replied", "", "bg-emerald-400"],
+    tool: ["Used a tool", "", "bg-amber-400"],
+    barge_in: ["Interrupted", "stopped + listened", "bg-rose-400"],
+    error: ["Error", "", "bg-rose-500"],
+  };
+  const [title, sub, dot] = map[stage] ?? [stage, "", gray];
+  return { title, sub, dot };
+}
+
+// Only the empty session START marker is hidden (its text is the "You" line / turn
+// header). EVERY other real pipeline span is shown, so no trace goes missing.
+function isNoise(e: TraceEvent): boolean {
+  return e.stage === "session" && !e.data?.total_ms;
+}
+
 function Feedback({ sessionId, turn }: { sessionId: string; turn: number }) {
   const [sent, setSent] = useState<"up" | "down" | null>(null);
   const [noting, setNoting] = useState(false);
   const [note, setNote] = useState("");
-
   async function submit(rating: "up" | "down", withNote = "") {
     setSent(rating);
     await sendFeedback({ session_id: sessionId, turn_id: String(turn), rating, note: withNote }).catch(() => {});
   }
-
   return (
-    <div className="flex items-center gap-2 py-2">
-      <button
-        onClick={() => void submit("up")}
-        className={`rounded px-2 py-1 text-sm ${sent === "up" ? "bg-green-100 dark:bg-green-900" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}
-        title="Good response"
-      >👍</button>
-      <button
-        onClick={() => { setSent("down"); setNoting(true); }}
-        className={`rounded px-2 py-1 text-sm ${sent === "down" ? "bg-red-100 dark:bg-red-900" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}
-        title="Poor response"
-      >👎</button>
+    <div className="flex items-center gap-2 py-3">
+      <span className="text-xs text-neutral-400">Rate this turn</span>
+      <button onClick={() => void submit("up")}
+        className={`rounded-lg px-2 py-1 text-sm ${sent === "up" ? "bg-emerald-100 dark:bg-emerald-900/50" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}>👍</button>
+      <button onClick={() => { setSent("down"); setNoting(true); }}
+        className={`rounded-lg px-2 py-1 text-sm ${sent === "down" ? "bg-rose-100 dark:bg-rose-900/50" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}>👎</button>
       {noting && (
-        <form
-          onSubmit={(e) => { e.preventDefault(); setNoting(false); void submit("down", note); }}
-          className="flex flex-1 items-center gap-2"
-        >
-          <input
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="what went wrong? (optional)"
-            className="flex-1 rounded border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700"
-          />
-          <button type="submit" className="text-sm text-neutral-500 underline">save</button>
+        <form onSubmit={(e) => { e.preventDefault(); setNoting(false); void submit("down", note); }}
+          className="flex flex-1 items-center gap-2">
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="what went wrong? (optional)"
+            className="flex-1 rounded-lg border border-neutral-300 bg-transparent px-2 py-1 text-sm dark:border-neutral-700" />
+          <button type="submit" className="text-sm text-sky-600 hover:underline">save</button>
         </form>
       )}
     </div>
   );
 }
 
-function M({ children }: { children: React.ReactNode }) {
-  return <span className="text-neutral-500">{children}</span>;
+function Pill({ children, tone }: { children: React.ReactNode; tone?: "fuchsia" | "rose" }) {
+  const c = tone === "fuchsia"
+    ? "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300"
+    : tone === "rose"
+    ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
+  return <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${c}`}>{children}</span>;
 }
 
-function badge(stage: string): string {
-  if (stage === "llm") return "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300";
-  if (stage === "tool") return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
-  if (stage === "reasoning") return "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300";
-  if (stage === "response") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300";
-  if (stage === "reflection") return "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300";
-  if (stage === "judgment") return "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300";
-  return "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
-}
-
-// Distinct colour per LLM-call ROLE so the sequence of purposes reads at a glance.
-function purposeBadge(purpose: string): string {
-  const p = purpose || "";
+function purposeBadge(p: string): string {
   if (p === "context_intent") return "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300";
   if (p.startsWith("response")) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300";
   if (p === "search_summarize" || p === "tool_react") return "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
@@ -397,20 +433,20 @@ function purposeBadge(purpose: string): string {
   if (p.includes("memory") || p === "compaction") return "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300";
   return "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300";
 }
-
-function shortModel(model: string): string {
-  return model.split("/").pop() ?? model;
+function prettyPurpose(p: string): string {
+  return ({
+    context_intent: "intent & context", response: "response", response_repair: "repair reply",
+    response_plain: "plain reply", search_summarize: "summarize search", tool_react: "tool step",
+    judge: "judge", memory_extraction: "extract memory", psych_consolidation: "psych", self_model: "self-model",
+    compaction: "compaction", delivery_relevance: "delivery", project_insight: "project insight",
+    style_rewrite: "style rewrite", disclosure_polish: "disclosure",
+  } as Record<string, string>)[p] || p || "call";
 }
-function fmtCost(v: unknown): string {
-  const n = num(v);
-  return n > 0 ? n.toFixed(5) : "0";
-}
-function num(v: unknown): number {
-  return typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) || 0 : 0;
-}
-function find(spans: TraceEvent[], stage: string): TraceEvent | undefined {
-  return spans.find((e) => e.stage === stage);
-}
-function str(v: unknown): string {
-  return typeof v === "string" ? v : v === undefined || v === null ? "" : String(v);
-}
+function shortModel(m: string): string { return m.split("/").pop() ?? m; }
+function fmtMs(v: unknown): string { const n = num(v); return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`; }
+function fmtNum(n: number): string { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
+function fmtCost(v: unknown): string { const n = num(v); return n > 0 ? n.toFixed(4) : "0"; }
+function clean(s: string): string { return s.replace(/^- /, "").trim(); }
+function num(v: unknown): number { return typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) || 0 : 0; }
+function find(spans: TraceEvent[], stage: string): TraceEvent | undefined { return spans.find((e) => e.stage === stage); }
+function str(v: unknown): string { return typeof v === "string" ? v : v === undefined || v === null ? "" : String(v); }

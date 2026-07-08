@@ -10,7 +10,6 @@ import {
   AudioPlayer,
   MicCapture,
   listMicrophones,
-  requestMicAccess,
 } from "../lib/audio";
 import { fetchMe, logout, type Me } from "../lib/session";
 import {
@@ -89,12 +88,12 @@ export default function CompanionPage() {
   const turnStateRef = useRef<TurnState>("idle");
 
   useEffect(() => {
-    // This route only mounts once the user has entered, so proactively prompt
-    // for mic access on mount so device labels populate and capture works on
-    // first Start. Silent if denied — MicPicker still explains how to grant it.
-    requestMicAccess().then((granted) => {
-      if (granted) listMicrophones().then(setDevices).catch(() => {});
-    });
+    // Populate the device list WITHOUT opening the mic. Opening getUserMedia on
+    // page load put phones/tablets into COMMUNICATION (call) audio mode, so the
+    // hardware volume keys controlled the call stream instead of media — even
+    // before starting a conversation. enumerateDevices() doesn't trigger that;
+    // the actual mic (and its call-mode) opens only on the Start gesture.
+    listMicrophones().then(setDevices).catch(() => {});
   }, []);
 
   const setTurn = (s: TurnState) => {

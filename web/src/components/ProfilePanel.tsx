@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { fetchProfile, updatePrefs, type LocaleProfile, type UserProfile } from "../lib/profile";
 
@@ -43,20 +44,27 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 z-40">
-      {/* Scrim */}
+  // Portal to <body>: the panel is rendered from inside the app header, which has
+  // backdrop-blur (a filter) — a filtered ancestor makes `position: fixed` resolve
+  // to the header's box, not the viewport, so the panel only covered the header and
+  // the page bled through (the "glitching / not properly opened" bug). Rendering
+  // into <body> escapes that containing block.
+  return createPortal(
+    <div className="fixed inset-0 z-50">
+      {/* Scrim — solid translucent (no backdrop-filter: it caused a mobile
+          compositing glitch where the panel body rendered transparent). */}
       <div
-        className="absolute inset-0 bg-slate-900/30 backdrop-blur-sm dark:bg-slate-950/50"
+        className="absolute inset-0 bg-slate-900/40 dark:bg-slate-950/60"
         onClick={onClose}
         aria-hidden
       />
 
-      {/* Panel */}
+      {/* Panel — opaque, above the scrim, slides in from the right. Wider than
+          before (room to grow) and mobile-first: full width up to a sane max. */}
       <aside
         role="dialog"
         aria-label="Your profile"
-        className="absolute right-0 top-0 flex h-full w-full max-w-sm flex-col border-l border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
+        className="absolute right-0 top-0 z-10 flex h-full w-full max-w-md flex-col border-l border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-950"
       >
         <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
@@ -121,7 +129,8 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
           </button>
         </footer>
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
