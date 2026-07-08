@@ -612,3 +612,25 @@ each node logging a reasoning span incl. negative context (A5). The heavy judged
 ResponseGenerator (respond node) so quality isn't regressed. A3 context carrying fixed: "that
 temperature" resolves to the prior weather (real capture); real_call tests pass. Blueprint added to
 the design doc. Note: search-backstop-overrides-context refinement deferred to the dedicated A3 item.
+
+---
+
+## Trace detail + Langfuse-to-prod (2026-07-08)
+
+**In-app full trace detail (self-contained).** The user asked "where is my full end-to-end trace
+detail page?". The durable per-turn trace was already stored in Mongo (`turn_traces`,
+`core/observability/trace_store.py`) but only surfaced as a summary list behind a session dropdown.
+Added a dedicated `/traces/:sessionId` page (reusable `<TraceTimeline>`) that renders EVERY span of
+every turn from that store — so the full trace is inspectable on prod with NO Langfuse running.
+Traces + Conversations lists switched from dropdown/inline-expand to server-side date-range filter +
+pagination; a conversation detail page (`/conversations/:sessionId`) reuses the same trace component.
+
+**Langfuse to prod — topology decision.** User asked to deploy Langfuse to prod and "reuse redis,
+postgres". Reality on the box: datastores are Mongo/Qdrant/Neo4j/Redis — there is **no postgres** to
+reuse, and the app's `companion-redis` is the queue/cache. Langfuse's BullMQ requires
+`maxmemory-policy noeviction`; forcing that on the shared cache would violate the app's cache/queue
+behavior (invariant §8/§10 spirit), and key-namespace collisions are a real risk. Decision: deploy
+Langfuse as its **self-contained bundled stack** (its own postgres + redis + clickhouse + minio),
+which is Langfuse's supported topology, and point the companion app at it via LANGFUSE_ENABLED=1 +
+host/keys. Box has 58Gi free RAM / 950Gi disk, so isolation costs nothing meaningful. The Mongo trace
+store remains the PRIMARY full-trace source; Langfuse is the optional richer viewer + deep-link target.
