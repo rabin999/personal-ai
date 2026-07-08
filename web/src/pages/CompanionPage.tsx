@@ -55,6 +55,10 @@ export default function CompanionPage() {
   const [micMuted, setMicMuted] = useState(false); // user-controlled mic mute
 
   const micMutedRef = useRef(false);
+  // Set when the user said goodbye: the conversation ends once the companion's
+  // farewell finishes playing (see the player's onEnded), so the button returns
+  // to "Start conversation" instead of stopping mid-sentence.
+  const pendingEndRef = useRef(false);
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicCapture | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
@@ -152,6 +156,12 @@ export default function CompanionPage() {
         // stopped streaming, so barge-in stays available throughout.
         setLevel(0);
         setTurn("idle");
+        // If the user said goodbye, end the conversation now that the companion's
+        // farewell has finished playing → the button returns to "Start".
+        if (pendingEndRef.current) {
+          pendingEndRef.current = false;
+          void stopConversation();
+        }
       },
     );
 
@@ -193,6 +203,8 @@ export default function CompanionPage() {
           if (ev2.stage === "barge_in") playerRef.current?.interrupt();
           // The next reply is synthesizing → accept its audio again.
           if (ev2.stage === "tts") playerRef.current?.resume();
+          // User said "bye"/"close the conversation": end once the farewell plays out.
+          if (ev2.data?.end_conversation) pendingEndRef.current = true;
           handleTrace(ev2);
           break;
         }
@@ -354,6 +366,7 @@ export default function CompanionPage() {
         <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-4 py-8 sm:px-6">
           {/* Soft backdrop wash */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(14,165,233,0.08),transparent_70%)]" />
+          <StatusChip state={turnState} />
           <Orb state={turnState} level={level} />
           {/* Live mic-input waveform — reacts to the user's voice while listening. */}
           {conn === "active" && (
@@ -545,6 +558,28 @@ export default function CompanionPage() {
         onClose={() => setProfileOpen(false)}
         onSignOut={signOut}
       />
+    </div>
+  );
+}
+
+// Live turn status, pinned to the top-right of the conversation body (out of the
+// way of the flame) rather than sitting on top of the animation.
+const STATUS: Record<TurnState, { label: string; dot: string }> = {
+  idle: { label: "Ready", dot: "#38bdf8" },
+  listening: { label: "Listening", dot: "#34d399" },
+  thinking: { label: "Thinking", dot: "#a78bfa" },
+  speaking: { label: "Speaking", dot: "#22d3ee" },
+};
+
+function StatusChip({ state }: { state: TurnState }) {
+  const s = STATUS[state];
+  return (
+    <div className="pointer-events-none absolute right-4 top-4 z-10 flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/70 px-3 py-1.5 text-sm font-medium text-slate-600 backdrop-blur-md sm:right-6 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-200">
+      <span
+        className={`h-2 w-2 rounded-full ${state !== "idle" ? "animate-pulse" : ""}`}
+        style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}
+      />
+      {s.label}
     </div>
   );
 }

@@ -14,6 +14,7 @@ can show the whole pipeline and replay each reply's audio.
 
 import asyncio
 import logging
+import re
 import time
 from collections import deque
 from collections.abc import AsyncIterator
@@ -66,6 +67,19 @@ _PREROLL_FRAMES = 10
 # cancel the reply. ~8 frames ≈ 256ms — longer than an echo transient, shorter
 # than a real interruption — so the companion stops for the user, not for itself.
 _BARGE_IN_FRAMES = 8
+
+# The user explicitly ending the conversation (spoken). Kept deliberately tight so a
+# passing "bye the way" or "goodbye kiss" story doesn't hang up on them.
+_FAREWELL = re.compile(
+    r"\b(bye|byebye|goodbye|good bye|see (you|ya)( later| soon)?|talk (to you )?later|"
+    r"catch you later|gotta go|got to go|i'?m done( talking)?|that'?s all( for now)?|"
+    r"(close|end|stop) (the |this )?(conversation|chat|call)|hang up|let'?s stop)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_farewell(text: str) -> bool:
+    return bool(_FAREWELL.search(text or ""))
 
 
 class VoiceSession:
@@ -460,6 +474,10 @@ class VoiceSession:
                     reply=result.final_text,
                 )
             self._trace.emit("tts", "reply audio complete")
+            # User asked to end ("bye", "close the conversation") → after the
+            # companion's goodbye plays, signal the client to end + reset to Start.
+            if _is_farewell(transcript):
+                self._trace.emit("session", "user ended the conversation", end_conversation=True)
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled", phase="cancelled")
             raise
