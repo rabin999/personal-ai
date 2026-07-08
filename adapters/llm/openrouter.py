@@ -68,7 +68,7 @@ def _trim_messages(
 
 # Fallback chains if provider_config carries no llm_router document.
 DEFAULT_TIERS: dict[str, list[str]] = {
-    "simple": ["google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
+    "simple": ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
     "moderate": ["google/gemini-2.5-flash", "openai/gpt-4.1-mini"],
     "complex": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro"],
 }
@@ -86,6 +86,7 @@ class OpenRouterLLM:
         self._ledger = ledger
         self._logs = logs
         self._tiers = {**DEFAULT_TIERS, **dict(tiers or {})}
+        self._catalog: list[str] = []  # live OpenRouter model ids (cached at startup)
         self._client = AsyncOpenAI(
             api_key=settings.open_router_api_key,
             base_url=settings.open_router_base_url,
@@ -124,6 +125,19 @@ class OpenRouterLLM:
         model override (fast OR reasoning) is validated against."""
         return {m for chain in self._tiers.values() for m in chain}
 
+    def catalog_models(self) -> list[str]:
+        """The full live OpenRouter model catalog (cached at startup) — so the UI can
+        offer EVERY model, not just the few configured tiers, with a search filter.
+        Empty if the catalog was unreachable (UI then falls back to the tier choices)."""
+        return list(self._catalog)
+
+    def is_selectable_model(self, model: str) -> bool:
+        """A user may pick any real catalog model (or a configured one if the catalog
+        is unavailable). Guards against a garbage id being persisted."""
+        if self._catalog:
+            return model in self._catalog
+        return model in self._known_models()
+
     async def verify_models(self) -> dict[str, list[str]]:
         """Check configured tier models against the live OpenRouter catalog.
 
@@ -135,6 +149,7 @@ class OpenRouterLLM:
         try:
             page = await self._client.models.list()
             catalog = {model.id for model in page.data}
+            self._catalog = sorted(catalog)  # cache for the model-picker (full list)
         except Exception as exc:  # catalog unreachable → skip (don't block startup)
             logger.warning("could not fetch OpenRouter catalog to verify models: %s", exc)
             return {"missing": [], "no_fallback": []}

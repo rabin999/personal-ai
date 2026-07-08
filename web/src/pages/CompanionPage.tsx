@@ -79,6 +79,9 @@ export default function CompanionPage() {
   // Fast/flash LLM the user can pick (§4). Empty = the tier default.
   const [models, setModels] = useState<string[]>([]);
   const [model, setModel_] = useState<string>("");
+  // Full live catalog (all models) so the picker can search everything, not just the
+  // configured few. Falls back to the curated choices if the catalog is empty.
+  const [catalog, setCatalog] = useState<string[]>([]);
   // F8: the mature "thinking"/reasoning model for the main turn. Empty = default.
   const [reasoningModels, setReasoningModels] = useState<string[]>([]);
   const [reasoningModel, setReasoningModel_] = useState<string>("");
@@ -86,6 +89,7 @@ export default function CompanionPage() {
     getModels()
       .then((m) => {
         setModels(m.choices);
+        setCatalog(m.catalog?.length ? m.catalog : m.choices);
         setModel_(m.selected ?? "");
         setReasoningModels(m.reasoning_choices ?? []);
         setReasoningModel_(m.reasoning_model ?? "");
@@ -504,43 +508,44 @@ export default function CompanionPage() {
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Fast model</span>
-                <select
+                <input
+                  list="fast-model-list"
                   value={model}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setModel_(v);
-                    void saveModel(v || null);
+                  onChange={(e) => setModel_(e.target.value)}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v === "" || catalog.includes(v)) void saveModel(v || null);
                   }}
+                  placeholder="Default (auto) — type to search"
                   className={FIELD}
-                  title="The fast/flash model for quick sub-steps. Applies from the next turn; changeable anytime."
-                >
-                  <option value="">Default (auto)</option>
-                  {models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
+                  title="Search any model (gemini-2.5-flash is the default). Applies from the next turn."
+                />
+                <datalist id="fast-model-list">
+                  {(catalog.length ? catalog : models).map((m) => (
+                    <option key={m} value={m} />
                   ))}
-                </select>
+                </datalist>
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Thinking model</span>
-                <select
+                <input
+                  list="thinking-model-list"
                   value={reasoningModel}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    setReasoningModel_(v);
-                    void saveReasoningModel(v || null).catch(() => {});
+                  onChange={(e) => setReasoningModel_(e.target.value)}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v === "" || catalog.includes(v))
+                      void saveReasoningModel(v || null).catch(() => {});
                   }}
+                  placeholder="Default (auto) — type to search"
                   className={FIELD}
-                  title="The mature model that does the main reasoning turn (F8/A2). Applies from the next turn; shown in the trace."
-                >
-                  <option value="">Default (auto)</option>
-                  {reasoningModels.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
+                  title="The mature model for the main reasoning turn. Applies from the next turn; shown in the trace."
+                />
+                <datalist id="thinking-model-list">
+                  {(catalog.length ? catalog : reasoningModels).map((m) => (
+                    <option key={m} value={m} />
                   ))}
-                </select>
+                </datalist>
               </label>
             </div>
 

@@ -51,6 +51,9 @@ async def list_models(user: CurrentUser, request: Request) -> dict[str, Any]:
     profile = await pipeline.profiles.get(user.user_id)
     return {
         "choices": pipeline.llm.fast_model_choices(),
+        # Full live OpenRouter catalog so the picker can search ALL models, not just
+        # the configured few (user request). Empty → UI falls back to `choices`.
+        "catalog": pipeline.llm.catalog_models(),
         "selected": profile.model_prefs.fast_model,
         "default": pipeline.llm.route("simple"),
         # F8: the user-selectable mature "thinking"/reasoning model + this user's
@@ -72,12 +75,14 @@ async def set_model(body: dict[str, Any], user: CurrentUser, request: Request) -
     updates: dict[str, Any] = {}
     if "fast_model" in body:
         fast = body["fast_model"]
-        if fast is not None and fast not in pipeline.llm.fast_model_choices():
+        # Any real catalog model is selectable (user request: full list), not just the
+        # few configured tier models.
+        if fast is not None and not pipeline.llm.is_selectable_model(fast):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown model")
         updates["fast_model"] = fast
     if "reasoning_model" in body:
         rm = body["reasoning_model"]
-        if rm is not None and rm not in pipeline.llm.reasoning_model_choices():
+        if rm is not None and not pipeline.llm.is_selectable_model(rm):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="unknown reasoning model"
             )

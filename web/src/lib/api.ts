@@ -148,6 +148,7 @@ export function getAttribution(): Promise<{ by_prompt_version: VersionRow[] }> {
 // ── model selection (§4 / F8) ─────────────────────────────────────────────
 export function getModels(): Promise<{
   choices: string[];
+  catalog: string[];
   selected: string | null;
   default: string;
   reasoning_choices: string[];
