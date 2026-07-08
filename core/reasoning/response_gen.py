@@ -456,6 +456,7 @@ class ResponseGenerator:
                 ],
                 "simple",
                 session_id=prompt.session_id,
+                purpose="response_repair",
             )
         except LLMUnavailable:
             return summary  # at least hand them the real facts
@@ -523,6 +524,7 @@ class ResponseGenerator:
             prompt.complexity_hint,
             session_id=prompt.session_id,
             model=prompt.model_override,
+            purpose="response",
         ):
             text += delta
             while (b := _sentence_end(text, spoken)) is not None:
@@ -701,6 +703,7 @@ class ResponseGenerator:
                 _ESCALATE_TIER[self._reasoning_tier],  # stronger than the routed tier
                 session_id=prompt.session_id,
                 max_tokens=200,
+                purpose="disclosure_polish",
             )
         except LLMUnavailable:
             return text
@@ -725,6 +728,7 @@ class ResponseGenerator:
                 [{"role": "user", "content": instruction}],
                 "simple",
                 session_id=prompt.session_id,
+                purpose="style_rewrite",
             )
         except LLMUnavailable:
             return text
@@ -821,6 +825,7 @@ class ResponseGenerator:
                     response_format={"type": "json_object"},
                     session_id=prompt.session_id,
                     model=model,  # §4 user fast-model choice (first attempt only)
+                    purpose="response",
                 )
             except LLMUnavailable:
                 logger.warning("generation call failed (attempt %d)", attempt + 1)
@@ -855,6 +860,7 @@ class ResponseGenerator:
                 _ESCALATE_TIER[self._reasoning_tier],
                 session_id=prompt.session_id,
                 max_tokens=400,
+                purpose="response_plain",
             )
         except LLMUnavailable:
             logger.warning("plain-reply fallback failed; using canned safe line")

@@ -40,11 +40,17 @@ class LLM(Protocol):
         session_id: str | None = None,
         max_tokens: int | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        purpose: str = "",
     ) -> CompletionResult:
         """Route to the tier's model chain; raise LLMUnavailable if all fail.
 
         ``model`` (a user-selected fast model, §4) is tried first when given,
-        with the tier chain kept as fallback.
+        with the tier chain kept as fallback. ``purpose`` labels the CALL'S ROLE in
+        the turn (e.g. "context_intent", "response", "reflection", "judge",
+        "memory_extraction") so the deep per-turn trace can show WHY each model call
+        happened, not just that it did (C1). It is trace metadata only — never sent
+        to the provider.
         """
         ...
 
@@ -57,6 +63,8 @@ class LLM(Protocol):
         response_format: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        purpose: str = "",
     ) -> AsyncIterator[str]:
         """Stream the completion as text deltas (spec §8.12 — start TTS on the
         first sentence). Cost + the per-call span are logged when the stream ends.

@@ -192,6 +192,8 @@ class FakeLLM:
         session_id: str | None = None,
         max_tokens: int | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        purpose: str = "",
     ) -> Any:
         from ports.llm import CompletionResult
 

@@ -220,6 +220,7 @@ class LangGraphOrchestrator:
                 "moderate",
                 response_format={"type": "json_object"},
                 session_id=prompt.session_id,
+                purpose="context_intent",
             )
             parsed = json.loads(_strip(res.text))
             relation = str(parsed.get("relation") or "new_topic")

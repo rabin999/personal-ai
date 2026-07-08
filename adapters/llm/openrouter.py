@@ -156,6 +156,8 @@ class OpenRouterLLM:
         session_id: str | None = None,
         max_tokens: int | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        purpose: str = "",
     ) -> CompletionResult:
         errors: list[str] = []
         chain = list(self._tiers[tier])
@@ -165,17 +167,30 @@ class OpenRouterLLM:
         if model and model in self._known_models():
             chain = [model, *[m for m in chain if m != model]]
         for model_id in chain:
+            wall_start = time.time()
             started = time.perf_counter()
             try:
-                result = await self._call(model_id, messages, response_format, max_tokens)
+                result = await self._call(
+                    model_id, messages, response_format, max_tokens, temperature
+                )
             except Exception as exc:
                 errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
                 logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
                 continue
             self._log_cost(user_id, result, session_id)
-            # Per-LLM-call span (CLAUDE.md §5): model / tokens / cost / latency +
-            # the actual prompt/reply, correlation-bound to the current turn.
-            self._log_call(result, tier, (time.perf_counter() - started) * 1000, messages)
+            # Per-LLM-call span (CLAUDE.md §5 / C1): model / tokens / cost / latency +
+            # the actual prompt/reply + the call's PURPOSE + full params + precise
+            # start/end wall-clock (so the trace can show ordering AND parallel-vs-
+            # sequential concurrency), correlation-bound to the current turn.
+            self._log_call(
+                result,
+                tier,
+                (time.perf_counter() - started) * 1000,
+                messages,
+                purpose=purpose,
+                params=self._params(model_id, response_format, max_tokens, temperature, False),
+                wall_start=wall_start,
+            )
             return result
         raise LLMUnavailable(f"all models failed for tier '{tier}': {'; '.join(errors)}")
 
@@ -188,6 +203,8 @@ class OpenRouterLLM:
         response_format: Mapping[str, Any] | None = None,
         session_id: str | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        purpose: str = "",
     ) -> AsyncIterator[str]:
         """Stream text deltas from the first model in the chain (§8.12).
 
@@ -198,6 +215,7 @@ class OpenRouterLLM:
         if model and model in self._known_models():
             chain = [model, *[m for m in chain if m != model]]
         model_id = chain[0]
+        wall_start = time.time()
         started = time.perf_counter()
         kwargs: dict[str, Any] = {
             "model": model_id,
@@ -208,6 +226,8 @@ class OpenRouterLLM:
         }
         if response_format is not None:
             kwargs["response_format"] = response_format
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         try:
             stream = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:
@@ -226,7 +246,15 @@ class OpenRouterLLM:
 
         result = self._result_from_usage("".join(parts), model_id, usage)
         self._log_cost(user_id, result, session_id)
-        self._log_call(result, tier, (time.perf_counter() - started) * 1000, messages)
+        self._log_call(
+            result,
+            tier,
+            (time.perf_counter() - started) * 1000,
+            messages,
+            purpose=purpose or "response",
+            params=self._params(model_id, response_format, None, temperature, True),
+            wall_start=wall_start,
+        )
 
     def _result_from_usage(self, text: str, model_id: str, usage: Any) -> CompletionResult:
         cost = 0.0
@@ -260,6 +288,7 @@ class OpenRouterLLM:
         messages: Sequence[Mapping[str, Any]],
         response_format: Mapping[str, Any] | None,
         max_tokens: int | None,
+        temperature: float | None = None,
     ) -> CompletionResult:
         kwargs: dict[str, Any] = {
             "model": model,
@@ -271,6 +300,8 @@ class OpenRouterLLM:
             kwargs["response_format"] = response_format
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         response = await self._client.chat.completions.create(**kwargs)
         choice = response.choices[0]
         usage = response.usage
@@ -286,25 +317,59 @@ class OpenRouterLLM:
             cached_tokens=_cached_tokens(usage),
         )
 
+    @staticmethod
+    def _params(
+        model_id: str,
+        response_format: Mapping[str, Any] | None,
+        max_tokens: int | None,
+        temperature: float | None,
+        streamed: bool,
+    ) -> dict[str, Any]:
+        """The FULL request params for the call (C1) — so the trace shows exactly how
+        each model was invoked. ``temperature`` shows the provider default when the
+        app didn't pin one (we don't send a value, so the model's own default holds)."""
+        return {
+            "model": model_id,
+            "temperature": "provider default" if temperature is None else temperature,
+            "max_tokens": "unbounded" if max_tokens is None else max_tokens,
+            "response_format": (response_format or {}).get("type", "text"),
+            "streamed": streamed,
+        }
+
     def _log_call(
         self,
         result: CompletionResult,
         tier: Tier,
         latency_ms: float,
         messages: Sequence[Mapping[str, Any]] | None = None,
+        *,
+        purpose: str = "",
+        params: dict[str, Any] | None = None,
+        wall_start: float | None = None,
     ) -> None:
         if self._logs is None:
             return
+        end = time.time()
         self._logs.log(
             "info",
             "llm.call",
             stage="llm",
+            # C1: the CALL'S ROLE this turn (context_intent / response / reflection /
+            # judge / memory_extraction / …) so the trace shows WHY each call ran.
+            purpose=purpose or "unlabeled",
             model=result.model,
             tier=tier,
+            # C1: the full request params (temperature, max_tokens, response_format,
+            # streamed) that produced this call.
+            params=params or {},
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             cost_usd=result.cost_usd,
             latency_ms=round(latency_ms, 1),
+            # C1: precise wall-clock window so the UI can order the calls AND detect
+            # which ran concurrently (parallel) vs. one-after-another (sequential).
+            start_ts=round(wall_start, 4) if wall_start is not None else None,
+            end_ts=round(end, 4),
             # Item 7 prompt caching: how many input tokens were served from cache
             # (billed $0), and whether this call was a cache hit at all.
             cached_tokens=result.cached_tokens,

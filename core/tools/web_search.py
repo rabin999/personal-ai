@@ -140,6 +140,7 @@ class WebSearch:
                 ],
                 "simple",
                 session_id=session_id,
+                purpose="search_summarize",
             )
             if completion.text.strip():
                 return completion.text.strip()

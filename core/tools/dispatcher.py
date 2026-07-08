@@ -337,6 +337,7 @@ class ToolDispatcher:
                     prompt.complexity_hint,
                     response_format={"type": "json_object"},
                     session_id=prompt.session_id,
+                    purpose="tool_react",
                 )
                 return _LoopStep.model_validate_json(result.text)
             except (LLMUnavailable, ValidationError, ValueError):

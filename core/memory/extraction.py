@@ -195,6 +195,7 @@ class MemoryExtractor:
                     "simple",
                     response_format={"type": "json_object"},
                     session_id=session_id,
+                    purpose="memory_extraction",
                 )
                 return Extraction.model_validate_json(_strip_fences(result.text))
             except (LLMUnavailable, ValidationError, ValueError, json.JSONDecodeError):

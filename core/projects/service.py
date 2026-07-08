@@ -286,7 +286,9 @@ class ProjectService:
             {"role": "user", "content": f"Project {project.name} metrics: {state.metrics}"},
         ]
         try:
-            result = await self._llm.complete(user_id, messages, "simple")
+            result = await self._llm.complete(
+                user_id, messages, "simple", purpose="project_insight"
+            )
         except LLMUnavailable:
             logger.warning("insight composition unavailable; skipping")
             return None

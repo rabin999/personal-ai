@@ -143,7 +143,7 @@ class SelfModel:
         ]
         for _ in range(2):  # retry once (rule §0.5)
             try:
-                result = await self._llm.complete(user_id, messages, "simple")
+                result = await self._llm.complete(user_id, messages, "simple", purpose="self_model")
             except LLMUnavailable:
                 continue
             if result.text.strip():

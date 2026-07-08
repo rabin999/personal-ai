@@ -94,5 +94,6 @@ class SessionCompactor:
             "simple",  # cheap tier — summarization is off the reply path
             session_id=session_id,
             max_tokens=500,
+            purpose="compaction",
         )
         return result.text.strip()

@@ -80,6 +80,6 @@ async def judge_companion_voice(llm: JudgeLLM, user_msg: str, reply: str) -> Ver
         {"role": "user", "content": f"USER said: {user_msg!r}\nCOMPANION replied: {reply!r}"},
     ]
     result = await llm.complete(
-        "judge", messages, JUDGE_TIER, response_format={"type": "json_object"}
+        "judge", messages, JUDGE_TIER, response_format={"type": "json_object"}, purpose="judge"
     )
     return Verdict.model_validate(_extract_json(result.text))

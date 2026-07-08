@@ -56,6 +56,8 @@ class FakeLLM:
         session_id: str | None = None,
         max_tokens: int | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        purpose: str = "",
     ) -> CompletionResult:
         self.calls.append(messages)
         if self.fail_times > 0:

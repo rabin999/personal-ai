@@ -186,6 +186,7 @@ class Consolidator:
                     "moderate",
                     response_format={"type": "json_object"},
                     session_id=session_id,
+                    purpose="psych_consolidation",
                 )
                 return SessionAnalysis.model_validate(json.loads(result.text))
             except (LLMUnavailable, ValidationError, ValueError):

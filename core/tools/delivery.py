@@ -100,6 +100,7 @@ class DeliveryComposer:
                     "simple",
                     response_format={"type": "json_object"},
                     session_id=task.session_id,
+                    purpose="delivery_relevance",
                 )
                 composed = _Composed.model_validate_json(result.text)
             except (LLMUnavailable, ValidationError, ValueError):
