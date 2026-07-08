@@ -63,6 +63,7 @@ from core.tools.dispatcher import ToolDispatcher
 from core.tools.registry import ToolRegistry
 from core.tools.results import ToolResultStore
 from core.tools.web_search import WebSearch
+from ports.doc_store import DocStore
 from ports.prompt import PromptProvider
 from ports.score_sink import ScoreSink
 
@@ -81,6 +82,7 @@ class Pipeline:
 
     settings: Settings
     db: Database
+    docs: DocStore  # raw user-scoped doc store (account deletion, etc.)
     ledger: CostLedger
     profiles: ProfileService
     registry: TraitRegistry
@@ -283,6 +285,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     return Pipeline(
         settings=settings,
         db=db,
+        docs=docs,
         ledger=ledger,
         profiles=profiles,
         registry=registry,
