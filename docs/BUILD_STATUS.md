@@ -11,8 +11,18 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 && lint-imports && pytest` is green. (See CLAUDE.md §6.) Track test levels per module
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
-**Last updated:** 2026-07-07
-**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅)_
+**Last updated:** 2026-07-08
+**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅ + follow-up fixes F1–F16 ✅)_
+
+> **Follow-up fix pass (2026-07-08):** completed F1–F16 (voice barge-in AEC-attenuation fix +
+> Pipecat prod startup; dual-model Whisper STT; conversation-context + past-conversation recall
+> routing; intent inference for indirect asks; operative + trace-visible traits; full verbatim
+> per-turn trace incl. self-reflection draft→revision; UI thinking-model selector + external tool
+> links + unified app shell + conversation previews + mobile pass; Langfuse prompt management +
+> human-eval scoring behind ports; long-session rolling-summary compaction; disabled-mailer
+> visibility). Each proven by real E2E + judged where behavioral, logged in `docs/TEST_REPORT.md`.
+> Hardware/credential blockers documented honestly: real-mic barge-in audio, on-device mobile
+> feel, and Gmail SMTP credentials (welcome email) need a human/device.
 
 > **Autonomous hardening pass (2026-07-07):** root-cause fixes for reported voice/tool/
 > memory/style issues, driven by `docs/GAP_ANALYSIS.md`; decisions + full DoD status in
