@@ -5,6 +5,8 @@ import httpx
 from ports.search import SearchProviderError, SearchResult
 
 _ENDPOINT = "https://google.serper.dev/search"
+# Serper time-filter (Google tbs=qdr): bias to recent pages for "latest" queries (§15).
+_QDR = {"day": "qdr:d", "week": "qdr:w", "month": "qdr:m", "year": "qdr:y"}
 
 
 class SerperSearch:
@@ -16,15 +18,20 @@ class SerperSearch:
         self._api_key = api_key
         self._timeout = timeout_s
 
-    async def search(self, query: str, max_results: int = 8) -> list[SearchResult]:
+    async def search(
+        self, query: str, max_results: int = 8, *, recency: str | None = None
+    ) -> list[SearchResult]:
         if not self._api_key:
             raise SearchProviderError("SERPER_API_KEY not configured")
+        payload: dict[str, object] = {"q": query, "num": max_results}
+        if recency and recency in _QDR:
+            payload["tbs"] = _QDR[recency]
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.post(
                     _ENDPOINT,
                     headers={"X-API-KEY": self._api_key},
-                    json={"q": query, "num": max_results},
+                    json=payload,
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:

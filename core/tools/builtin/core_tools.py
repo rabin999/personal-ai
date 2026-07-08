@@ -79,8 +79,15 @@ def register_core_tools(
     registry.register(
         ToolSpec(
             id="web_search",
-            description="Search the LIVE web for current / real-time info — news, "
-            "sports scores, prices, events, 'what's happening'. args: {\"query\": str}",
+            description=(
+                "Search the LIVE web for current / real-time info — news, sports scores, "
+                "prices, events, 'what's happening'. Write a SELF-CONTAINED, specific "
+                "query with enough context to get the RIGHT result: include the concrete "
+                "subject + any key entities/place from the conversation (resolve pronouns "
+                "— 'that plane' → 'Boeing cargo plane missing near Pakistan'), and add "
+                "'latest' or 'today' for unfolding events. Don't send a vague fragment. "
+                'args: {"query": str}'
+            ),
             type="background",
             latency_class="slow",
         ),

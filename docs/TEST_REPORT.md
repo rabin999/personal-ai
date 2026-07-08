@@ -2023,3 +2023,26 @@ visible symptom.
 
 **Mobile:** trace turn cards show summary pills on mobile + tighter padding; Awareness
 settings rows keep controls on-screen (min-w-0 labels + shrink-0 controls).
+
+## Fix — search freshness + context-rich queries + graceful failure (§15)
+
+**Stale results** (reported: a current missing-plane story returned stale info): the
+Serper/Brave query carried NO recency filter. Added a `recency` param to the search
+port + both adapters (Serper `tbs=qdr:*`, Brave `freshness`), and `_recency_for(query)`:
+default **month** (the user wants "latest" for anything online), **week** for
+time-sensitive / breaking-news queries (news/latest/today/missing/crash/…), and **no
+filter** only when the query names a specific historical year/timeline. The summarizer
+now leads with the most recent info + states how recent.
+
+**Context-rich queries:** the web_search tool description now tells the model to write
+a SELF-CONTAINED query — resolve pronouns to the concrete subject + place from the
+conversation ("that plane" → "Boeing cargo plane missing near Pakistan"), add "latest"
+for unfolding events — not a vague fragment.
+
+**Graceful failure** (user request): `web_search.run` catches provider failure and
+returns a plain "I couldn't get current results on it" summary — never blocks or errors
+to the user; the companion conveys what failed.
+
+**Verified:** unit (`test_web_search.py`, 10) — recency: breaking→week, 1503→none;
+both-providers-down → graceful summary (no raise). Real search "latest top news today"
+→ fresh dated results ("As of today, July 8 …").

@@ -19,6 +19,12 @@ class SearchProvider(Protocol):
     name: str
     cost_per_query_usd: float
 
-    async def search(self, query: str, max_results: int = 8) -> list[SearchResult]:
-        """Run one web search; raise SearchProviderError on failure."""
+    async def search(
+        self, query: str, max_results: int = 8, *, recency: str | None = None
+    ) -> list[SearchResult]:
+        """Run one web search; raise SearchProviderError on failure.
+
+        ``recency`` biases toward fresh results (spec §15 freshness): one of "day",
+        "week", "month", "year", or None for no time filter. Providers map it to their
+        own param (Serper ``tbs=qdr:*``, Brave ``freshness``)."""
         ...

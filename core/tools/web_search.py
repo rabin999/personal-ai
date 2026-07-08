@@ -9,6 +9,7 @@ cost logging on both the hit ($0, cache_hit) and miss (real cost) paths.
 import hashlib
 import json
 import logging
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -43,8 +44,11 @@ _TIME_SENSITIVE_MARKERS = (
 
 _SUMMARIZE_INSTRUCTIONS = (
     "Summarize these web search results for a voice conversation: 2-4 short "
-    "sentences, the concrete facts only, no URLs, no markdown. If results "
-    "conflict, say so briefly."
+    "sentences, the concrete facts only, no URLs, no markdown. PRIORITISE the MOST "
+    "RECENT information — when results carry dates, lead with the latest and mention "
+    "how recent it is ('as of today', 'earlier this week'); if some results look "
+    "outdated, ignore them in favour of the newest. If results genuinely conflict or "
+    "are unclear, say so briefly rather than guessing."
 )
 
 
@@ -82,7 +86,19 @@ class WebSearch:
             self._log_cost(user_id, session_id, provider=cached.provider, cost=0.0, hit=True)
             return cached
 
-        results, provider = await self._search_with_fallback(query)
+        try:
+            results, provider = await self._search_with_fallback(query)
+        except SearchProviderError as exc:
+            # Never block or error out to the user — say plainly what failed (§16).
+            logger.warning("web search failed for %r: %s", query, exc)
+            return SearchOutcome(
+                summary=(
+                    "I tried to look that up but the web search didn't go through just "
+                    "now — I couldn't get current results on it."
+                ),
+                sources=[],
+                provider="none",
+            )
         summary = await self._summarize(user_id, session_id, query, results)
         outcome = SearchOutcome(summary=summary, sources=results, provider=provider.name)
 
@@ -117,13 +133,14 @@ class WebSearch:
         return handle
 
     async def _search_with_fallback(self, query: str) -> tuple[list[SearchResult], SearchProvider]:
+        recency = _recency_for(query)  # §15: bias to LATEST unless a date/timeline is given
         try:
-            return await self._primary.search(query), self._primary
+            return await self._primary.search(query, recency=recency), self._primary
         except SearchProviderError as exc:
             logger.warning("primary search failed (%s); trying fallback", exc)
             if self._fallback is None:
                 raise
-            return await self._fallback.search(query), self._fallback
+            return await self._fallback.search(query, recency=recency), self._fallback
 
     async def _summarize(
         self, user_id: str, session_id: str | None, query: str, results: list[SearchResult]
@@ -186,3 +203,31 @@ def _ttl_for(query: str) -> int:
     if any(marker in lowered for marker in _TIME_SENSITIVE_MARKERS):
         return SHORT_TTL_S
     return LONG_TTL_S
+
+
+# A query that names a specific past date / year / historical window wants THAT period,
+# not "latest" — respect it (don't force a recency filter).
+_HISTORICAL = re.compile(
+    r"\b(1\d{3}|20\d{2})\b|\b(last year|years? ago|back in|history of|in the past|previously|"
+    r"used to|originally|founded|born in|invented|ancient|decades? ago)\b",
+    re.IGNORECASE,
+)
+# News/event words that signal the user wants the CURRENT state of an unfolding story,
+# even without the word "latest" (the reported missing-plane case).
+_BREAKING = (
+    "breaking", "happening", "missing", "crash", "crashed", "killed", "dead", "died",
+    "attack", "earthquake", "election", "won", "wins", "update", "just", "right now",
+    "as of", "so far", "developing",
+)  # fmt: skip
+
+
+def _recency_for(query: str) -> str | None:
+    """How fresh the results should be (spec §15). Default to RECENT — the user wants
+    the latest for anything online — UNLESS the query names a specific date/timeline.
+    Explicitly time-sensitive / breaking-news queries get the tightest window."""
+    lowered = query.lower()
+    if _HISTORICAL.search(query):
+        return None  # they asked about a specific past period → no freshness filter
+    if any(m in lowered for m in _TIME_SENSITIVE_MARKERS) or any(m in lowered for m in _BREAKING):
+        return "week"  # unfolding / current → the past week
+    return "month"  # default: bias to the last month so "online" means recent

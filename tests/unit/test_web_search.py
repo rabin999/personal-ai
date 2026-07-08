@@ -21,8 +21,11 @@ class FakeProvider:
         self.fail = fail
         self.calls = 0
 
-    async def search(self, query: str, max_results: int = 8) -> list[SearchResult]:
+    async def search(
+        self, query: str, max_results: int = 8, *, recency: str | None = None
+    ) -> list[SearchResult]:
         self.calls += 1
+        self.last_recency = recency
         if self.fail:
             raise SearchProviderError(f"{self.name} down")
         return self.results
@@ -116,13 +119,26 @@ async def test_serper_outage_falls_back_to_brave() -> None:
     assert row["provider"] == "brave" and row["cost_usd"] == pytest.approx(0.003)
 
 
-async def test_both_providers_down_raises() -> None:
+async def test_both_providers_down_reports_gracefully() -> None:
+    """Both providers down → never raise/error to the user; return a plain 'couldn't
+    look that up' summary the companion can convey (user request: inform, don't block)."""
     docs = FakeDocStore()
     search = WebSearch(
         docs, FakeLLM(), FakeProvider("serper", fail=True), FakeProvider("brave", fail=True)
     )
-    with pytest.raises(SearchProviderError):
-        await search.run("anything", "u_demo_001")
+    outcome = await search.run("anything", "u_demo_001")
+    assert outcome.sources == [] and outcome.provider == "none"
+    assert "didn't go through" in outcome.summary or "couldn't" in outcome.summary.lower()
+
+
+async def test_recency_biases_current_queries_but_not_historical() -> None:
+    docs = FakeDocStore()
+    provider = FakeProvider("serper")
+    search = WebSearch(docs, FakeLLM(["ok"]), provider)
+    await search.run("latest news on the missing plane", "u_demo_001")
+    assert provider.last_recency == "week"  # breaking/current → tight window
+    await search.run("who painted the Mona Lisa in 1503", "u_demo_001")
+    assert provider.last_recency is None  # explicit historical year → no filter
 
 
 async def test_summarizer_failure_falls_back_to_snippets() -> None:

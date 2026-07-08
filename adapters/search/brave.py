@@ -5,6 +5,8 @@ import httpx
 from ports.search import SearchProviderError, SearchResult
 
 _ENDPOINT = "https://api.search.brave.com/res/v1/web/search"
+# Brave freshness codes (pd/pw/pm/py) for recency biasing (spec §15).
+_FRESHNESS = {"day": "pd", "week": "pw", "month": "pm", "year": "py"}
 
 
 class BraveSearch:
@@ -16,15 +18,20 @@ class BraveSearch:
         self._api_key = api_key
         self._timeout = timeout_s
 
-    async def search(self, query: str, max_results: int = 8) -> list[SearchResult]:
+    async def search(
+        self, query: str, max_results: int = 8, *, recency: str | None = None
+    ) -> list[SearchResult]:
         if not self._api_key:
             raise SearchProviderError("BRAVE_API_KEY not configured")
+        params: dict[str, str | int] = {"q": query, "count": max_results}
+        if recency and recency in _FRESHNESS:
+            params["freshness"] = _FRESHNESS[recency]
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 response = await client.get(
                     _ENDPOINT,
                     headers={"X-Subscription-Token": self._api_key},
-                    params={"q": query, "count": max_results},
+                    params=params,
                 )
                 response.raise_for_status()
         except httpx.HTTPError as exc:
