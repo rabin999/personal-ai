@@ -49,6 +49,16 @@ class _FakeGenerator:
             turn_id="t1",
         )
 
+    async def generate_spoken(
+        self, prompt: Any, dispatcher: Any = None, context: Any = None, speak: Any = None
+    ) -> Any:
+        # Mirror the streaming path the processor uses (§8.12): speak the reply, then
+        # return the same result generate() would.
+        result = await self.generate(prompt, dispatcher, context)
+        if speak is not None:
+            await speak(result.final_text)
+        return result
+
 
 class _RecordingExtractor:
     def __init__(self) -> None:

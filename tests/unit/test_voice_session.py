@@ -108,7 +108,14 @@ async def _frames(confidences: list[float]) -> AsyncIterator[bytes]:
         yield b"\x00" * 512  # one 16ms VAD frame
 
 
-def _session(vad: ScriptedVAD, stt: FakeSTT, working: WorkingMemory, trace: TraceEmitter):  # type: ignore[no-untyped-def]
+def _session(  # type: ignore[no-untyped-def]
+    vad: ScriptedVAD,
+    stt: FakeSTT,
+    working: WorkingMemory,
+    trace: TraceEmitter,
+    *,
+    greet: bool = False,
+):
     # Short pauses so the endpointer fires quickly in the test.
     return VoiceSession(
         user_id=USER,
@@ -122,7 +129,28 @@ def _session(vad: ScriptedVAD, stt: FakeSTT, working: WorkingMemory, trace: Trac
         tts=FakeTTS(),
         working=working,
         trace=trace,
+        greet_on_open=greet,  # off by default; the greeting has its own test
     )
+
+
+async def test_greets_dynamically_on_open_even_before_the_user_speaks() -> None:
+    # §3.6.3: opening the session should produce ONE spoken, dynamic greeting — even
+    # with pure silence and no user utterance — streamed to TTS. It is NOT user-first
+    # speech (they opened the app), and it must not run STT/reasoning-on-user.
+    trace = TraceEmitter(SESSION)
+    working = WorkingMemory()
+    stt = FakeSTT("unused")
+    session = _session(ScriptedVAD([0.02] * 40), stt, working, trace, greet=True)
+
+    audio = [chunk async for chunk in session.converse(_frames([0.02] * 40))]
+    trace.close()
+
+    stages = [e.stage async for e in trace.events()]
+    assert audio != []  # the greeting was synthesized and streamed back
+    assert "stt" not in stages and stt.calls == 0  # greeting never transcribes silence
+    recent = working.recent(SESSION)
+    assert [t.role for t in recent] == ["assistant"]  # greeting logged, no user turn
+    assert recent[0].text.strip()  # a real, non-empty spoken line
 
 
 async def test_full_turn_traces_every_stage_and_streams_audio() -> None:
@@ -313,6 +341,7 @@ async def test_barge_in_stops_reply_cancels_generation_and_answers_new_input() -
         tts=FakeTTS(),
         working=working,
         trace=trace,
+        greet_on_open=False,  # barge-in test: no open greeting to muddy the turn flow
     )
 
     # Real frames arrive over the WS with ~32ms gaps, which lets the turn task run

@@ -80,11 +80,16 @@ class WebSearch:
         if not query.strip():
             return SearchOutcome(summary="", sources=[], provider="none")
 
+        # Breaking / current-event queries (recency "week") BYPASS the cache — a
+        # fast-moving story ("plane missing", "latest news") must always re-fetch, or a
+        # result cached minutes ago masks the real latest. Stable queries still cache.
+        recency = _recency_for(query)
         cache_key = _hash(query)
-        cached = await self._read_cache(cache_key, query)
-        if cached is not None:
-            self._log_cost(user_id, session_id, provider=cached.provider, cost=0.0, hit=True)
-            return cached
+        if recency not in ("day", "week"):  # current/breaking → always re-fetch, never cached
+            cached = await self._read_cache(cache_key, query)
+            if cached is not None:
+                self._log_cost(user_id, session_id, provider=cached.provider, cost=0.0, hit=True)
+                return cached
 
         try:
             results, provider = await self._search_with_fallback(query)
@@ -212,22 +217,31 @@ _HISTORICAL = re.compile(
     r"used to|originally|founded|born in|invented|ancient|decades? ago)\b",
     re.IGNORECASE,
 )
-# News/event words that signal the user wants the CURRENT state of an unfolding story,
-# even without the word "latest" (the reported missing-plane case).
+# "Right now" words — the user wants what's happening THIS moment → tightest window
+# (past 24h), so "recent" genuinely means current, not week-old (user feedback).
+_NOW = (
+    "right now", "today", "tonight", "now", "currently", "at the moment", "this hour",
+    "breaking", "latest", "just now", "just happened", "as of", "this morning",
+    "this afternoon", "this evening", "live",
+)  # fmt: skip
+# Unfolding-story / event words — current but may span a few days → past week.
 _BREAKING = (
-    "breaking", "happening", "missing", "crash", "crashed", "killed", "dead", "died",
-    "attack", "earthquake", "election", "won", "wins", "update", "just", "right now",
-    "as of", "so far", "developing",
+    "happening", "missing", "crash", "crashed", "killed", "dead", "died", "attack",
+    "earthquake", "wildfire", "outage", "explosion", "shooting", "election", "won",
+    "wins", "update", "developing", "so far", "news", "headline",
 )  # fmt: skip
 
 
 def _recency_for(query: str) -> str | None:
-    """How fresh the results should be (spec §15). Default to RECENT — the user wants
-    the latest for anything online — UNLESS the query names a specific date/timeline.
-    Explicitly time-sensitive / breaking-news queries get the tightest window."""
+    """How fresh the results should be (spec §15). "Recent" means CURRENT: explicit
+    now-words get the past DAY, unfolding events get the past WEEK, everything else the
+    past MONTH — UNLESS the query names a specific historical date/timeline (then no
+    filter). Never returns week-old news for a "right now" question."""
     lowered = query.lower()
     if _HISTORICAL.search(query):
-        return None  # they asked about a specific past period → no freshness filter
+        return None  # a specific past period → no freshness filter
+    if any(m in lowered for m in _NOW):
+        return "day"  # "right now / today / latest / breaking" → past 24h
     if any(m in lowered for m in _TIME_SENSITIVE_MARKERS) or any(m in lowered for m in _BREAKING):
-        return "week"  # unfolding / current → the past week
+        return "week"  # an unfolding story that may span a few days
     return "month"  # default: bias to the last month so "online" means recent

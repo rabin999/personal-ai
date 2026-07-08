@@ -18,7 +18,6 @@ import asyncio
 import contextlib
 import json
 import logging
-import random
 import re
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Literal, Protocol
@@ -105,22 +104,6 @@ DEFAULT_GATE_PARAMS = {"T_intent": 0.3, "T_novel": 0.75, "T_emotion": 0.7, "T_am
 # shape is exactly what a greeting like "hi there" used to fall back to). The real
 # disclosure (rule 4) and background acks are model-generated in-voice, never here.
 _SAFE_FALLBACK_TEXT = "Hey, I'm right here with you — what's going on?"
-
-# Short, natural holding lines spoken the instant a live lookup starts (user feedback:
-# say "let me check that real quick" immediately instead of dead air). Rotated per
-# session so it doesn't sound canned turn after turn.
-_HOLDING_LINES = (
-    "Let me check that real quick.",
-    "One sec, let me look.",
-    "Hang on, checking now.",
-    "Let me pull that up.",
-    "Give me a sec on that.",
-)
-
-
-def _holding_line() -> str:
-    return random.choice(_HOLDING_LINES)
-
 
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
 _AFFIRMATIVE = (
@@ -529,17 +512,64 @@ class ResponseGenerator:
             except Exception:  # any streaming hiccup → safe fallback (never worse)
                 logger.exception("streaming reply failed; falling back to non-streamed")
 
-        # A live-info query means a lookup is coming, which takes a beat. Speak a
-        # short, natural holding line IMMEDIATELY so the user hears "on it" instead of
-        # dead air, then run the search and speak the real answer (user feedback).
-        if _is_live_info_query(prompt.utterance) and not (
-            can_use_tools and prompt.session_id in self._pending
+        # A live-info query means a lookup is coming, which takes a beat. Kick off the
+        # search+answer, and CONCURRENTLY generate a short, natural, topic-aware ack and
+        # stream it in chunks so the user hears "on it" instantly instead of dead air.
+        # The ack is generated fresh every time (never a canned line) and fully overlaps
+        # the lookup, so it adds no wall-clock (user feedback: dynamic, chunked, no static).
+        if (
+            _is_live_info_query(prompt.utterance)
+            and can_use_tools
+            and prompt.session_id not in self._pending
         ):
+            gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             with contextlib.suppress(Exception):
-                await speak(_holding_line())
-        result = await self.generate(prompt, dispatcher, context)
+                await self._dynamic_ack(prompt, speak)
+            result = await gen_task
+        else:
+            result = await self.generate(prompt, dispatcher, context)
         await speak(result.voice_text or result.final_text)
         return result
+
+    async def _dynamic_ack(
+        self, prompt: AssembledPrompt, speak: "Callable[[str], Awaitable[None]]"
+    ) -> None:
+        """Speak a SHORT, freshly-generated, topic-aware acknowledgement the instant a
+        live lookup starts — streamed in chunks so it begins immediately, and run
+        concurrently with the search so it only fills the beat the lookup already costs.
+        Never a static phrase (user feedback: dynamic sentences that keep it engaged)."""
+        instr = (
+            "[The user just asked something you need to look up online, which takes a "
+            "moment. Say ONE short, natural, SPOKEN line acknowledging you're on it right "
+            "now and gently echoing their topic — like a friend already reaching for the "
+            "answer. Make it fresh; never a stock phrase. Don't ask a question and don't "
+            "answer yet. The vibe (do NOT reuse the words): 'Ooh, that missing plane near "
+            "Pakistan — let me dig in.', 'Hang on, pulling the latest on that now.']"
+        )
+        messages = [
+            *prompt.messages[:-1],
+            {"role": "system", "content": instr},
+            prompt.messages[-1],
+        ]
+        text = ""
+        spoken = 0
+        async for delta in self._llm.stream(
+            prompt.user_id,
+            messages,
+            "simple",
+            session_id=prompt.session_id,
+            model=prompt.model_override,
+            temperature=0.9,  # high: variety so it never sounds canned
+            reasoning={"enabled": False},  # P4: no thinking on a throwaway filler
+            cache_prefix=prompt.cache_prefix,
+            purpose="ack",
+        ):
+            text += delta
+            while (b := _sentence_end(text, spoken)) is not None:
+                await self._speak_clean(text[spoken:b], speak)
+                spoken = b
+        if spoken < len(text):  # flush the tail (usually the whole one-liner)
+            await self._speak_clean(text[spoken:], speak)
 
     async def _stream_reply(
         self, prompt: AssembledPrompt, speak: "Callable[[str], Awaitable[None]]"
@@ -1153,10 +1183,19 @@ _LIVE_INFO_QUERY = re.compile(
     r"\b(weather|temperature|forecast"
     r"|news|headlines?|"
     r"scores?|who won"
-    r"|stock price|share price|exchange rate"
+    r"|stock price|share price|exchange rate|price of"
     r"|current time|what(?:'s| is)? the time|time (?:in|right now)"
     r"|today'?s date|what(?:'s| is)? the date|date (?:today|in)"
-    r"|what'?s happening (?:in|with|right now|today)|trending)\b",
+    r"|what'?s happening (?:in|with|right now|today)|trending"
+    # Explicit lookup / research requests (the user is asking me to go find something):
+    r"|look (?:it |that |this )?up|look into|search (?:for|up|the)|google"
+    r"|find out|dig up|get me (?:some )?(?:detail|details|info|information|the latest)"
+    r"|any (?:news|updates?|info|details?|word) (?:on|about)"
+    r"|what(?:'s| is| are)? (?:the )?(?:latest|situation|status|update)s? (?:on|with|about|in)"
+    r"|(?:did you|have you) hear(?:d)? about|i (?:heard|found out|read) about|tell me about"
+    # Current-event / breaking-news nouns that need fresh external info:
+    r"|missing|crash(?:ed|ing)?|earthquake|wildfire|outage|explosion|attack|shooting"
+    r"|election|died|passed away|breaking|happening|going on)\b",
     re.IGNORECASE,
 )
 

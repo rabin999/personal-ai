@@ -73,6 +73,10 @@ _PREROLL_FRAMES = 10
 # cancel the reply. ~8 frames ≈ 256ms — longer than an echo transient, shorter
 # than a real interruption — so the companion stops for the user, not for itself.
 _BARGE_IN_FRAMES = 8
+# After this much unbroken silence — the user having ALREADY spoken this session, so
+# it continues the conversation rather than initiating one (§3.6.4) — the companion
+# gently checks in once ("still there? / lost in thought?"). Reset on the next speech.
+_LULL_MS = 22_000.0
 
 # The user explicitly ending the conversation (spoken). Kept deliberately tight so a
 # passing "bye the way" or "goodbye kiss" story doesn't hang up on them.
@@ -118,6 +122,7 @@ class VoiceSession:
         compactor: "SessionCompactor | None" = None,
         logs: StructuredLogger | None = None,
         evaluator: Any = None,
+        greet_on_open: bool = True,  # speak a dynamic hello when the session opens (§3.6.3)
     ) -> None:
         self._user_id = user_id
         # §6/§7: per-turn LLM-as-judge (off the reply path) → scores on the same
@@ -175,6 +180,10 @@ class VoiceSession:
         # U9: pull results carried over from a prior (closed) session exactly once,
         # at the first delivery check of this conversation open.
         self._carried_pulled = False
+        # §3.6.4 silence-lull: check in at most once per lull; re-armed on next speech.
+        self._lull_checked = False
+        # §3.6.3: speak a dynamic hello the moment the session opens (config-gated).
+        self._greet_on_open_enabled = greet_on_open
         # A4 multi-utterance: the previous endpointed (transcript, monotonic ms) and
         # whether the in-flight turn has begun speaking (→ an addition is a barge-in).
         self._prev_endpoint: tuple[str, float] | None = None
@@ -219,12 +228,19 @@ class VoiceSession:
             voice=self._voice,
             engine=self._engine,  # §11: which voice runtime produced this session
         )
+        # Speak a warm, contextual greeting the moment the conversation opens (the user
+        # explicitly wants a spoken hello — "welcome back" / "that was quick"). This is
+        # the design's post-open engagement (§3.6.3): the user opened the session, so
+        # greeting them is welcomed, not unprompted session-initiation. Best-effort.
+        if self._greet_on_open_enabled:
+            await self._greet_on_open(out)
         buffer: list[bytes] = []
         # Pre-roll ring of the most recent pre-speech frames (§19 first-word fix).
         preroll: deque[bytes] = deque(maxlen=_PREROLL_FRAMES)
         silence_ms = 0.0
         barge_frames = 0
         idle_frames = 0
+        lull_ms = 0.0  # unbroken idle silence, for the §3.6.4 lull check-in
         decided_incomplete = False
         capturing = False
         # STT re-use: skip transcribing the same audio twice when only silence was
@@ -293,17 +309,32 @@ class VoiceSession:
                     )
                     capturing, silence_ms, decided_incomplete = True, 0.0, False
                     speech_since_transcribe, last_transcript = True, ""  # fresh utterance
+                    lull_ms, self._lull_checked = 0.0, False  # re-arm the lull check-in
                 if not capturing:
                     preroll.append(frame.pcm)  # keep the rolling pre-roll fresh
                     # §8.2: while idle, proactively deliver a finished background
                     # result at this pause (no user turn needed). Cheap poll —
                     # only synthesizes when something has actually completed.
                     idle_frames += 1
+                    lull_ms += frame_ms
                     if idle_frames >= _DELIVERY_POLL_FRAMES and self._delivery is not None:
                         idle_frames = 0
                         turn = asyncio.create_task(self._deliver_pending(out))
+                    # §3.6.4: after a long unbroken silence — the user having ALREADY
+                    # spoken this session — gently check in ONCE (dynamic, never canned).
+                    # Never while a turn/delivery is in flight, never before they've said
+                    # anything (invariant: the companion never speaks first).
+                    elif (
+                        turn is None
+                        and self._user_has_spoken
+                        and not self._lull_checked
+                        and lull_ms >= _LULL_MS
+                    ):
+                        self._lull_checked = True
+                        turn = asyncio.create_task(self._lull_check_in(out))
                     continue  # §19 idle gate: nothing paid runs during silence
                 idle_frames = 0
+                lull_ms = 0.0  # the user is speaking again — reset the lull clock
 
                 buffer.append(frame.pcm)
                 if frame.is_speech:  # raw per-frame verdict, not the gate hysteresis
@@ -626,6 +657,91 @@ class VoiceSession:
             if pump is not None and not pump.done():
                 pump.cancel()
                 await asyncio.gather(pump, return_exceptions=True)
+
+    async def _greet_on_open(self, out: asyncio.Queue[bytes | None]) -> None:
+        """Speak a warm, contextual hello when the conversation opens (§3.6.3). Built
+        through the normal pipeline so it uses the user's name, persona, time-of-day,
+        and how long it's been — then synthesized to audio. Best-effort: any failure is
+        swallowed so a greeting hiccup never blocks the conversation."""
+        try:
+            note = await self._last_seen_note()
+            instr = (
+                "[The user just opened the app to talk with you. Greet them first, warmly, "
+                "in ONE short natural spoken line — like a friend genuinely glad they showed "
+                f"up.{note} Use their name if you know it, and let the time of day / how long "
+                "it's been colour it (e.g. 'Hey Nandi, welcome back!', 'Nandi — that was "
+                "quick, good to see you', 'Evening, Nandi — how's it going?'). Do NOT ask "
+                "'how can I help'; just a warm hello, maybe a gentle nudge to talk.]"
+            )
+            prompt = await self._assembler.assemble(self._user_id, self._session_id, instr)
+            if isinstance(prompt, DisambiguationRequest):
+                return
+            # Route through the streaming turn path so the greeting is chunked to TTS
+            # (first words start immediately) instead of synthesized whole (L4/§8.12).
+            result = await self._speak_turn(prompt, self._tool_context(prompt), out)
+            text = (result.voice_text or result.final_text).strip()
+            if not text:
+                return
+            self._trace.emit("response", text, voice_text=text, greeting=True)
+            self._working.append(self._session_id, Turn(role="assistant", text=text))
+            self._log_conversation("", text, None)  # the greeting is part of the log (§6)
+        except Exception:  # a greeting must never break the session
+            logger.exception("open greeting failed")
+
+    async def _lull_check_in(self, out: asyncio.Queue[bytes | None]) -> None:
+        """After a long silence, gently check in ONCE — dynamic, in-voice, streamed to
+        TTS (§3.6.4). Only ever called once the user has spoken, so it continues the
+        conversation rather than initiating one. Best-effort; a hiccup never breaks the
+        session, and the reply is logged/remembered like any other companion turn."""
+        try:
+            recent = " ".join(t.text for t in self._working.recent(self._session_id, n=4))
+            instr = (
+                "[There's been a stretch of silence — the user went quiet mid-conversation. "
+                "Gently check in with ONE short, warm, natural spoken line: are they still "
+                "there, did they get pulled away, are they lost in thought? Make it fresh "
+                "and specific to where the chat left off, not a stock phrase. Don't restate "
+                "what you were saying; just a light, caring nudge."
+                + (f" The conversation so far: {recent}]" if recent.strip() else "]")
+            )
+            prompt = await self._assembler.assemble(self._user_id, self._session_id, instr)
+            if isinstance(prompt, DisambiguationRequest):
+                return
+            result = await self._speak_turn(prompt, self._tool_context(prompt), out)
+            text = (result.voice_text or result.final_text).strip()
+            if not text:
+                return
+            self._trace.emit("response", text, voice_text=text, lull_check_in=True)
+            self._working.append(self._session_id, Turn(role="assistant", text=text))
+            self._log_conversation("", text, None)
+        except Exception:  # a check-in must never break the session
+            logger.exception("lull check-in failed")
+
+    async def _last_seen_note(self) -> str:
+        """A short note on how long since the user's last conversation, for the greeting
+        ('that was quick' vs 'been a while'). Empty on the first-ever conversation or if
+        the store is unavailable."""
+        if self._conversations is None:
+            return ""
+        try:
+            rows, _ = await self._conversations.list_conversations(self._user_id, limit=5)
+        except Exception:
+            return ""
+        prior = [r for r in rows if r.get("session_id") != self._session_id]
+        if not prior:
+            return " This looks like their first time here."
+        last = prior[0]
+        stamp = last.get("last_ts") or last.get("last_at_ts")
+        if not isinstance(stamp, int | float):
+            return ""
+        gap_s = max(0.0, time.time() - float(stamp))
+        if gap_s < 1800:
+            return " They were just here minutes ago — back quick."
+        if gap_s < 6 * 3600:
+            return " They last talked a few hours ago."
+        if gap_s < 36 * 3600:
+            return " They last talked earlier / yesterday."
+        days = int(gap_s // 86400)
+        return f" It's been about {days} day(s) since they last talked."
 
     async def _synthesize(self, text: str, out: asyncio.Queue[bytes | None]) -> None:
         self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)

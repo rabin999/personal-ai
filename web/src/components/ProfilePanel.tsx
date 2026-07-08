@@ -307,9 +307,9 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
           <span className="absolute right-0">1.5×</span>
         </div>
       </div>
+      {/* City/country removed — the companion learns where you are dynamically now
+          (persona/memory). Timezone stays: it's what anchors time-of-day greetings. */}
       <div className="mt-3 grid grid-cols-2 gap-2.5">
-        {field("city", "City", "Kathmandu")}
-        {field("country", "Country", "Nepal")}
         {field("timezone", "Timezone", "Asia/Kathmandu")}
         {field("currency", "Currency", "NPR")}
         <label className="flex flex-col gap-1">
@@ -404,9 +404,11 @@ function Switch({ label, hint, on, onChange }: { label: string; hint: string; on
         role="switch"
         aria-checked={on}
         onClick={() => onChange(!on)}
-        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600"}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-0 p-0 transition-colors ${on ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600"}`}
       >
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`} />
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200 ${on ? "translate-x-[22px]" : "translate-x-0.5"}`}
+        />
       </button>
     </label>
   );

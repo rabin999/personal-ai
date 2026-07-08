@@ -11,6 +11,7 @@ import asyncio
 import logging
 
 from adapters.outbox import OutboxStore, WelcomeMailer
+from adapters.outbox.mailer import is_deliverable
 from adapters.outbox.store import WELCOME_EMAIL
 
 logger = logging.getLogger("workers.outbox")
@@ -56,6 +57,12 @@ class OutboxWorker:
         email = rec.payload.get("email")  # type: ignore[attr-defined]
         if not email:
             await self._outbox.mark_skipped(rec.id, "no recipient email")  # type: ignore[attr-defined]
+            return
+        # Never send to reserved/non-deliverable domains (example.com, .test, .local…):
+        # they only bounce, and repeated bounces risk getting the sender blocked. This
+        # also stops real tests (all use @example.com) from ever emailing.
+        if not is_deliverable(str(email)):
+            await self._outbox.mark_skipped(rec.id, f"non-deliverable address: {email}")  # type: ignore[attr-defined]
             return
         try:
             await self._mailer.send_welcome(email, rec.payload.get("name"))  # type: ignore[attr-defined]

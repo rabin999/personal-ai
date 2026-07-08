@@ -66,7 +66,9 @@ async def test_miss_then_cached_hit_with_real_stores_and_summarizer(
     stack: tuple[WebSearch, CostLedger, Database], user_id: str
 ) -> None:
     search, ledger, _ = stack
-    query = f"SYPNL trial news {uuid.uuid4().hex[:6]}"
+    # A STABLE query (no "news/latest/now" words) so the cache path is exercised —
+    # breaking-news queries deliberately bypass the cache (see _recency_for, §15).
+    query = f"SYPNL phase-2 trial overview {uuid.uuid4().hex[:6]}"
 
     first = await search.run(query, user_id, "s1")
     second = await search.run(query, user_id, "s1")

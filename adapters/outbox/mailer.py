@@ -14,6 +14,22 @@ from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
+# Reserved / non-deliverable domains (RFC 2606 + RFC 7505 Null-MX + local). Sending to
+# these only produces bounces (and repeated bounces can get the sender blocked) — every
+# TEST fixture uses ``@example.com``, so this ALSO stops real tests from ever emailing.
+_UNDELIVERABLE_SUFFIXES = (
+    "@example.com", "@example.org", "@example.net", ".example",
+    ".test", ".invalid", ".localhost", ".local", "@localhost",
+)  # fmt: skip
+
+
+def is_deliverable(email: str) -> bool:
+    """False for empty/malformed or reserved/non-deliverable addresses (never email them)."""
+    e = (email or "").strip().lower()
+    if "@" not in e or e.startswith("@") or e.endswith("@") or "." not in e.split("@")[-1]:
+        return False
+    return not any(e.endswith(suffix) for suffix in _UNDELIVERABLE_SUFFIXES)
+
 
 def _connection_config(settings: Settings) -> ConnectionConfig:
     return ConnectionConfig(
@@ -58,6 +74,9 @@ class WelcomeMailer:
     async def send_welcome(self, email: str, name: str | None) -> None:
         if self._fastmail is None:
             raise RuntimeError("mailer disabled — MAIL_USERNAME/MAIL_PASSWORD not set")
+        if not is_deliverable(email):  # never email a reserved/test domain (bounce guard)
+            logger.info("skipping welcome email to non-deliverable address: %s", email)
+            return
         message = MessageSchema(
             subject="Hey — your companion is ready",
             recipients=[email],

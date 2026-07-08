@@ -190,6 +190,7 @@ def _session(stt: ScriptedSTT, tts: SlowTTS, gen: ScriptedGenerator):
             working=working,
             trace=RecordingTrace("s_bargein"),
             barge_in=True,
+            greet_on_open=False,  # isolate barge-in mechanics from the open greeting
         ),
         working,
     )
@@ -369,6 +370,7 @@ async def test_aec_attenuated_speech_still_interrupts() -> None:
         working=working,
         trace=RecordingTrace("s_bargein"),
         barge_in=True,
+        greet_on_open=False,  # isolate barge-in mechanics from the open greeting
     )
 
     frames: list[tuple[bytes, float]] = []

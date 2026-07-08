@@ -79,9 +79,11 @@ async def test_blank_query_is_a_noop() -> None:
 # Acceptance: repeat within TTL returns cache with a $0 ledger entry.
 async def test_repeat_query_within_ttl_serves_cache_at_zero_cost() -> None:
     search, docs, ledger, serper, _, _ = _stack()
-    await search.run("SYPNL news today", "u_demo_001", "s1")
+    # A STABLE lookup (no "now/latest/news" words) → cacheable. Breaking-news queries
+    # deliberately bypass the cache (see the recency test), so they can't test cache hits.
+    await search.run("SYPNL company overview", "u_demo_001", "s1")
 
-    outcome = await search.run("SYPNL news today", "u_demo_001", "s1")
+    outcome = await search.run("SYPNL company overview", "u_demo_001", "s1")
     await ledger.flush()
 
     assert serper.calls == 1  # no second provider hit
@@ -94,14 +96,14 @@ async def test_repeat_query_within_ttl_serves_cache_at_zero_cost() -> None:
 async def test_expired_cache_entry_triggers_fresh_search() -> None:
     search, docs, _ledger, serper, _, llm = _stack()
     llm.responses.append("fresh summary")
-    await search.run("SYPNL news today", "u_demo_001", "s1")
+    await search.run("SYPNL company overview", "u_demo_001", "s1")  # stable → cacheable
 
     # Age the cache entry past its TTL.
     (key,) = docs.collections[SEARCH_CACHE_COLLECTION].keys()
     entry = docs.collections[SEARCH_CACHE_COLLECTION][key]
     entry["cached_at"] = "2020-01-01T00:00:00+00:00"
 
-    outcome = await search.run("SYPNL news today", "u_demo_001", "s1")
+    outcome = await search.run("SYPNL company overview", "u_demo_001", "s1")
     assert serper.calls == 2
     assert not outcome.cache_hit
 
@@ -134,11 +136,19 @@ async def test_both_providers_down_reports_gracefully() -> None:
 async def test_recency_biases_current_queries_but_not_historical() -> None:
     docs = FakeDocStore()
     provider = FakeProvider("serper")
-    search = WebSearch(docs, FakeLLM(["ok"]), provider)
-    await search.run("latest news on the missing plane", "u_demo_001")
-    assert provider.last_recency == "week"  # breaking/current → tight window
+    search = WebSearch(docs, FakeLLM(["ok", "ok", "ok", "ok"]), provider)
+    # "latest / right now" → the tightest window (past DAY): recent means CURRENT.
+    await search.run("latest on the missing plane right now", "u_demo_001")
+    assert provider.last_recency == "day"
+    # An unfolding event without now-words → past WEEK.
+    await search.run("the plane that went missing near Pakistan", "u_demo_001")
+    assert provider.last_recency == "week"
+    # A neutral lookup → default bias to the past MONTH ("online" means recent).
+    await search.run("good restaurants in Lisbon", "u_demo_001")
+    assert provider.last_recency == "month"
+    # An explicit historical year → no freshness filter at all.
     await search.run("who painted the Mona Lisa in 1503", "u_demo_001")
-    assert provider.last_recency is None  # explicit historical year → no filter
+    assert provider.last_recency is None
 
 
 async def test_summarizer_failure_falls_back_to_snippets() -> None:

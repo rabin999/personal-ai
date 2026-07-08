@@ -11,7 +11,7 @@ import { getTools } from "../lib/api";
 // the tool links collapse into a compact menu (F12).
 
 const NAV = [
-  { to: "/", label: "Asaathi", end: true },
+  { to: "/", label: "Chat", end: true },
   { to: "/conversations", label: "Conversations", end: false },
   { to: "/memories", label: "Memories", end: false },
   { to: "/projects", label: "Projects", end: false },
