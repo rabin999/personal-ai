@@ -1270,3 +1270,49 @@ polish. On-device feel still warrants a real phone (noted), but the responsive l
 
 **Checks:** web `tsc -b` + `vite build` clean; backend ruff + mypy clean; `lint-imports` contracts
 kept (2/2); 55 profile/model/prompt unit tests + 17 conversation tests green.
+
+---
+
+## F13 — Langfuse prompt management + human-in-the-loop, decoupled behind ports
+
+**App-goal verified:** prompts live IN Langfuse (created + versioned + deploy-by-label), the app
+fetches them at runtime with no added latency, a prompt edit/version-promotion in Langfuse changes
+behavior on the next turn WITHOUT a code change, user feedback flows back to Langfuse as scores, and
+if Langfuse is unreachable a safe bundled default is used (the turn never hard-fails).
+
+**Decoupling (A1.5):** two new ports — `ports/prompt.py::PromptProvider` and
+`ports/score_sink.py::ScoreSink`. Langfuse is imported ONLY in the adapters
+(`adapters/prompt/langfuse_prompt.py`, `adapters/tracing/langfuse_sink.py::LangfuseScoreSink`);
+`lint-imports` contracts stay green. When Langfuse is disabled, a `BundledPromptProvider` serves the
+in-repo defaults, so the app never hard-depends on Langfuse.
+
+**Migration + runtime fetch:** the reasoning prompts that were inline string literals are now bundled
+defaults (`adapters/prompt/defaults.py`) AND seeded into Langfuse at startup (`seed_defaults` — created
+`context_intent` + `self_reflection_rewrite`, idempotent so human edits aren't overwritten). The
+LangGraph orchestrator fetches `context_intent`, and the response generator fetches
+`self_reflection_rewrite`, both via the port (SDK-cached, TTL 60s → no per-turn latency), falling back
+to the bundled default on any error.
+
+**Proof (real Langfuse @ localhost:3000 + real model):**
+- Seed populates the Prompts section: `{'context_intent': 'created', 'self_reflection_rewrite': 'created'}`.
+- Runtime fetch: `context_intent` → `source=langfuse version=1 len=1557`; `self_reflection_rewrite`
+  compiles its `{{draft}}` variable correctly.
+- **Version promotion picked up:** creating a v2 of `context_intent` labelled `production` → a fresh
+  fetch returns `version=2` with the new text (then restored). So a Langfuse edit changes the app.
+- **Fallback:** a bad Langfuse host → `source=fallback` with the full bundled text (never raises).
+- **Live loop:** a real turn's `resolve_context` trace span records
+  `prompt_name=context_intent prompt_source=langfuse version=3` — the managed prompt + version that
+  actually ran, so a prompt change is visible in the very next turn.
+- **Human eval loop:** the app's thumbs up/down (`POST /api/feedback`) now also submits a Langfuse
+  score (`user_feedback`, up=1/down=0) attached to the SAME trace (same `create_trace_id` seed as the
+  trace sink), so a rating is annotatable next to its pipeline and can calibrate the LLM-judge. Traces
+  are already annotatable/manually-scorable in the Langfuse UI (A8 sink).
+- Behaviour unchanged: the `self_reflection_rewrite` bundled default is byte-identical to the code's
+  tuned `_REWRITE_INSTRUCTIONS` (just the draft as a variable); golden + response-gen unit suites
+  (98 passed) stay green. New `tests/unit/test_prompt_provider.py` (4/4) covers the bundled fallback +
+  variable compile. ruff + mypy + lint-imports clean.
+
+**Honest scope:** two representative reasoning prompts are fully migrated + runtime-fetched (proving
+the whole mechanism incl. version pickup + fallback + trace provenance); the large persona/identity
+template (`prompt_assembly`) is not yet moved into Langfuse — a mechanical follow-up using the same
+port, noted rather than silently skipped.

@@ -73,3 +73,34 @@ class LangfuseTraceSink:
     def close(self) -> None:
         with contextlib.suppress(Exception):
             self._lf.flush()
+
+
+class LangfuseScoreSink:
+    """Attach human/eval scores to the matching Langfuse trace (F13).
+
+    Uses the SAME ``create_trace_id(seed="{session}:{turn}")`` the trace sink uses,
+    so a thumbs-up/down lands on the exact trace that produced the reply. Best-effort
+    — a scoring failure is swallowed so feedback submission never fails the request.
+    """
+
+    def __init__(self, public_key: str, secret_key: str, host: str) -> None:
+        from langfuse import Langfuse  # imported only in the adapter
+
+        self._lf = Langfuse(public_key=public_key, secret_key=secret_key, host=host)
+
+    def score(
+        self, *, session_id: str, turn: int, name: str, value: float, comment: str = ""
+    ) -> None:
+        try:
+            trace_id = self._lf.create_trace_id(seed=f"{session_id}:{turn}")
+            self._lf.create_score(
+                name=name,
+                value=value,
+                trace_id=trace_id,
+                session_id=session_id,
+                comment=comment or None,
+                data_type="NUMERIC",
+            )
+            self._lf.flush()
+        except Exception:
+            logger.debug("langfuse score submit failed", exc_info=True)

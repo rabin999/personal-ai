@@ -22,6 +22,7 @@ from adapters.logging.factory import build_log_sinks
 from adapters.logging.trace_sink import TraceStoreLogSink
 from adapters.outbox import OutboxStore, WelcomeMailer
 from adapters.preference.mem0_adapter import Mem0PreferenceMemory
+from adapters.prompt.langfuse_prompt import BundledPromptProvider
 from adapters.queue.redis import RedisTaskQueue
 from adapters.search.brave import BraveSearch
 from adapters.search.serper import SerperSearch
@@ -60,6 +61,8 @@ from core.tools.dispatcher import ToolDispatcher
 from core.tools.registry import ToolRegistry
 from core.tools.results import ToolResultStore
 from core.tools.web_search import WebSearch
+from ports.prompt import PromptProvider
+from ports.score_sink import ScoreSink
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +114,8 @@ class Pipeline:
     preferences: Mem0PreferenceMemory | None
     logs: StructuredLogger
     feedback: FeedbackStore
+    prompts: PromptProvider  # F13: runtime prompt management (Langfuse or bundled)
+    scores: ScoreSink | None  # F13: eval/feedback scoring backend (Langfuse), if enabled
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -151,6 +156,29 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         except Exception:
             logger.exception("Langfuse sink init failed; continuing without it")
     logs = StructuredLogger(trace_sinks)
+
+    # F13: prompt management + eval scoring behind their ports. When Langfuse is
+    # enabled, prompts are fetched (+ seeded) from Langfuse and user feedback is
+    # scored onto the trace; otherwise a bundled-default prompt provider is used so
+    # the app never hard-depends on Langfuse. Both are swappable (A1.5).
+    prompts: PromptProvider = BundledPromptProvider()
+    scores: ScoreSink | None = None
+    if settings.langfuse_enabled and settings.langfuse_public_key:
+        try:
+            from adapters.prompt.langfuse_prompt import LangfusePromptProvider
+            from adapters.tracing.langfuse_sink import LangfuseScoreSink
+
+            lf_prompts = LangfusePromptProvider(
+                settings.langfuse_public_key, settings.langfuse_secret_key, settings.langfuse_host
+            )
+            seeded = lf_prompts.seed_defaults()  # populate Langfuse's Prompts section
+            logger.info("Langfuse prompts: %s", seeded)
+            prompts = lf_prompts
+            scores = LangfuseScoreSink(
+                settings.langfuse_public_key, settings.langfuse_secret_key, settings.langfuse_host
+            )
+        except Exception:
+            logger.exception("Langfuse prompt/score init failed; using bundled prompts")
 
     profiles = ProfileService(docs)
     registry = TraitRegistry(docs, profiles)
@@ -233,6 +261,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         logs=logs,
         max_turn_cost_usd=settings.max_turn_cost_usd,
         reasoning_tier=settings.reasoning_tier,  # A2: mature model for the main turn
+        prompts=prompts,  # F13: managed self-reflection prompt (Langfuse or bundled)
     )
     # A1/A1.5: the reasoning engine sits behind the Orchestrator port. LangGraph is
     # one adapter (imported only in adapters/), the native loop is the other —
@@ -241,7 +270,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     if settings.orchestrator == "langgraph":
         from adapters.orchestrator.langgraph_orchestrator import LangGraphOrchestrator
 
-        orchestrator = LangGraphOrchestrator(llm, generator, logs=logs)
+        orchestrator = LangGraphOrchestrator(llm, generator, logs=logs, prompts=prompts)
     else:
         orchestrator = generator
     consolidator = Consolidator(semantic, procedural, psych, docs, llm, episodic=episodic)
@@ -288,6 +317,8 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         preferences=preferences,
         logs=logs,
         feedback=FeedbackStore(docs),
+        prompts=prompts,
+        scores=scores,
     )
 
 

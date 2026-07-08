@@ -21,6 +21,7 @@ judged response-quality work.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
@@ -33,6 +34,7 @@ from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationReques
 from core.reasoning.response_gen import GenerationResult, ResponseGenerator, ToolDispatch
 from core.tools.registry import ToolContext
 from ports.llm import LLM, LLMUnavailable
+from ports.prompt import PromptProvider
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +82,12 @@ class LangGraphOrchestrator:
         llm: LLM,
         generator: ResponseGenerator,
         logs: StructuredLogger | None = None,
+        prompts: PromptProvider | None = None,
     ) -> None:
         self._llm = llm
         self._generator = generator
         self._logs = logs
+        self._prompts = prompts  # F13: fetch the context/intent prompt at runtime
         self._graph = self._build_graph()
 
     # ── graph construction ────────────────────────────────────────────────
@@ -185,8 +189,25 @@ class LangGraphOrchestrator:
             user_msg = f"Recent conversation:\n{convo}\n\nNew message: {prompt.utterance}"
         else:  # first turn: no history, but still infer intent from the message alone
             user_msg = f"New message (start of conversation): {prompt.utterance}"
+        # F13: fetch the CONTEXT+INTENT system prompt from prompt management
+        # (Langfuse) at runtime so it's versioned/editable without a code change;
+        # falls back to the bundled default if unavailable. Record which version ran.
+        instructions = _CONTEXT_INSTRUCTIONS
+        prompt_name = prompt_version_id = prompt_source = ""
+        if self._prompts is not None:
+            try:
+                rendered = await asyncio.to_thread(self._prompts.get, "context_intent")
+                if rendered.text.strip():
+                    instructions = rendered.text
+                prompt_name, prompt_version_id, prompt_source = (
+                    rendered.name,
+                    str(rendered.version),
+                    rendered.source,
+                )
+            except Exception:
+                pass
         messages = [
-            {"role": "system", "content": _CONTEXT_INSTRUCTIONS},
+            {"role": "system", "content": instructions},
             {"role": "user", "content": user_msg},
         ]
         try:
@@ -228,6 +249,11 @@ class LangGraphOrchestrator:
             note=note
             or ("no prior context to connect to" if not history else "no clear reference"),
             suppress_live_search=carried,
+            # F13: which managed prompt (name + version + source) drove this step,
+            # so a prompt-version change in Langfuse is visible in the very next turn.
+            prompt_name=prompt_name,
+            prompt_managed_version=prompt_version_id,
+            prompt_source=prompt_source,
         )
         return note, carried
 

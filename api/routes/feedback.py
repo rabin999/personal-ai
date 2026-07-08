@@ -44,6 +44,23 @@ async def submit_feedback(body: _FeedbackIn, user: CurrentUser, request: Request
         trace_id=body.trace_id,
         note=body.note,
     )
+    # F13 human-in-the-loop: also attach the rating to the corresponding Langfuse
+    # trace as a score (up=1 / down=0) so it's inspectable next to the pipeline and
+    # can calibrate the LLM-judge. Best-effort — never fails the feedback write.
+    pipeline = request.app.state.pipeline
+    scores = getattr(pipeline, "scores", None)
+    if scores is not None:
+        try:
+            turn = int(body.turn_id) if body.turn_id and body.turn_id.isdigit() else 0
+            scores.score(
+                session_id=body.session_id,
+                turn=turn,
+                name="user_feedback",
+                value=1.0 if body.rating == "up" else 0.0,
+                comment=body.note,
+            )
+        except Exception:
+            pass
     return {"id": fb.id, "rating": fb.rating}
 
 

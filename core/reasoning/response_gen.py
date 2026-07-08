@@ -14,6 +14,7 @@ Gate thresholds, disclosure wording, and question phrasing are mechanism
 defaults — final feel is tuned by a human (contract §7).
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -30,6 +31,7 @@ from core.reasoning.style import find_forbidden, scrub_forbidden
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
+from ports.prompt import PromptProvider
 
 logger = logging.getLogger(__name__)
 
@@ -300,12 +302,14 @@ class ResponseGenerator:
         logs: StructuredLogger | None = None,
         max_turn_cost_usd: float = 0.50,
         reasoning_tier: Tier = "complex",
+        prompts: "PromptProvider | None" = None,
     ) -> None:
         self._llm = llm
         self._self_model = self_model
         self._registry = registry
         self._self_reflect = self_reflect
         self._logs = logs
+        self._prompts = prompts  # F13: runtime-managed self-reflection prompt
         self._max_turn_cost_usd = max_turn_cost_usd
         # A2: the main user-facing reasoning turn runs on this (mature) tier, not the
         # flashy fast tier — quality of thought over speed.
@@ -671,6 +675,21 @@ class ResponseGenerator:
         if self._logs is not None:
             self._logs.log(level, event, stage=event, **fields)
 
+    async def _rewrite_instruction(self, text: str) -> str:
+        """The self-reflection rewrite instruction + the draft, from prompt
+        management if wired (F13), else the bundled default. `.get` is sync + cached,
+        so it runs in a thread to keep the reply path unblocked."""
+        if self._prompts is not None:
+            try:
+                rendered = await asyncio.to_thread(
+                    self._prompts.get, "self_reflection_rewrite", variables={"draft": text}
+                )
+                if rendered.text.strip():
+                    return rendered.text
+            except Exception:
+                pass
+        return _REWRITE_INSTRUCTIONS + text
+
     async def _warm_disclosure(self, prompt: AssembledPrompt, text: str) -> str:
         """Warm-polish a nature-disclosure draft on a stronger tier (§1.2 rule 4).
         Keeps the original if the rewrite is empty or the provider is down."""
@@ -694,11 +713,16 @@ class ResponseGenerator:
 
     async def _rewrite_assistant_speak(self, prompt: AssembledPrompt, text: str) -> str:
         """One bounded rewrite pass to strip service-desk phrasing; keep the
-        original if the rewrite is empty, worse, or the provider is down."""
+        original if the rewrite is empty, worse, or the provider is down.
+
+        F13: the rewrite instruction is fetched from prompt management (Langfuse)
+        when wired, so it's versioned/editable without a code change; falls back to
+        the bundled default (== _REWRITE_INSTRUCTIONS) so behaviour is unchanged."""
+        instruction = await self._rewrite_instruction(text)
         try:
             completion = await self._llm.complete(
                 prompt.user_id,
-                [{"role": "user", "content": _REWRITE_INSTRUCTIONS + text}],
+                [{"role": "user", "content": instruction}],
                 "simple",
                 session_id=prompt.session_id,
             )
