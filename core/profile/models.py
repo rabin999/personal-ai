@@ -38,6 +38,9 @@ class ModelPrefs(BaseModel):
     trace. Both are validated so a stale value is ignored."""
 
     fast_model: str | None = None
+    # F8: the user-selected mature "thinking" model for the main reasoning turn
+    # (A2). None → the configured reasoning tier's default. Validated on write.
+    reasoning_model: str | None = None
     voice_engine: Literal["native", "pipecat"] = "native"
 
 

@@ -8,7 +8,6 @@ in its profile panel. Read-only; identity is the static stub (§26).
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
-from pydantic import BaseModel
 
 from api.deps import CurrentUser
 from ports.user_context import UserRecord
@@ -30,6 +29,20 @@ def _pipeline(request: Request) -> Any:
     return pipeline
 
 
+@router.get("/tools")
+async def external_tools(user: CurrentUser, request: Request) -> dict[str, Any]:
+    """F9: URLs of the external tool UIs the app menu links out to — the self-hosted
+    Langfuse dashboard (traces/prompts/evals) and, when running, LangGraph Studio.
+    Only URLs that are actually configured are returned, so the menu hides the rest."""
+    settings = _pipeline(request).settings
+    tools: dict[str, str] = {}
+    if settings.langfuse_enabled and settings.langfuse_host:
+        tools["langfuse"] = settings.langfuse_host.rstrip("/")
+    if settings.langgraph_studio_url:
+        tools["langgraph"] = settings.langgraph_studio_url.rstrip("/")
+    return {"tools": tools}
+
+
 @router.get("/models")
 async def list_models(user: CurrentUser, request: Request) -> dict[str, Any]:
     """The user-selectable fast models + this user's current choice (§4)."""
@@ -39,32 +52,42 @@ async def list_models(user: CurrentUser, request: Request) -> dict[str, Any]:
         "choices": pipeline.llm.fast_model_choices(),
         "selected": profile.model_prefs.fast_model,
         "default": pipeline.llm.route("simple"),
+        # F8: the user-selectable mature "thinking"/reasoning model + this user's
+        # choice; empty selection → the configured reasoning tier's default model.
+        "reasoning_choices": pipeline.llm.reasoning_model_choices(),
+        "reasoning_model": profile.model_prefs.reasoning_model,
+        "reasoning_default": pipeline.llm.route(pipeline.settings.reasoning_tier),
         # §11: the user-selectable voice engine + this user's persisted choice.
         "voice_engines": ["native", "pipecat"],
         "voice_engine": profile.model_prefs.voice_engine,
     }
 
 
-class _ModelChoice(BaseModel):
-    fast_model: str | None = None
-    voice_engine: str | None = None
-
-
 @router.patch("/models")
-async def set_model(body: _ModelChoice, user: CurrentUser, request: Request) -> dict[str, Any]:
-    """Set (or clear, with null) this user's fast-model + voice-engine choice (§4/§11)."""
+async def set_model(body: dict[str, Any], user: CurrentUser, request: Request) -> dict[str, Any]:
+    """Set (or clear, with null) this user's fast/reasoning-model + voice-engine
+    choice (§4/§11/F8). A key present with null clears that choice."""
     pipeline = _pipeline(request)
     updates: dict[str, Any] = {}
-    if body.fast_model is not None:
-        if body.fast_model not in pipeline.llm.fast_model_choices():
+    if "fast_model" in body:
+        fast = body["fast_model"]
+        if fast is not None and fast not in pipeline.llm.fast_model_choices():
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown model")
-        updates["fast_model"] = body.fast_model
-    if body.voice_engine is not None:
-        if body.voice_engine not in ("native", "pipecat"):
+        updates["fast_model"] = fast
+    if "reasoning_model" in body:
+        rm = body["reasoning_model"]
+        if rm is not None and rm not in pipeline.llm.reasoning_model_choices():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="unknown reasoning model"
+            )
+        updates["reasoning_model"] = rm
+    if body.get("voice_engine") is not None:
+        if body["voice_engine"] not in ("native", "pipecat"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown engine")
-        updates["voice_engine"] = body.voice_engine
+        updates["voice_engine"] = body["voice_engine"]
     updated = await pipeline.profiles.update(user.user_id, {"model_prefs": updates})
     return {
         "selected": updated.model_prefs.fast_model,
+        "reasoning_model": updated.model_prefs.reasoning_model,
         "voice_engine": updated.model_prefs.voice_engine,
     }

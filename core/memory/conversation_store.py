@@ -70,7 +70,7 @@ class ConversationStore:
                     "routed": False,  # memory-routing worker will set True (Item 9)
                 },
             )
-            await self._touch_session(user_id, session_id, now)
+            await self._touch_session(user_id, session_id, now, first_message=user_text)
         except Exception:  # durability is best-effort; never break the turn
             logger.exception("conversation persistence failed")
 
@@ -102,8 +102,15 @@ class ConversationStore:
         docs.sort(key=lambda d: d.get("ts", 0.0), reverse=True)
         return [_jsonable(d) for d in docs[:limit]]
 
-    async def _touch_session(self, user_id: str, session_id: str, now: float) -> None:
+    async def _touch_session(
+        self, user_id: str, session_id: str, now: float, first_message: str = ""
+    ) -> None:
         existing = await self._docs.get(CONVERSATIONS_COLLECTION, session_id)
+        # F11: the first non-empty USER message becomes the list preview; set once
+        # (a delivery-only opening turn has empty user_text, so wait for a real one).
+        first = (existing.get("first_message") if existing else "") or ""
+        if not first and first_message.strip():
+            first = first_message.strip()
         header = {
             "_id": session_id,
             "user_id": user_id,
@@ -115,6 +122,7 @@ class ConversationStore:
             "last_ts": now,
             "last_at_iso": datetime.now(UTC).isoformat(),
             "turn_count": (existing.get("turn_count", 0) if existing else 0) + 1,
+            "first_message": first,  # F11: single-line preview for the list
         }
         await self._docs.put(CONVERSATIONS_COLLECTION, session_id, header)
 

@@ -136,6 +136,9 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_project: str = "companion"  # for building trace-detail deep links (A9)
+    # F9: optional LangGraph Studio URL to link out to from the app menu (only when
+    # a `langgraph dev` / LangGraph Platform server is running). Empty → hidden.
+    langgraph_studio_url: str = ""
 
     # Reranker (A10): a cross-encoder picks WHICH fused candidate memories enter the
     # prompt (improves context quality). Off by default (first-use model download);

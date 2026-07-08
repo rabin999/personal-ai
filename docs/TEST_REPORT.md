@@ -1226,3 +1226,47 @@ StructuredLogger spans also flow to Langfuse (A8) for the full-depth view.
 the verbatim system prompt (>4000 chars, i.e. not truncated), the messages array (last message ==
 the user's utterance), active_traits + trait_text, the inferred intent, the reflection draft+critique,
 and the tool result. ruff + mypy clean; voice-session unit tests green.
+
+---
+
+## F8–F12 — Web app: model selection, tool links, consistent shell, conversations, mobile
+
+Verified by real screenshots of the running app (uvicorn serving `web/dist`) at mobile (390×844)
+and desktop (1280×800) viewports, driven with Playwright + a forged session cookie for `u_demo_001`.
+
+**F8 — thinking/reasoning-model + engine selection.** Added a user-selectable **reasoning ("thinking")
+model** (mature model, A2) alongside the existing fast-model + voice-engine controls. Backend:
+`ModelPrefs.reasoning_model`, `LLM.reasoning_model_choices()`, an explicit model override honored on
+the MAIN reasoning turn (`OpenRouter.complete` now accepts any configured model, not just fast ones),
+exposed + persisted via `GET/PATCH /api/models`. UI: a "Thinking model" `<select>` on the companion
+page. **Proof it actually changes the model:** selecting `google/gemini-2.5-pro` → the main
+reasoning `llm.call` span used `gemini-2.5-pro` (default was `claude-sonnet-4.5`). Screenshot shows
+Voice engine / Fast model / Thinking model selectors.
+
+**F9 — external tool links.** New `GET /api/tools` returns the self-hosted **Langfuse** dashboard
+URL (from settings, verified `{"tools":{"langfuse":"http://localhost:3000"}}`) and an optional
+**LangGraph Studio** URL (`langgraph_studio_url`, hidden when unset since we run LangGraph as a
+library). A tool-links menu (chain icon) in the header opens them in a new tab. Visible in every
+screenshot's header.
+
+**F10 — consistent header/theme on every page.** Root cause: data pages used a minimal `Shell` nav
+that lacked the brand + theme toggle the companion page had, so opening Traces "lost" the header.
+Fix: one shared `AppHeader` (brand, nav, F9 tool links, theme toggle) used by BOTH the data-page
+`Shell` AND the companion page (its status/trace/avatar ride the header's `right` slot). Screenshots
+confirm identical header + theme on Companion, Conversations, Traces, Memories.
+
+**F11 — conversations as link rows with preview → detail with traces.** The list rows now show the
+**first user message as a single-line preview (≤70 chars, ellipsis)** + date + turn count (backend
+stores `first_message` on the session header on first non-empty turn). Verified: a new chat turn
+("I just finished planting tomatoes in my new garden…") rendered trimmed as
+"I just finished planting tomatoes in my new g…". Clicking a row opens the conversation detail, which
+**already embeds the full per-turn trace** (`<TraceTimeline>` — the F7 depth) beneath the transcript.
+
+**F12 — mobile-first.** Screenshots at 390px show clean, uncramped layouts across
+companion/conversations/traces/memories: horizontally-scrollable nav (no clipping), collapsed Setup
+so the orb + Start are the hero, thumb-reachable primary button, list rows with comfortable tap
+targets, no horizontal overflow. Combined with the existing safe-area-inset/16px-input/≥40px-target
+polish. On-device feel still warrants a real phone (noted), but the responsive layout is verified.
+
+**Checks:** web `tsc -b` + `vite build` clean; backend ruff + mypy clean; `lint-imports` contracts
+kept (2/2); 55 profile/model/prompt unit tests + 17 conversation tests green.

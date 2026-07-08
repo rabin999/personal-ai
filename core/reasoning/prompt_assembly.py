@@ -102,6 +102,9 @@ class AssembledPrompt(BaseModel):
     # §4: user-selected fast model to try first (non-complex turns only); the
     # router keeps the tier chain as fallback. None → default tier routing.
     model_override: str | None = None
+    # F8: user-selected mature "thinking" model for the MAIN reasoning turn (A2);
+    # applies on every turn (not just non-complex). None → reasoning-tier default.
+    reasoning_model_override: str | None = None
     emotion: dict[str, Any] | None = None
     cold_start: bool = False  # first conversation with this user (§3.1)
     # A3: set by the context-resolution step when this turn is a follow-up whose
@@ -263,6 +266,7 @@ class PromptAssembler:
         # §4: honor the user's fast-model choice on non-complex turns; hard turns
         # still route to the strong tier.
         model_override = profile.model_prefs.fast_model if complexity_hint != "complex" else None
+        reasoning_model_override = profile.model_prefs.reasoning_model  # F8: mature turn
         return AssembledPrompt(
             user_id=user_id,
             session_id=session_id,
@@ -272,6 +276,7 @@ class PromptAssembler:
             complexity_hint=complexity_hint,
             prompt_version=prompt_version,
             model_override=model_override,
+            reasoning_model_override=reasoning_model_override,
             emotion=dict(emotion) if emotion else None,
             cold_start=cold_start,
             resolved_entities=candidates,

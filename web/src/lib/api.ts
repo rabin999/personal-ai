@@ -29,6 +29,7 @@ export interface ConversationHeader {
   started_at_iso?: string;
   last_at_iso?: string;
   last_ts?: number;
+  first_message?: string; // F11: first user message, for the list preview
 }
 export interface ConversationTurn {
   turn_index: number;
@@ -117,11 +118,14 @@ export function getAttribution(): Promise<{ by_prompt_version: VersionRow[] }> {
   return authed("/debug/attribution");
 }
 
-// ── model selection (§4) ─────────────────────────────────────────────────
+// ── model selection (§4 / F8) ─────────────────────────────────────────────
 export function getModels(): Promise<{
   choices: string[];
   selected: string | null;
   default: string;
+  reasoning_choices: string[];
+  reasoning_model: string | null;
+  reasoning_default: string;
   voice_engines: string[];
   voice_engine: string;
 }> {
@@ -130,8 +134,19 @@ export function getModels(): Promise<{
 export function setModel(fast_model: string | null): Promise<{ selected: string | null }> {
   return authed("/api/models", { method: "PATCH", body: JSON.stringify({ fast_model }) });
 }
+// F8: the mature "thinking" model for the main reasoning turn.
+export function setReasoningModel(
+  reasoning_model: string | null,
+): Promise<{ reasoning_model: string | null }> {
+  return authed("/api/models", { method: "PATCH", body: JSON.stringify({ reasoning_model }) });
+}
 export function setVoiceEngine(voice_engine: string): Promise<{ voice_engine: string }> {
   return authed("/api/models", { method: "PATCH", body: JSON.stringify({ voice_engine }) });
+}
+
+// ── external tool UIs (F9) ─────────────────────────────────────────────────
+export function getTools(): Promise<{ tools: { langfuse?: string; langgraph?: string } }> {
+  return authed("/api/tools");
 }
 
 // ── feedback ─────────────────────────────────────────────────────────────

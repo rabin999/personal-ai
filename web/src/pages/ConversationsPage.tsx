@@ -73,15 +73,25 @@ export default function ConversationsPage() {
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
       {items.length === 0 && !error && <p className="text-sm text-neutral-500">No conversations yet.</p>}
 
-      <ul className="space-y-2">
+      <ul className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
         {items.map((c) => (
           <li key={c.session_id}>
             <Link
               to={`/conversations/${encodeURIComponent(c.session_id)}`}
-              className="flex items-center justify-between rounded-lg border border-neutral-200 px-4 py-3 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+              className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-neutral-50 active:bg-neutral-100 dark:hover:bg-neutral-900 dark:active:bg-neutral-800"
             >
-              <span className="font-medium">{fmt(c.last_at_iso || c.started_at_iso)}</span>
-              <span className="text-sm text-neutral-500">{c.turn_count} turns →</span>
+              <div className="min-w-0 flex-1">
+                {/* F11: first message as a single-line preview (≤70 chars). */}
+                <p className="truncate text-sm font-medium">
+                  {preview(c.first_message) || <span className="text-neutral-400">(no message)</span>}
+                </p>
+                <p className="mt-0.5 text-xs text-neutral-500">
+                  {fmt(c.last_at_iso || c.started_at_iso)} · {c.turn_count} turns
+                </p>
+              </div>
+              <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 6l6 6-6 6" />
+              </svg>
             </Link>
           </li>
         ))}
@@ -118,6 +128,12 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </label>
   );
+}
+
+// F11: trim the first message to a single line, max 70 chars with an ellipsis.
+function preview(msg?: string): string {
+  const s = (msg ?? "").replace(/\s+/g, " ").trim();
+  return s.length > 70 ? s.slice(0, 69).trimEnd() + "…" : s;
 }
 
 function fmt(iso?: string): string {

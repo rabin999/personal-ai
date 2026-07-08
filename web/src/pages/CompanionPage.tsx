@@ -4,7 +4,7 @@ import { Orb } from "../components/Orb";
 import { Waveform } from "../components/Waveform";
 import { MicPicker } from "../components/MicPicker";
 import { TraceLog } from "../components/TraceLog";
-import { ThemeToggle } from "../components/ThemeToggle";
+import { AppHeader } from "../components/AppHeader";
 import { ProfilePanel } from "../components/ProfilePanel";
 import {
   AudioPlayer,
@@ -17,9 +17,9 @@ import {
   getModels,
   sendFeedback,
   setModel as saveModel,
+  setReasoningModel as saveReasoningModel,
   setVoiceEngine as saveVoiceEngine,
 } from "../lib/api";
-import { useTheme } from "../lib/theme";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
 const FIELD =
@@ -50,11 +50,9 @@ export default function CompanionPage() {
   const [level, setLevel] = useState(0);
   const [turns, setTurns] = useState<TurnGroup[]>([]);
   const [openTurn, setOpenTurn] = useState<number | null>(null);
-  const [companion, setCompanion] = useState("Companion");
   const [profileOpen, setProfileOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
   const [showSetup, setShowSetup] = useState(false); // mobile: collapse config so the orb + Start are the hero
-  const { pref: themePref, setPref: setThemePref } = useTheme();
 
   const wsRef = useRef<WebSocket | null>(null);
   const micRef = useRef<MicCapture | null>(null);
@@ -70,11 +68,16 @@ export default function CompanionPage() {
   // Fast/flash LLM the user can pick (§4). Empty = the tier default.
   const [models, setModels] = useState<string[]>([]);
   const [model, setModel_] = useState<string>("");
+  // F8: the mature "thinking"/reasoning model for the main turn. Empty = default.
+  const [reasoningModels, setReasoningModels] = useState<string[]>([]);
+  const [reasoningModel, setReasoningModel_] = useState<string>("");
   useEffect(() => {
     getModels()
       .then((m) => {
         setModels(m.choices);
         setModel_(m.selected ?? "");
+        setReasoningModels(m.reasoning_choices ?? []);
+        setReasoningModel_(m.reasoning_model ?? "");
         // §11: restore the persisted voice engine so the client reconnects to
         // the same runtime the user last chose.
         if (m.voice_engine === "native" || m.voice_engine === "pipecat") {
@@ -170,7 +173,6 @@ export default function CompanionPage() {
         case "ready":
           setConn("active");
           sessionIdRef.current = msg.session_id || "";
-          setCompanion(msg.companion_name || "Companion");
           sampleRateRef.current = msg.sample_rate ?? 24_000;
           playerRef.current?.configure(sampleRateRef.current);
           ws.send(JSON.stringify({ type: "start_conversation" }));
@@ -264,69 +266,51 @@ export default function CompanionPage() {
   return (
     <div className="flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <main className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-6 sm:py-4 dark:border-slate-800">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-sm">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
-              </svg>
+        {/* The single app header (F10) — same brand/nav/tools/theme as every page.
+            The companion-specific controls (connection status, mobile trace drawer,
+            profile avatar) ride in the header's right slot. */}
+        <AppHeader
+          right={
+            <div className="flex items-center gap-2">
+              <div className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs sm:flex dark:border-neutral-700 dark:bg-neutral-800/70">
+                <span className={`h-2 w-2 rounded-full ${dotColor}`} />
+                <span className="text-neutral-600 dark:text-neutral-300">{CONN_LABEL[conn]}</span>
+              </div>
+              <button
+                onClick={() => setTraceOpen(true)}
+                aria-label="Open conversation trace"
+                title="Conversation trace"
+                className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full border border-neutral-200 text-neutral-600 transition-colors hover:bg-neutral-100 lg:hidden dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M4 6h16M4 12h10M4 18h7" />
+                </svg>
+                {realTurns > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold leading-none text-white">
+                    {realTurns}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => setProfileOpen(true)}
+                aria-label="Open your profile"
+                title="Your profile"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 text-xs font-semibold text-white shadow-sm outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-sky-500"
+              >
+                {me?.picture ? (
+                  <img
+                    src={me.picture}
+                    alt=""
+                    referrerPolicy="no-referrer"
+                    className="h-full w-full rounded-full object-cover"
+                  />
+                ) : (
+                  avatarInitials(me?.name || me?.email || "U")
+                )}
+              </button>
             </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-semibold leading-tight">{companion}</h1>
-              <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                Voice-first companion · Grok voice
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3">
-            {/* Links to the per-user data pages (real routes). */}
-            <nav className="hidden items-center gap-1 text-xs sm:flex">
-              <button onClick={() => navigate("/conversations")} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Conversations</button>
-              <button onClick={() => navigate("/memories")} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Memories</button>
-              <button onClick={() => navigate("/traces")} className="rounded-md px-2 py-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800">Traces</button>
-            </nav>
-            <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs sm:flex dark:border-slate-700 dark:bg-slate-800/70">
-              <span className={`h-2 w-2 rounded-full ${dotColor}`} />
-              <span className="text-slate-600 dark:text-slate-300">{CONN_LABEL[conn]}</span>
-            </div>
-            {/* Trace drawer toggle — mobile only; the trace is a persistent sidebar on desktop. */}
-            <button
-              onClick={() => setTraceOpen(true)}
-              aria-label="Open conversation trace"
-              title="Conversation trace"
-              className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full border border-slate-200 text-slate-600 transition-colors hover:bg-slate-100 lg:hidden dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16M4 12h10M4 18h7" />
-              </svg>
-              {realTurns > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-sky-600 px-1 text-[10px] font-semibold leading-none text-white">
-                  {realTurns}
-                </span>
-              )}
-            </button>
-            <ThemeToggle pref={themePref} onChange={setThemePref} />
-            <span className="hidden h-6 w-px bg-slate-200 sm:block dark:bg-slate-800" />
-            <button
-              onClick={() => setProfileOpen(true)}
-              aria-label="Open your profile"
-              title="Your profile"
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-sky-500 to-cyan-500 text-xs font-semibold text-white shadow-sm outline-none ring-offset-2 ring-offset-white transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-sky-500 dark:ring-offset-slate-950"
-            >
-              {me?.picture ? (
-                <img
-                  src={me.picture}
-                  alt=""
-                  referrerPolicy="no-referrer"
-                  className="h-full w-full rounded-full object-cover"
-                />
-              ) : (
-                avatarInitials(me?.name || me?.email || "U")
-              )}
-            </button>
-          </div>
-        </header>
+          }
+        />
 
         <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-4 py-8 sm:px-6">
           {/* Soft backdrop wash */}
@@ -400,7 +384,7 @@ export default function CompanionPage() {
                 </select>
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
-                <span className={FIELD_LABEL}>LLM model</span>
+                <span className={FIELD_LABEL}>Fast model</span>
                 <select
                   value={model}
                   onChange={(e) => {
@@ -409,10 +393,30 @@ export default function CompanionPage() {
                     void saveModel(v || null);
                   }}
                   className={FIELD}
-                  title="Pick the fast/flash model for your turns. Applies from the next turn; changeable anytime."
+                  title="The fast/flash model for quick sub-steps. Applies from the next turn; changeable anytime."
                 >
                   <option value="">Default (auto)</option>
                   {models.map((m) => (
+                    <option key={m} value={m}>
+                      {m}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex min-w-0 flex-col gap-1.5">
+                <span className={FIELD_LABEL}>Thinking model</span>
+                <select
+                  value={reasoningModel}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setReasoningModel_(v);
+                    void saveReasoningModel(v || null).catch(() => {});
+                  }}
+                  className={FIELD}
+                  title="The mature model that does the main reasoning turn (F8/A2). Applies from the next turn; shown in the trace."
+                >
+                  <option value="">Default (auto)</option>
+                  {reasoningModels.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>

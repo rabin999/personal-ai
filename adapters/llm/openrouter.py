@@ -88,6 +88,21 @@ class OpenRouterLLM:
                     seen.append(model)
         return seen
 
+    def reasoning_model_choices(self) -> list[str]:
+        """De-duped moderate+complex tier models — the user-selectable mature
+        'thinking' set for the main reasoning turn (F8/A2)."""
+        seen: list[str] = []
+        for tier in ("complex", "moderate"):
+            for model in self._tiers.get(tier, []):
+                if model not in seen:
+                    seen.append(model)
+        return seen
+
+    def _known_models(self) -> set[str]:
+        """Every configured model across all tiers — the set an explicit user
+        model override (fast OR reasoning) is validated against."""
+        return {m for chain in self._tiers.values() for m in chain}
+
     async def verify_models(self) -> dict[str, list[str]]:
         """Check configured tier models against the live OpenRouter catalog.
 
@@ -123,9 +138,10 @@ class OpenRouterLLM:
     ) -> CompletionResult:
         errors: list[str] = []
         chain = list(self._tiers[tier])
-        # §4: a valid user-selected fast model is tried first; tier chain remains
+        # §4/F8: a valid user-selected model (fast on sub-steps, or the mature
+        # 'thinking' model on the main turn) is tried first; the tier chain remains
         # the fallback. Ignore an unknown id rather than trusting it blindly.
-        if model and model in self.fast_model_choices():
+        if model and model in self._known_models():
             chain = [model, *[m for m in chain if m != model]]
         for model_id in chain:
             started = time.perf_counter()
@@ -158,7 +174,7 @@ class OpenRouterLLM:
         falls back to non-streamed ``complete`` (which walks the whole chain).
         """
         chain = list(self._tiers[tier])
-        if model and model in self.fast_model_choices():
+        if model and model in self._known_models():
             chain = [model, *[m for m in chain if m != model]]
         model_id = chain[0]
         started = time.perf_counter()

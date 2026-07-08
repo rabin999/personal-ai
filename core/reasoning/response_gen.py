@@ -784,7 +784,10 @@ class ResponseGenerator:
         # the pinned model. The main turn defaults to the mature model, not the
         # flashy fast tier — quality of thought over speed.
         base = self._reasoning_tier
-        attempts = [(base, prompt.model_override), (_ESCALATE_TIER[base], None)]
+        # F8: the user's mature "thinking" model wins on the main turn; else fall
+        # back to their fast-model choice (non-complex turns), else tier default.
+        main_model = prompt.reasoning_model_override or prompt.model_override
+        attempts = [(base, main_model), (_ESCALATE_TIER[base], None)]
         for attempt, (tier, model) in enumerate(attempts):  # rule 1: validate; retry once
             try:
                 result = await self._llm.complete(

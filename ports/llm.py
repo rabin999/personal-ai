@@ -69,6 +69,10 @@ class LLM(Protocol):
         """The user-selectable fast/flash models (simple+moderate tiers, §4)."""
         ...
 
+    def reasoning_model_choices(self) -> list[str]:
+        """The user-selectable mature 'thinking' models for the main turn (F8/A2)."""
+        ...
+
     async def embed(self, texts: list[str]) -> list[list[float]]:
         """Embedding vectors (local fastembed — OpenRouter has no embeddings API)."""
         ...
