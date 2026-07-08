@@ -22,7 +22,7 @@ import {
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
 
 const FIELD =
-  "w-auto max-w-full self-start rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800/80 dark:text-slate-100";
 const FIELD_LABEL =
   "text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400";
 
