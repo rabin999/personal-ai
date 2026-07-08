@@ -185,9 +185,10 @@ export default function CompanionPage() {
     void playerRef.current?.close();
     playerRef.current = new AudioPlayer(
       (l) => {
-        // Drive the waveform from the companion's TTS while it speaks. The raw
-        // per-chunk RMS is modest, so lift it a touch for a livelier bar.
-        if (turnStateRef.current === "speaking") setLevel(Math.min(1, l * 1.6));
+        // Drive the waveform from the companion's TTS while it speaks. `l` is the
+        // analyser's frame-rate level (already scaled to the mic's range), so the
+        // bar reacts to voice output as strongly as to voice input.
+        if (turnStateRef.current === "speaking") setLevel(l);
       },
       () => {
         // Reply finished playing → back to listening. Full-duplex: the mic never
@@ -653,8 +654,11 @@ function StatusChip({ state }: { state: TurnState }) {
 // Caption text for display: drop inline TTS tags (e.g. "[warm]") and markdown
 // emphasis, collapse whitespace. What's shown is what's spoken/heard, nothing else.
 function cleanCaption(text: string): string {
+  // Strip BOTH inline TTS tag forms the backend emits — [square] and <angle>
+  // (see _BRACKET_TOKEN in core/reasoning/response_gen.py). voice_text keeps the
+  // tags for the voice, so the caption must remove them itself.
   return (text ?? "")
-    .replace(/\[[^\]]*\]/g, "")
+    .replace(/\[[^\[\]]*\]|<[^<>]*>/g, "")
     .replace(/[*_`]/g, "")
     .replace(/\s+/g, " ")
     .trim();

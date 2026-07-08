@@ -194,6 +194,13 @@ class SpeakerRoute {
 export class AudioPlayer {
   private ctx: AudioContext;
   private route: SpeakerRoute;
+  // Real-time output meter: sources play THROUGH this analyser, and a rAF loop
+  // reads its amplitude every frame while audio is playing. Per-chunk RMS was
+  // too coarse to drive the waveform (it jumped only when a chunk arrived); the
+  // analyser gives the same smooth, frame-rate level the mic produces, so the
+  // bar reacts to the companion's voice just like it does to yours.
+  private analyser: AnalyserNode;
+  private meterRaf = 0;
   private cursor = 0;
   private sources = new Set<AudioBufferSourceNode>();
   private rate = 24_000;
@@ -225,6 +232,32 @@ export class AudioPlayer {
     requestMediaAudioSession();
     this.ctx = new AudioContext();
     this.route = new SpeakerRoute(this.ctx);
+    // Meter tap: sources → analyser → speaker route. The analyser only observes;
+    // it doesn't alter the audio path.
+    this.analyser = this.ctx.createAnalyser();
+    this.analyser.fftSize = 1024;
+    this.analyser.connect(this.route.target);
+  }
+
+  // Report the smoothed playback amplitude every animation frame while any buffer
+  // is sounding, then a single 0 once playback drains. Scaled to match the mic's
+  // RMS range so voice output drives the waveform as strongly as voice input.
+  private startMeter(): void {
+    if (this.meterRaf) return;
+    const data = new Float32Array(this.analyser.fftSize);
+    const tick = () => {
+      if (this.sources.size === 0) {
+        this.meterRaf = 0;
+        this.onLevel(0);
+        return;
+      }
+      this.analyser.getFloatTimeDomainData(data);
+      let sum = 0;
+      for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+      this.onLevel(Math.min(1, Math.sqrt(sum / data.length) * 3.0));
+      this.meterRaf = requestAnimationFrame(tick);
+    };
+    this.meterRaf = requestAnimationFrame(tick);
   }
 
   configure(sampleRate: number): void {
@@ -263,7 +296,7 @@ export class AudioPlayer {
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = this.speed; // C7: user's speech rate
-    src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
+    src.connect(this.analyser); // → analyser (meter tap) → speaker route
     // If the write cursor has fallen to/behind playback (session start, or an
     // underrun after a slow network chunk), restart it a lead ahead of "now" so
     // this and following buffers schedule gaplessly; otherwise keep it seamless.
@@ -275,7 +308,7 @@ export class AudioPlayer {
     // schedule cursor must advance by the SPED-UP duration to stay gapless.
     this.cursor = startAt + buffer.duration / this.speed;
     this.sources.add(src);
-    this.onLevel(rms(int16));
+    this.startMeter(); // frame-rate output level while this (and following) buffers play
     src.onended = () => {
       this.sources.delete(src);
       if (this.sources.size === 0) {
@@ -296,6 +329,10 @@ export class AudioPlayer {
     });
     this.sources.clear();
     this.cursor = this.ctx.currentTime;
+    if (this.meterRaf) {
+      cancelAnimationFrame(this.meterRaf);
+      this.meterRaf = 0;
+    }
     this.onLevel(0);
   }
 
@@ -333,7 +370,7 @@ export class AudioPlayer {
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = this.speed; // C7: replay at the user's rate too
-    src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
+    src.connect(this.analyser); // → analyser (meter tap) → speaker route
     src.start();
   }
 
