@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Waveform } from "../components/Waveform";
 import { MicPicker } from "../components/MicPicker";
+import { ModelPicker } from "../components/ModelPicker";
 import { TraceLog } from "../components/TraceLog";
 import { AppHeader } from "../components/AppHeader";
 import { ProfilePanel } from "../components/ProfilePanel";
@@ -471,7 +472,7 @@ export default function CompanionPage() {
           )}
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
             <div
-              className={`flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid ${showSetup && !active ? "grid" : "hidden lg:grid"}`}
+              className={`min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid ${showSetup && !active ? "grid" : "hidden lg:grid"}`}
             >
               <MicPicker devices={devices} value={micId} onChange={setMicId} disabled={active} />
               <label className="flex min-w-0 flex-col gap-1.5">
@@ -508,44 +509,27 @@ export default function CompanionPage() {
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Fast model</span>
-                <input
-                  list="fast-model-list"
+                <ModelPicker
                   value={model}
-                  onChange={(e) => setModel_(e.target.value)}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v === "" || catalog.includes(v)) void saveModel(v || null);
+                  options={catalog.length ? catalog : models}
+                  onChange={(v) => {
+                    setModel_(v);
+                    void saveModel(v || null);
                   }}
-                  placeholder="Default (auto) — type to search"
-                  className={FIELD}
                   title="Search any model (gemini-2.5-flash is the default). Applies from the next turn."
                 />
-                <datalist id="fast-model-list">
-                  {(catalog.length ? catalog : models).map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
               </label>
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Thinking model</span>
-                <input
-                  list="thinking-model-list"
+                <ModelPicker
                   value={reasoningModel}
-                  onChange={(e) => setReasoningModel_(e.target.value)}
-                  onBlur={(e) => {
-                    const v = e.target.value.trim();
-                    if (v === "" || catalog.includes(v))
-                      void saveReasoningModel(v || null).catch(() => {});
+                  options={catalog.length ? catalog : reasoningModels}
+                  onChange={(v) => {
+                    setReasoningModel_(v);
+                    void saveReasoningModel(v || null).catch(() => {});
                   }}
-                  placeholder="Default (auto) — type to search"
-                  className={FIELD}
                   title="The mature model for the main reasoning turn. Applies from the next turn; shown in the trace."
                 />
-                <datalist id="thinking-model-list">
-                  {(catalog.length ? catalog : reasoningModels).map((m) => (
-                    <option key={m} value={m} />
-                  ))}
-                </datalist>
               </label>
             </div>
 
