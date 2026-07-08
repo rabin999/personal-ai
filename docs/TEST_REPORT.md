@@ -1900,3 +1900,47 @@ improvement over the current client-side playback resample (which shifts pitch).
 suites green (they read DEFAULT_VOICE dynamically). NOTE — the exact "which voice sounds
 most natural/least-warm" is a human-ear call; orion is a defensible default and the user
 can switch to any of the 26 instantly in the picker.
+
+## L0 — Per-turn latency profile (baseline, 2026-07-09)
+
+Real turns through the wired LangGraph engine (gemini-2.5-flash fast + claude-sonnet-4.5
+reasoning), per-LLM-call latency captured from the trace:
+
+| Turn | Total | LLM calls (sequential) |
+|---|---|---|
+| SIMPLE "hey how are you" | **7032ms** | context_intent gemini-flash **1999ms** → response **sonnet 3751ms** (in=3976) |
+| MEMORY "what did I tell you about my portfolio" | **5706ms** | context_intent 1846ms → response sonnet 3637ms (cached=1950 ✓) |
+| SEARCH "latest NEPSE news today" | **15326ms** | context_intent 1672ms → response sonnet 4256ms → search_summarize flash 1523ms → response sonnet **5817ms** |
+
+**Bottlenecks (all SEQUENTIAL):**
+1. **`context_intent` runs on EVERY turn (~1.7–2.0s)** — a full pre-step LLM call before
+   the response, even on a trivial greeting. Biggest fixable waste (→ L3 gate / L1).
+2. **The user reply always uses the mature `claude-sonnet-4.5` (~3.7–5.8s)** regardless
+   of complexity — a greeting doesn't need it (→ L5 right-size: simple → fast tier).
+3. **SEARCH stacks TWO sonnet response calls (4.3s + 5.8s) sequentially** = ~10s of the
+   15s (→ L2/L3: don't re-run the full mature reply after the search).
+4. Prompt caching confirmed working on the reasoning turn (cached≈1950 on repeat).
+
+**Plan justified by this profile:** L3+L5 first (kill context_intent + sonnet on simple
+turns → simple turn should drop from ~7s to ~1–1.5s); then L2 for the search double-call.
+
+## L3 + L5 — Gate context_intent on simple turns + right-size the reply model ✅
+
+Two changes justified by the L0 profile (the two biggest sequential costs):
+- **L5:** the user reply now runs on the FAST tier for SIMPLE/MODERATE turns (was
+  always claude-sonnet-4.5). COMPLEX turns — and turns where the user pinned a thinking
+  model — still use the mature reasoning tier (quality where it matters, P0).
+- **L3:** the ~2s `context_intent` pre-step is SKIPPED on SIMPLE turns (nothing to
+  resolve; the reply model reads recent turns + memory itself). MODERATE/COMPLEX keep it.
+
+**Measured (same scenarios, before → after):**
+| Turn | Before | After | Δ |
+|---|---|---|---|
+| SIMPLE "hey how are you" | 7032ms | **2915ms** | −58% |
+| MEMORY "what did I tell you…portfolio" | 5706ms | **1751ms** | −69% |
+| SEARCH "latest NEPSE news" | 15326ms | 14032ms | (ReAct loop — L2 next) |
+
+**Quality (P0) — LLM-judge on the fast-tier replies:** greeting, memory recall, and a
+philosophical question ALL score **5/5, chatbot_like=False, PASS** — companion voice
+fully intact. Replies stay warm, personalized ("Nandi"), and accurate (recalled the
+exact SYPNL trade). response-gen + model-selection unit suites green.

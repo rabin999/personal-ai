@@ -169,7 +169,17 @@ class LangGraphOrchestrator:
         )
 
     async def _resolve_context(self, state: _TurnState) -> _TurnState:
-        note, suppress = await self._resolve_note(state["prompt"])
+        prompt = state["prompt"]
+        # L3 gate: a SIMPLE turn (a greeting / short casual message) has no complex
+        # reference to resolve against the conversation — skip the ~2s context_intent
+        # LLM call entirely (L0 profile: it was pure waste on "hey how are you"). The
+        # main reply model still reads the recent turns + memory and infers intent
+        # itself, so quality holds. MODERATE/COMPLEX turns (follow-ups, references,
+        # indirect asks) keep the full resolution step.
+        if prompt.complexity_hint == "simple":
+            self._span("reasoning", node="resolve_context", skipped="simple_turn_fast_path")
+            return {"context_note": "", "suppress_search": False}
+        note, suppress = await self._resolve_note(prompt)
         return {"context_note": note, "suppress_search": suppress}
 
     async def _resolve_note(self, prompt: AssembledPrompt) -> tuple[str, bool]:

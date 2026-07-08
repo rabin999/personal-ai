@@ -847,14 +847,21 @@ class ResponseGenerator:
             {"role": "system", "content": instructions},
             prompt.messages[-1],
         ]
-        # Attempt 0: the MATURE reasoning tier (A2) + the user's explicit fast-model
-        # choice if they opted into one. Attempt 1 (only on failure): escalate + drop
-        # the pinned model. The main turn defaults to the mature model, not the
-        # flashy fast tier — quality of thought over speed.
-        base = self._reasoning_tier
-        # F8: the user's mature "thinking" model wins on the main turn; else fall
-        # back to their fast-model choice (non-complex turns), else tier default.
-        main_model = prompt.reasoning_model_override or prompt.model_override
+        # L5 right-size the model to the turn: SIMPLE/MODERATE turns (greetings, casual
+        # chat, most replies) run on the FAST tier — a greeting does not need the mature
+        # reasoning model, and the ~2s it saves is the single biggest latency win (L0
+        # profile). COMPLEX turns — and turns where the user explicitly pinned a
+        # "thinking" model — still use the mature reasoning tier for depth (quality
+        # holds where it matters, P0). Attempt 1 escalates one tier on failure.
+        if prompt.reasoning_model_override:
+            base: Tier = self._reasoning_tier  # user explicitly chose a thinking model
+            main_model = prompt.reasoning_model_override
+        elif prompt.complexity_hint == "complex":
+            base = self._reasoning_tier  # hard turns → mature model
+            main_model = prompt.model_override
+        else:
+            base = prompt.complexity_hint  # simple/moderate → the fast tiers
+            main_model = prompt.model_override  # the user's fast model if they set one
         attempts = [(base, main_model), (_ESCALATE_TIER[base], None)]
         for attempt, (tier, model) in enumerate(attempts):  # rule 1: validate; retry once
             try:
