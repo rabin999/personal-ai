@@ -97,6 +97,35 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
             <span style={blob(thinking ? "#f472b6" : accent, '{"left":"22%","top":"26%"}', "fusion-a", 0.35, 19)} />
           </div>
 
+          {/* FIERY layer — warm flickering flames + rising embers, for a living
+              nuclear-fire feel. Only when a conversation is ACTIVE; idle stays calm
+              (just the gentle plasma drift, no fire/embers/rings). */}
+          {!idle && (
+            <>
+              <div className="absolute inset-0 [&>span]:absolute [&>span]:rounded-full [&>span]:blur-2xl [&>span]:mix-blend-screen">
+                <span style={{ left: "18%", bottom: "6%", width: "52%", height: "52%", background: "radial-gradient(circle, #fb923c 0%, transparent 66%)", animation: `fusion-flicker ${(2.2 * (thinking ? 0.7 : 1)).toFixed(1)}s ease-in-out infinite` }} />
+                <span style={{ right: "20%", bottom: "10%", width: "42%", height: "46%", background: "radial-gradient(circle, #f97316 0%, transparent 66%)", animation: `fusion-flicker ${(1.7 * (thinking ? 0.7 : 1)).toFixed(1)}s ease-in-out infinite`, animationDelay: "0.4s" }} />
+                <span style={{ left: "33%", bottom: "16%", width: "36%", height: "42%", background: "radial-gradient(circle, #fbbf24 0%, transparent 66%)", animation: `fusion-flicker ${(2.6 * (thinking ? 0.7 : 1)).toFixed(1)}s ease-in-out infinite`, animationDelay: "0.9s" }} />
+              </div>
+              <div className="absolute inset-0">
+                {[8, 22, 38, 52, 66, 80, 92].map((x, i) => (
+                  <span
+                    key={i}
+                    className="absolute h-1 w-1 rounded-full"
+                    style={{
+                      left: `${x}%`,
+                      bottom: "18%",
+                      background: i % 2 ? "#fed7aa" : "#fdba74",
+                      boxShadow: "0 0 6px 1px #fb923c",
+                      animation: `ember-rise ${(3 + (i % 3)).toFixed(1)}s linear infinite`,
+                      animationDelay: `${(i * 0.5).toFixed(1)}s`,
+                    }}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
           {/* Slow rotating sheen for extra flow (faster while thinking) */}
           <div
             className="absolute inset-[-25%] mix-blend-screen"
