@@ -68,6 +68,10 @@ class ProfileService:
         audio["vad_threshold"] = min(
             max(audio["vad_threshold"], audio["vad_min"]), audio["vad_max"]
         )
+        # C7: clamp playback speed into the valid range BEFORE validation so an
+        # out-of-range value is coerced (like vad_threshold), not rejected.
+        if "voice_speed" in audio:
+            audio["voice_speed"] = min(1.5, max(0.8, float(audio["voice_speed"])))
 
         profile = UserProfile.model_validate(data)
         await self._docs.put(PROFILE_COLLECTION, user_id, _profile_to_doc(profile))

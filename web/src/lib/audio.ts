@@ -204,6 +204,10 @@ export class AudioPlayer {
   // re-enqueuing it is exactly why "the voice keeps playing". Stays muted until
   // the NEXT reply actually starts synthesizing (unmute on its first TTS event).
   private muted = false;
+  // C7: playback rate multiplier (1.0 = normal). Default 1.2 — the voice was a
+  // touch slow; per-user configurable from the profile. Applied to every scheduled
+  // buffer so BOTH voice engines (they share this sink) speak at the user's pace.
+  private speed = 1.2;
   // Playback lead (§2b): schedule the first buffer of a reply — and rebuild the
   // cushion after any underrun — this far in the future. TTS arrives as many
   // small, jittery network chunks; scheduling them with zero lead means a slow
@@ -227,6 +231,11 @@ export class AudioPlayer {
     this.rate = sampleRate;
     this.cursor = this.ctx.currentTime;
     this.remainder = new Uint8Array(0);
+  }
+
+  /** C7: set the playback rate (0.8–1.5×). Clamped so a bad value can't distort. */
+  setSpeed(speed: number): void {
+    if (Number.isFinite(speed)) this.speed = Math.min(1.5, Math.max(0.8, speed));
   }
 
   enqueue(pcm: ArrayBuffer): void {
@@ -253,6 +262,7 @@ export class AudioPlayer {
     if (this.ctx.state === "suspended") void this.ctx.resume();
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    src.playbackRate.value = this.speed; // C7: user's speech rate
     src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
     // If the write cursor has fallen to/behind playback (session start, or an
     // underrun after a slow network chunk), restart it a lead ahead of "now" so
@@ -261,7 +271,9 @@ export class AudioPlayer {
     const startAt =
       this.cursor <= now ? now + AudioPlayer.LEAD_S : this.cursor;
     src.start(startAt);
-    this.cursor = startAt + buffer.duration;
+    // Faster playback shortens the buffer's wall-clock duration by `speed`, so the
+    // schedule cursor must advance by the SPED-UP duration to stay gapless.
+    this.cursor = startAt + buffer.duration / this.speed;
     this.sources.add(src);
     this.onLevel(rms(int16));
     src.onended = () => {
@@ -320,6 +332,7 @@ export class AudioPlayer {
     if (this.ctx.state === "suspended") void this.ctx.resume();
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    src.playbackRate.value = this.speed; // C7: replay at the user's rate too
     src.connect(this.route.target); // → MEDIA/loud-speaker stream on mobile
     src.start();
   }

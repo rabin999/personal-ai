@@ -26,6 +26,7 @@ class UserRecord(BaseModel):
     audio_prefs: dict[str, Any] = {}
     traits_enabled: dict[str, Any] = {}
     comm_prefs: dict[str, Any] = {}
+    locale: dict[str, Any] = {}  # C5: timezone/city/country/units/currency/language
 
 
 class UserContext(Protocol):

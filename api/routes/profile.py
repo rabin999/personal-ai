@@ -91,3 +91,27 @@ async def set_model(body: dict[str, Any], user: CurrentUser, request: Request) -
         "reasoning_model": updated.model_prefs.reasoning_model,
         "voice_engine": updated.model_prefs.voice_engine,
     }
+
+
+@router.patch("/prefs")
+async def set_prefs(body: dict[str, Any], user: CurrentUser, request: Request) -> dict[str, Any]:
+    """Set this user's voice playback speed (C7) and locale (C5: timezone/city/country/
+    units/currency/language), so the companion frames answers for them. Partial —
+    only the provided keys change; the model clamps/validates (speed → [0.8,1.5])."""
+    pipeline = _pipeline(request)
+    patch: dict[str, Any] = {}
+    if "voice_speed" in body:
+        try:
+            patch["audio_prefs"] = {"voice_speed": float(body["voice_speed"])}
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="bad voice_speed"
+            ) from None
+    if isinstance(body.get("locale"), dict):
+        allowed = {"timezone", "city", "country", "units", "currency", "language"}
+        patch["locale"] = {k: v for k, v in body["locale"].items() if k in allowed}
+    updated = await pipeline.profiles.update(user.user_id, patch)
+    return {
+        "voice_speed": updated.audio_prefs.voice_speed,
+        "locale": updated.locale.model_dump(),
+    }

@@ -175,6 +175,7 @@ export default function CompanionPage() {
           sessionIdRef.current = msg.session_id || "";
           sampleRateRef.current = msg.sample_rate ?? 24_000;
           playerRef.current?.configure(sampleRateRef.current);
+          playerRef.current?.setSpeed(msg.voice_speed ?? 1.2); // C7: per-user rate
           ws.send(JSON.stringify({ type: "start_conversation" }));
           await startCapture();
           break;

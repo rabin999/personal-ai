@@ -1581,3 +1581,24 @@ answered directly. No code change needed; verified by real runs.
   2026 facts — whereas the app searched live and returned current 2026 info (iPhone 17, Super Bowl LX
   / Seahawks). That disagreement is itself evidence the app's search-when-uncertain is working: the
   running app is more current than a static model's memory — exactly the point of C6.
+
+## C7 — Voice output speed (default 1.2×, profile-configurable) ✅
+
+**What was done:** added `voice_speed` (default **1.2×**, clamped [0.8, 1.5]) to `AudioPrefs`;
+`ProfileService.update` coerces out-of-range values (like vad_threshold). The server sends the rate
+in the WS `ready` payload; the client `AudioPlayer` gains `setSpeed()` and applies
+`AudioBufferSourceNode.playbackRate = speed` to every scheduled buffer (and the replay path),
+advancing the gapless schedule cursor by the sped-up duration — so BOTH voice engines (they share the
+client audio sink behind the voice port) speak at the user's pace. `UserRecord`/`/api/me` now expose
+`voice_speed` + `locale`; a new `PATCH /api/prefs` persists them; the profile panel gained an editable
+"Voice & you" section — a speed slider (0.8–1.5, default 1.2) + locale fields (city/country/timezone/
+currency/units/language, C5).
+
+**Proven:** `voice_speed=2.0 → clamped to 1.5`; persisted and surfaced in the ready payload
+(`AudioPrefs.model_validate(rec.audio_prefs).voice_speed`); `1.1` persists; locale round-trips
+through `/api/me`. Web `tsc` green; 39 profile/prompt unit tests pass.
+
+**Honest note:** `playbackRate` speeds the voice up cleanly in wall-clock terms but nudges pitch up
+slightly at higher rates (browser Web-Audio has no pitch-preserving time-stretch for a LIVE PCM
+stream). At the 1.2× default the shift is modest; a pitch-preserving WSOLA time-stretch (server-side)
+is the higher-fidelity follow-up if the raised pitch is noticeable to the user on a real device.

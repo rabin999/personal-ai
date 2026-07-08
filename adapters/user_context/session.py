@@ -23,4 +23,5 @@ class SessionUserContext:
             audio_prefs=profile.audio_prefs.model_dump(),
             traits_enabled=dict(profile.traits_enabled),
             comm_prefs=profile.comm_prefs.model_dump(),
+            locale=profile.locale.model_dump(),
         )

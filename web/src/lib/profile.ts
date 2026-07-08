@@ -21,12 +21,36 @@ export interface CommPrefs {
   [k: string]: unknown;
 }
 
+export interface LocaleProfile {
+  timezone?: string;
+  city?: string;
+  country?: string;
+  units?: "metric" | "imperial" | "";
+  currency?: string;
+  language?: string;
+}
+
 export interface UserProfile {
   user_id: string;
   companion_name: string | null;
   audio_prefs: AudioPrefs;
   traits_enabled: Record<string, boolean>;
   comm_prefs: CommPrefs;
+  locale: LocaleProfile;
+}
+
+/** Save voice speed (C7) and/or locale (C5). Partial — only sent keys change. */
+export async function updatePrefs(
+  patch: { voice_speed?: number; locale?: LocaleProfile },
+): Promise<{ voice_speed: number; locale: LocaleProfile }> {
+  const res = await fetch("/api/prefs", {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(`Couldn't save (${res.status}).`);
+  return (await res.json()) as { voice_speed: number; locale: LocaleProfile };
 }
 
 /** Fetch the resolved user's profile. Throws on a non-2xx / network failure. */
@@ -46,5 +70,6 @@ export async function fetchProfile(): Promise<UserProfile> {
     audio_prefs: data.audio_prefs ?? {},
     traits_enabled: data.traits_enabled ?? {},
     comm_prefs: data.comm_prefs ?? {},
+    locale: data.locale ?? {},
   };
 }

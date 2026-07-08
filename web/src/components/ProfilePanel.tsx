@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchProfile, type UserProfile } from "../lib/profile";
+import { fetchProfile, updatePrefs, type LocaleProfile, type UserProfile } from "../lib/profile";
 
 interface Props {
   open: boolean;
@@ -195,8 +195,101 @@ function ProfileBody({ p }: { p: UserProfile }) {
           <Toggle label="AGC" on={p.audio_prefs.agc} />
         </div>
       </Section>
+
+      {/* Voice speed (C7) + locale (C5) — editable */}
+      <VoiceAndLocale p={p} />
     </div>
   );
+}
+
+// Editable voice-speed slider (C7) + locale fields (C5): the companion frames
+// times/units/currency for the user, and speaks at their chosen pace. Saves to
+// /api/prefs; the speed applies on the next reply, locale on the next turn.
+function VoiceAndLocale({ p }: { p: UserProfile }) {
+  const [speed, setSpeed] = useState<number>(numOr(p.audio_prefs.voice_speed, 1.2));
+  const [loc, setLoc] = useState<LocaleProfile>({ ...p.locale });
+  const [saved, setSaved] = useState<"" | "saving" | "ok" | "err">("");
+
+  async function save(patch: { voice_speed?: number; locale?: LocaleProfile }) {
+    setSaved("saving");
+    try {
+      await updatePrefs(patch);
+      setSaved("ok");
+      setTimeout(() => setSaved(""), 1500);
+    } catch {
+      setSaved("err");
+    }
+  }
+
+  const field = (key: keyof LocaleProfile, label: string, placeholder: string) => (
+    <label className="flex flex-col gap-1">
+      <span className="text-[11px] text-slate-400 dark:text-slate-500">{label}</span>
+      <input
+        value={loc[key] ?? ""}
+        onChange={(e) => setLoc({ ...loc, [key]: e.target.value })}
+        onBlur={() => save({ locale: loc })}
+        placeholder={placeholder}
+        className="rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
+      />
+    </label>
+  );
+
+  return (
+    <Section title="Voice & you">
+      <div>
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+            Speaking speed
+          </span>
+          <span className="font-mono text-xs text-slate-500">{speed.toFixed(2)}×</span>
+        </div>
+        <input
+          type="range"
+          min={0.8}
+          max={1.5}
+          step={0.05}
+          value={speed}
+          onChange={(e) => setSpeed(parseFloat(e.target.value))}
+          onMouseUp={() => save({ voice_speed: speed })}
+          onTouchEnd={() => save({ voice_speed: speed })}
+          className="mt-1.5 w-full accent-sky-500"
+        />
+        <div className="flex justify-between text-[10px] text-slate-400">
+          <span>slower</span><span>1.2× default</span><span>faster</span>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2.5">
+        {field("city", "City", "Kathmandu")}
+        {field("country", "Country", "Nepal")}
+        {field("timezone", "Timezone", "Asia/Kathmandu")}
+        {field("currency", "Currency", "NPR")}
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">Units</span>
+          <select
+            value={loc.units ?? ""}
+            onChange={(e) => {
+              const next = { ...loc, units: e.target.value as LocaleProfile["units"] };
+              setLoc(next);
+              void save({ locale: next });
+            }}
+            className="rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
+          >
+            <option value="">—</option>
+            <option value="metric">Metric</option>
+            <option value="imperial">Imperial</option>
+          </select>
+        </label>
+        {field("language", "Language", "en")}
+      </div>
+      {saved === "saving" && <p className="text-[11px] text-slate-400">Saving…</p>}
+      {saved === "ok" && <p className="text-[11px] text-emerald-500">Saved</p>}
+      {saved === "err" && <p className="text-[11px] text-red-500">Couldn't save</p>}
+    </Section>
+  );
+}
+
+function numOr(v: unknown, d: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : d;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
