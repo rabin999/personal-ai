@@ -34,6 +34,10 @@ const CONN_LABEL: Record<ConnState, string> = {
 
 const VOICES = ["eve", "ara", "leo", "rex", "sal"]; // xAI Grok voices
 
+// Live caption is a single-line ticker: only the last N words (yours or the
+// reply's) are shown at once, so it never wraps or grows into a paragraph.
+const CAPTION_WINDOW = 8;
+
 // The companion route (/). Owns the real-time voice session: WebSocket
 // connect/auth/start/stop, mic capture, full-duplex playback + barge-in, the
 // talking orb, per-turn trace, and the profile panel.
@@ -150,8 +154,9 @@ export default function CompanionPage() {
     }
   };
 
-  // Reveal the reply text word-by-word (~roughly speaking pace) so the caption
-  // reads as live captions rather than popping in all at once.
+  // Reveal the reply word-by-word (~speaking pace) as a single-line ticker: show
+  // only the trailing CAPTION_WINDOW words being spoken now, not the whole
+  // growing sentence, so the caption stays one line and reads as live captions.
   const revealCaption = (full: string) => {
     stopCaptionReveal();
     const words = full.split(/\s+/).filter(Boolean);
@@ -164,7 +169,7 @@ export default function CompanionPage() {
         return;
       }
       i += 1;
-      setCaption(words.slice(0, i).join(" "));
+      setCaption(words.slice(Math.max(0, i - CAPTION_WINDOW), i).join(" "));
     }, 170);
   };
 
@@ -180,7 +185,9 @@ export default function CompanionPage() {
     void playerRef.current?.close();
     playerRef.current = new AudioPlayer(
       (l) => {
-        if (turnStateRef.current === "speaking") setLevel(l);
+        // Drive the waveform from the companion's TTS while it speaks. The raw
+        // per-chunk RMS is modest, so lift it a touch for a livelier bar.
+        if (turnStateRef.current === "speaking") setLevel(Math.min(1, l * 1.6));
       },
       () => {
         // Reply finished playing → back to listening. Full-duplex: the mic never
@@ -248,7 +255,8 @@ export default function CompanionPage() {
           }
           if (ev2.stage === "stt" && typeof ev2.data?.text === "string") {
             stopCaptionReveal();
-            setCaption(cleanCaption(ev2.data.text as string));
+            // Same single-line ticker for your words: show only the trailing window.
+            setCaption(tailWords(cleanCaption(ev2.data.text as string)));
           }
           if (ev2.stage === "response" && !ev2.data?.delivered) {
             revealCaption(cleanCaption((ev2.data?.voice_text as string) ?? ev2.message ?? ""));
@@ -426,7 +434,7 @@ export default function CompanionPage() {
               animation panel so it's always visible (mobile + desktop), never
               pushed below the fold by the orb. */}
           {conn === "active" && caption && (
-            <p className="pointer-events-none absolute bottom-4 left-1/2 z-10 line-clamp-3 max-w-[92%] -translate-x-1/2 text-center text-xs leading-relaxed text-slate-500 sm:max-w-xl dark:text-slate-400">
+            <p className="pointer-events-none absolute bottom-4 left-1/2 z-10 max-w-[92%] -translate-x-1/2 truncate text-center text-xs leading-relaxed text-slate-500 sm:max-w-xl dark:text-slate-400">
               {caption}
             </p>
           )}
@@ -650,6 +658,12 @@ function cleanCaption(text: string): string {
     .replace(/[*_`]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+// Keep only the trailing CAPTION_WINDOW words so the caption stays a single line.
+function tailWords(text: string, n = CAPTION_WINDOW): string {
+  const w = text.split(/\s+/).filter(Boolean);
+  return w.slice(Math.max(0, w.length - n)).join(" ");
 }
 
 // Two-letter avatar seed derived from the bearer token / demo user id.

@@ -82,12 +82,13 @@ export function Waveform({ level, state }: { level: number; state: TurnState }) 
       const h = rect.height;
       const mid = h / 2;
 
-      // Ease the amplitude toward the target: full voice level whenever the turn
-      // is live (you speaking OR the companion speaking) with a small breathing
-      // floor, settling near-flat only at idle.
+      // Ease the amplitude toward the target: voice level whenever the turn is
+      // live (you speaking OR the companion speaking) with a small breathing
+      // floor, settling near-flat only at idle. Gain is generous and the easing
+      // quick so the bar reacts sharply to both mic and TTS amplitude.
       const active = stateRef.current !== "idle";
-      const target = active ? 0.12 + Math.min(1, levelRef.current * 1.5) : 0.02;
-      ampRef.current += (target - ampRef.current) * Math.min(1, dt * 8);
+      const target = active ? 0.14 + Math.min(1, levelRef.current * 2.4) : 0.02;
+      ampRef.current += (target - ampRef.current) * Math.min(1, dt * 12);
       const amp = ampRef.current;
 
       ctx.clearRect(0, 0, w, h);
