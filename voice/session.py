@@ -151,6 +151,10 @@ class VoiceSession:
         self._emotion = emotion
         self._sound = sound  # U10-U12 sound stage (one turn behind)
         self._health = HealthMonitor()  # U10 per-session cough tracker (no-nag)
+        # §1.1: the companion never speaks first. A carried background result (U9) may
+        # only be delivered once the user has spoken at least once THIS session — not
+        # into the opening silence — so this gates the at-open carry.
+        self._user_has_spoken = False
         self._voice = voice
         self._barge_in = barge_in
         self._dispatcher = dispatcher
@@ -409,6 +413,10 @@ class VoiceSession:
                 engine=getattr(self._stt, "name", "stt"),  # §20: which STT produced this
             )
 
+            # The user has now spoken this session — only after this may a carried
+            # background result be delivered (§1.1 never-speak-first: delivering a
+            # requested result at a pause is fine, but not into the opening silence).
+            self._user_has_spoken = True
             emotion = self._emotion_signal()
             if self._emotion is not None:
                 self._emotion.schedule(
@@ -642,9 +650,10 @@ class VoiceSession:
                 deliveries = await self._delivery.deliveries_for_pause(
                     self._session_id, self._user_id, recent
                 )
-                # U9: once per open, also surface results that finished while the user
-                # was away in a prior session (stale ones are dropped inside).
-                if not self._carried_pulled:
+                # U9: once per open — but only AFTER the user has spoken this session
+                # (§1.1 never-speak-first) — surface results that finished while the
+                # user was away in a prior session (stale ones are dropped inside).
+                if self._user_has_spoken and not self._carried_pulled:
                     self._carried_pulled = True
                     carried = await self._delivery.deliveries_at_open(
                         self._user_id, self._session_id

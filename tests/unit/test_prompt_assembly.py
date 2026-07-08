@@ -120,7 +120,7 @@ async def test_understanding_ladder_and_correlation_in_prompt() -> None:
     # U7 world-knowledge + cross-turn correlation exemplar.
     assert "lassi" in sp and "connect it to" in sp
     # The prompt template version was bumped so the trace attributes this behavior.
-    assert result.prompt_version.startswith("pt4")
+    assert result.prompt_version.startswith("pt5")
 
 
 # U10/U11/U12: audio-awareness directives reach the prompt when settings are on, and

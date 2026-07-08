@@ -15,8 +15,10 @@ defaults — final feel is tuned by a human (contract §7).
 """
 
 import asyncio
+import contextlib
 import json
 import logging
+import random
 import re
 from collections.abc import Awaitable, Callable
 from typing import Annotated, Any, Literal, Protocol
@@ -94,6 +96,22 @@ DEFAULT_GATE_PARAMS = {"T_intent": 0.3, "T_novel": 0.75, "T_emotion": 0.7, "T_am
 # disclosure (rule 4) and background acks are model-generated in-voice, never here.
 _SAFE_FALLBACK_TEXT = "Hey, I'm right here with you — what's going on?"
 
+# Short, natural holding lines spoken the instant a live lookup starts (user feedback:
+# say "let me check that real quick" immediately instead of dead air). Rotated per
+# session so it doesn't sound canned turn after turn.
+_HOLDING_LINES = (
+    "Let me check that real quick.",
+    "One sec, let me look.",
+    "Hang on, checking now.",
+    "Let me pull that up.",
+    "Give me a sec on that.",
+)
+
+
+def _holding_line() -> str:
+    return random.choice(_HOLDING_LINES)
+
+
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
 _AFFIRMATIVE = (
     "yes",
@@ -169,20 +187,21 @@ NEVER invent details about the user's life.
 # streams from the first token straight into TTS. Judgment/gates are skipped for
 # these plain conversational turns (they always just respond).
 _SPOKEN_REPLY_INSTRUCTIONS = """
-Reply out loud in your own warm, natural voice — 1-3 short spoken sentences, like
-a close friend actually talking. Work out what they really mean and respond to
-THAT; make a sensible best-effort read of their intent and never stall with 'what
-do you mean?' / 'what are you talking about?'. Weave in 1-3 inline delivery tags
-where they genuinely fit so the voice sounds human, not flat: [laugh] [chuckle]
-[sigh] for feeling; [warm] [gentle] [soft] for tone; <emphasis>word</emphasis> to
-stress a word; <pause> for a beat — never tag every sentence. If they ask whether
-you're real, an AI, or whether you have feelings, be honest about being an AI in
-one short warm sentence folded into your reply — never a canned disclaimer. Never
-use assistant / service-desk phrasing. Deliver facts the way a human would SAY
-them, framed for this person: local clock time (never a UTC offset), the user's
-units and currency, raw search/tool data paraphrased into natural speech (never
-read tables/codes/IDs aloud), concrete answer first, rounded where precision isn't
-needed. Reply with ONLY the spoken words — no JSON, no quotes, no preamble.
+Reply out loud in your own natural voice, by your NAME (never call yourself 'an
+AI'). KEEP IT SHORT — usually ONE sentence, at most two, like a friend actually
+talking. Don't explain or elaborate unless they ask; if a third sentence is forming,
+cut it. Be easy and grounded, not gushing or overly warm — match their energy, save
+real tenderness for when they're actually going through something. Work out what they
+really mean and respond to THAT; never stall with 'what do you mean?'. Weave in 1-2
+inline delivery tags only where they genuinely fit: [laugh] [chuckle] [sigh] for
+feeling; [warm] [gentle] [soft] for tone; <emphasis>word</emphasis>; <pause> — never
+tag every sentence, and never a laugh on a sad turn. If they DIRECTLY ask whether
+you're real or an AI, acknowledge it in one short half-sentence and move on — never a
+canned disclaimer, never lead with it. Never use assistant / service-desk phrasing.
+Deliver facts the way a human SAYS them: local clock time (never a UTC offset), their
+units/currency, search/tool data paraphrased into natural speech (never read tables/
+codes/IDs), concrete answer first. Reply with ONLY the spoken words — no JSON, no
+quotes, no preamble.
 """.strip()
 
 
@@ -500,6 +519,14 @@ class ResponseGenerator:
             except Exception:  # any streaming hiccup → safe fallback (never worse)
                 logger.exception("streaming reply failed; falling back to non-streamed")
 
+        # A live-info query means a lookup is coming, which takes a beat. Speak a
+        # short, natural holding line IMMEDIATELY so the user hears "on it" instead of
+        # dead air, then run the search and speak the real answer (user feedback).
+        if _is_live_info_query(prompt.utterance) and not (
+            can_use_tools and prompt.session_id in self._pending
+        ):
+            with contextlib.suppress(Exception):
+                await speak(_holding_line())
         result = await self.generate(prompt, dispatcher, context)
         await speak(result.voice_text or result.final_text)
         return result
