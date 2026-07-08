@@ -23,6 +23,17 @@ class SerperSearch:
     ) -> list[SearchResult]:
         if not self._api_key:
             raise SearchProviderError("SERPER_API_KEY not configured")
+        # Try with the freshness filter first; but Google's tbs=qdr filter returns
+        # ZERO results for evergreen/factual queries ("population of Japan" → 0 with
+        # qdr:m), so if a filtered fetch comes back empty, RETRY once WITHOUT the filter
+        # (§16 graceful degradation) — never return nothing just because the window was
+        # too tight for a fact that doesn't change.
+        results = await self._fetch(query, max_results, recency)
+        if not results and recency:
+            results = await self._fetch(query, max_results, None)
+        return results
+
+    async def _fetch(self, query: str, max_results: int, recency: str | None) -> list[SearchResult]:
         payload: dict[str, object] = {"q": query, "num": max_results}
         if recency and recency in _QDR:
             payload["tbs"] = _QDR[recency]
@@ -36,12 +47,27 @@ class SerperSearch:
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             raise SearchProviderError(f"serper: {exc}") from exc
-        organic = response.json().get("organic", [])
-        return [
-            SearchResult(
-                title=item.get("title", ""),
-                url=item.get("link", ""),
-                snippet=item.get("snippet", ""),
+        data = response.json()
+        out: list[SearchResult] = []
+        # Google's direct answer (answerBox) is the single best result for factual
+        # queries — the adapter ignored it before, so "population of Japan" lost its
+        # headline number. Lead with it when present.
+        box = data.get("answerBox") or {}
+        answer = box.get("answer") or box.get("snippet") or box.get("snippetHighlighted")
+        if answer:
+            out.append(
+                SearchResult(
+                    title=box.get("title", query),
+                    url=box.get("link", ""),
+                    snippet=str(answer),
+                )
             )
-            for item in organic[:max_results]
-        ]
+        for item in data.get("organic", [])[:max_results]:
+            out.append(
+                SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", ""),
+                )
+            )
+        return out

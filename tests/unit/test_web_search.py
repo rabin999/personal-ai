@@ -143,9 +143,10 @@ async def test_recency_biases_current_queries_but_not_historical() -> None:
     # An unfolding event without now-words → past WEEK.
     await search.run("the plane that went missing near Pakistan", "u_demo_001")
     assert provider.last_recency == "week"
-    # A neutral lookup → default bias to the past MONTH ("online" means recent).
+    # A neutral / evergreen lookup → NO date window (a forced window returns zero
+    # results for facts that don't change; relevance already favours fresh pages).
     await search.run("good restaurants in Lisbon", "u_demo_001")
-    assert provider.last_recency == "month"
+    assert provider.last_recency is None
     # An explicit historical year → no freshness filter at all.
     await search.run("who painted the Mona Lisa in 1503", "u_demo_001")
     assert provider.last_recency is None

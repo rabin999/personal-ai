@@ -224,19 +224,22 @@ _NOW = (
     "breaking", "latest", "just now", "just happened", "as of", "this morning",
     "this afternoon", "this evening", "live",
 )  # fmt: skip
-# Unfolding-story / event words — current but may span a few days → past week.
+# Unfolding-story words — clearly a CURRENT event that may span a few days → past week.
+# Kept deliberately UNAMBIGUOUS: words like "won"/"election" are as often historical as
+# current, and a wrong "week" filter returns zero results, so they're left out (the
+# provider's empty-result retry catches any that slip through).
 _BREAKING = (
-    "happening", "missing", "crash", "crashed", "killed", "dead", "died", "attack",
-    "earthquake", "wildfire", "outage", "explosion", "shooting", "election", "won",
-    "wins", "update", "developing", "so far", "news", "headline",
+    "happening", "missing", "crash", "crashed", "earthquake", "wildfire", "outage",
+    "explosion", "shooting", "developing", "so far", "news", "headline", "this week",
 )  # fmt: skip
 
 
 def _recency_for(query: str) -> str | None:
     """How fresh the results should be (spec §15). "Recent" means CURRENT: explicit
-    now-words get the past DAY, unfolding events get the past WEEK, everything else the
-    past MONTH — UNLESS the query names a specific historical date/timeline (then no
-    filter). Never returns week-old news for a "right now" question."""
+    now-words get the past DAY and unfolding events the past WEEK. Everything else gets
+    NO date filter — Google's own ranking already favours fresh pages, and forcing a
+    window (qdr:m) makes evergreen/factual queries ("population of Japan") return zero
+    results. Explicit historical periods also get no filter."""
     lowered = query.lower()
     if _HISTORICAL.search(query):
         return None  # a specific past period → no freshness filter
@@ -244,4 +247,4 @@ def _recency_for(query: str) -> str | None:
         return "day"  # "right now / today / latest / breaking" → past 24h
     if any(m in lowered for m in _TIME_SENSITIVE_MARKERS) or any(m in lowered for m in _BREAKING):
         return "week"  # an unfolding story that may span a few days
-    return "month"  # default: bias to the last month so "online" means recent
+    return None  # default: no window — let relevance decide (and it stays cacheable)
