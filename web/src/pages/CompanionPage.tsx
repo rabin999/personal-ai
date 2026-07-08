@@ -423,10 +423,12 @@ export default function CompanionPage() {
           {conn === "active" && (
             <Waveform level={level} active={turnState === "listening"} />
           )}
-          {/* Live caption under the animation: your words while listening, the
-              reply revealed word-by-word while speaking. 12px, muted. */}
-          {conn === "active" && (
-            <p className="pointer-events-none line-clamp-2 min-h-[1.5rem] max-w-xl px-4 text-center text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+          {/* Live caption: your words while listening, the reply revealed
+              word-by-word while speaking. 12px, muted. Pinned to the bottom of the
+              animation panel so it's always visible (mobile + desktop), never
+              pushed below the fold by the orb. */}
+          {conn === "active" && caption && (
+            <p className="pointer-events-none absolute bottom-4 left-1/2 z-10 line-clamp-3 max-w-[92%] -translate-x-1/2 text-center text-xs leading-relaxed text-slate-500 sm:max-w-xl dark:text-slate-400">
               {caption}
             </p>
           )}
