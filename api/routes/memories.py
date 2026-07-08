@@ -95,6 +95,42 @@ async def procedural_memories(user: CurrentUser, request: Request) -> dict[str, 
     }
 
 
+@router.get("/projects")
+async def list_projects(user: CurrentUser, request: Request) -> dict[str, Any]:
+    """The user's dynamic projects with current status (brief U3): each project's
+    name, type, status/key metrics, and last activity. User-scoped."""
+    summaries = await _pipeline(request).projects.summaries(user.user_id)
+    return {"items": summaries}
+
+
+@router.get("/knowledge-graph")
+async def knowledge_graph(
+    user: CurrentUser, request: Request, limit: int = Query(200, ge=1, le=500)
+) -> dict[str, Any]:
+    """The user's knowledge graph (brief U4): entities + relationships with temporal
+    validity, from Graphiti/Neo4j. Read-only, user-scoped (isolation). Nodes are the
+    connected entities; edges are the relationship facts (superseded ones marked)."""
+    facts = await _pipeline(request).semantic.all_facts(user.user_id, limit=limit)
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+    for f in facts:
+        for name in (f.source, f.target):
+            if name and name not in nodes:
+                nodes[name] = {"id": name, "label": name}
+        edges.append(
+            {
+                "source": f.source,
+                "target": f.target,
+                "fact": f.fact,
+                "relation": f.relation,
+                "valid_from": f.valid_from,
+                "valid_to": f.valid_to,  # set → superseded (historical)
+                "current": f.valid_to is None,
+            }
+        )
+    return {"nodes": list(nodes.values()), "edges": edges}
+
+
 class _Correction(BaseModel):
     fact: str
 

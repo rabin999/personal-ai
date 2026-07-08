@@ -84,6 +84,26 @@ export interface PersonaItem {
 export function getPersonaMemories(): Promise<{ items: PersonaItem[] }> {
   return authed("/api/memories/persona");
 }
+
+// ── projects (U3) ─────────────────────────────────────────────────────────
+export interface ProjectSummary {
+  id: string; name: string; type: string; status: string; entry_count: number;
+  last_activity: string; last_entry: Record<string, unknown> | null;
+  pending_insight: boolean; metrics: Record<string, unknown>;
+}
+export function getProjects(): Promise<{ items: ProjectSummary[] }> {
+  return authed("/api/projects");
+}
+
+// ── knowledge graph (U4) ──────────────────────────────────────────────────
+export interface GraphNode { id: string; label: string }
+export interface GraphEdge {
+  source: string | null; target: string | null; fact: string; relation: string | null;
+  valid_from: string | null; valid_to: string | null; current: boolean;
+}
+export function getKnowledgeGraph(): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+  return authed("/api/knowledge-graph");
+}
 export function deleteEpisodicMemory(id: string): Promise<{ deleted: string }> {
   return authed(`/api/memories/episodic/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

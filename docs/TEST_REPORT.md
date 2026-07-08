@@ -1748,3 +1748,23 @@ is recorded on the trace (`localtime=… evening Asia/Kathmandu` in `user_contex
 - Real store (`tests/real_call/test_localtime.py`) ✅ — a Kathmandu/Nepal profile (no
   IANA tz) → the REAL assembled prompt anchors to Nepal's current day-part and records
   the local time on the trace.
+
+## U3 — User projects view + status ✅  ·  U4 — Knowledge-graph view ✅
+
+**U3 (projects):** `ProjectService.list_projects` + `summaries` build a dynamic status
+card per project (name, type, human status line — finance shows holdings + realized
+P&L + net invested, others show entry counts — plus last activity + pending-insight
+flag). New `GET /api/projects`; a `/projects` page (grid of project cards) added to the
+nav. Verified (`tests/real_call/test_projects_graph.py`): a buy of 10 OP @ 230 → the
+summary shows "holding 10 OP", entry_count 1; another user sees zero (isolation).
+
+**U4 (knowledge graph):** new `GraphStore.list_facts`/`delete_fact` read the user's
+Graphiti/Neo4j edges directly (group-scoped) with source/target/relation/validity;
+`GET /api/knowledge-graph` returns nodes + edges; a `/graph` page renders a simple
+in-app SVG (circular layout, current=solid sky, superseded=dashed amber) + a
+relationship list with a "show superseded" toggle. Verified: the graph read is
+user-scoped (user B never sees user A's "Rex" edge); against the live demo user it
+returns 3 real edges with correct source→relation→target + validity — confirming the
+`RELATES_TO` cypher (which also powers the U1 cleanup delete path). The live demo graph
+also surfaced exactly the junk U1 targets (a companion suggestion + a transient state
+stored as durable facts) — the cleanup pass removes those.

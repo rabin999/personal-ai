@@ -14,6 +14,8 @@ const NAV = [
   { to: "/", label: "Asaathi", end: true },
   { to: "/conversations", label: "Conversations", end: false },
   { to: "/memories", label: "Memories", end: false },
+  { to: "/projects", label: "Projects", end: false },
+  { to: "/graph", label: "Knowledge", end: false },
 ];
 
 interface ToolLinks {

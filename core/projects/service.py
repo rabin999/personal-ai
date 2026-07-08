@@ -176,6 +176,39 @@ class ProjectService:
         metrics["entry_count"] = len(entries)
         return ProjectState(metrics=metrics, recent_entries=entries[-_RECENT_ENTRIES:])
 
+    async def list_projects(self, user_id: str) -> list[Project]:
+        """All of a user's project instances (brief U3 projects view), user-scoped."""
+        docs = await self._docs.find(PROJECTS_COLLECTION, {"user_id": user_id}, limit=200)
+        return [_project_from_doc(d) for d in docs]
+
+    async def summaries(self, user_id: str) -> list[dict[str, Any]]:
+        """A dynamic status card per project for the projects view (U3): name, what it
+        is, current status/key metrics, and last activity. Best-effort per project."""
+        out: list[dict[str, Any]] = []
+        for project in await self.list_projects(user_id):
+            try:
+                state = await self.state(project.id, user_id)
+            except Exception:
+                logger.exception("project summary failed for %s", project.id)
+                continue
+            last = state.recent_entries[-1] if state.recent_entries else None
+            pending = await self.pending_insight(project.id, user_id)
+            out.append(
+                {
+                    "id": project.id,
+                    "name": project.name,
+                    "type": project.type,
+                    "metrics": state.metrics,
+                    "status": _status_line(project.type, state.metrics),
+                    "entry_count": state.metrics.get("entry_count", 0),
+                    "last_activity": last.timestamp if last else project.created_at,
+                    "last_entry": last.data if last else None,
+                    "pending_insight": bool(pending),
+                }
+            )
+        out.sort(key=lambda s: s["last_activity"], reverse=True)
+        return out
+
     async def project_context(self, user_id: str, entity_id: str) -> str | None:
         """§10 step 6: canonical project data for prompt assembly."""
         try:
@@ -322,6 +355,40 @@ class ProjectService:
         if doc is None:
             raise ProjectNotFound(f"unknown project type '{type_id}'")
         return doc
+
+
+def _project_from_doc(doc: Mapping[str, Any]) -> Project:
+    return Project.model_validate(
+        {"id": doc["_id"], **{k: v for k, v in doc.items() if k != "_id"}}
+    )
+
+
+def _status_line(project_type: str, metrics: Mapping[str, Any]) -> str:
+    """A short, human status for a project card (U3). Finance shows holdings + P&L;
+    other types show their entry count until they grow their own summariser."""
+    if project_type == "finance_portfolio":
+        positions = metrics.get("positions") or {}
+        parts: list[str] = []
+        if isinstance(positions, dict) and positions:
+            held = ", ".join(f"{qty_fmt(p.get('qty'))} {t}" for t, p in sorted(positions.items()))
+            parts.append(f"holding {held}")
+        realized = metrics.get("realized_pnl")
+        if isinstance(realized, int | float) and realized:
+            parts.append(f"realized P&L {realized:+.2f}")
+        invested = metrics.get("net_invested")
+        if isinstance(invested, int | float) and invested:
+            parts.append(f"invested {invested:.0f}")
+        return " · ".join(parts) if parts else "no open positions"
+    count = metrics.get("entry_count", 0)
+    return f"{count} entr{'y' if count == 1 else 'ies'}"
+
+
+def qty_fmt(qty: Any) -> str:
+    try:
+        q = float(qty)
+    except (TypeError, ValueError):
+        return "?"
+    return str(int(q)) if q == int(q) else f"{q:g}"
 
 
 def _finance_metrics(entries: list[LedgerEntry]) -> dict[str, Any]:

@@ -7,6 +7,8 @@ import LoginPage from "./pages/LoginPage";
 import ConversationsPage from "./pages/ConversationsPage";
 import ConversationDetailPage from "./pages/ConversationDetailPage";
 import MemoriesPage from "./pages/MemoriesPage";
+import ProjectsPage from "./pages/ProjectsPage";
+import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import { fetchMe } from "./lib/session";
 
 // App router. BrowserRouter with REAL named paths (not a hash router): the FastAPI
@@ -34,6 +36,14 @@ export default function App() {
         <Route
           path="/memories"
           element={<RequireAuth><Shell><MemoriesPage /></Shell></RequireAuth>}
+        />
+        <Route
+          path="/projects"
+          element={<RequireAuth><Shell><ProjectsPage /></Shell></RequireAuth>}
+        />
+        <Route
+          path="/graph"
+          element={<RequireAuth><Shell><KnowledgeGraphPage /></Shell></RequireAuth>}
         />
         {/* Traces are viewed per-conversation now (ConversationDetailPage renders
             the full trace timeline); the standalone /traces list was removed.
