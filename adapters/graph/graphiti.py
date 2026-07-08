@@ -58,9 +58,53 @@ class GraphitiGraphStore:
                 valid_from=_iso(getattr(edge, "valid_at", None)),
                 valid_to=_iso(getattr(edge, "invalid_at", None)),
                 created_at=_iso(getattr(edge, "created_at", None)),
+                uuid=getattr(edge, "uuid", None),
             )
             for edge in edges
         ]
+
+    async def list_facts(self, user_id: str, limit: int = 200) -> list[Fact]:
+        """Every relationship edge in this user's graph (group_id-scoped), with the
+        connected entity names — powers the knowledge-graph view (U4) and cleanup (U1).
+        Read directly over Neo4j because Graphiti's search is query-driven, not a full
+        enumeration."""
+        cypher = (
+            "MATCH (a:Entity)-[r:RELATES_TO]->(b:Entity) "
+            "WHERE r.group_id = $gid AND r.fact IS NOT NULL "
+            "RETURN a.name AS source, b.name AS target, r.fact AS fact, r.name AS relation, "
+            "r.uuid AS uuid, r.valid_at AS valid_at, r.invalid_at AS invalid_at, "
+            "r.created_at AS created_at "
+            "ORDER BY r.created_at DESC LIMIT $limit"
+        )
+        async with self._db.neo4j().session() as session:
+            result = await session.run(cypher, gid=user_id, limit=limit)
+            records = [record.data() async for record in result]
+        return [
+            Fact(
+                fact=rec.get("fact", ""),
+                relation=rec.get("relation"),
+                source=rec.get("source"),
+                target=rec.get("target"),
+                uuid=rec.get("uuid"),
+                valid_from=_neo_iso(rec.get("valid_at")),
+                valid_to=_neo_iso(rec.get("invalid_at")),
+                created_at=_neo_iso(rec.get("created_at")),
+            )
+            for rec in records
+            if rec.get("fact")
+        ]
+
+    async def delete_fact(self, user_id: str, uuid: str) -> bool:
+        """Hard-delete one relationship edge, scoped to the user's group so it can
+        never touch another user's graph (§0.5 isolation)."""
+        cypher = (
+            "MATCH (:Entity)-[r:RELATES_TO {uuid: $uuid, group_id: $gid}]->(:Entity) "
+            "DELETE r RETURN count(r) AS removed"
+        )
+        async with self._db.neo4j().session() as session:
+            result = await session.run(cypher, uuid=uuid, gid=user_id)
+            record = await result.single()
+        return bool(record and record.get("removed", 0))
 
     def _log_llm_usage(self, user_id: str, task: str) -> None:
         if self._ledger is None:
@@ -88,3 +132,11 @@ class GraphitiGraphStore:
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
+
+
+def _neo_iso(value: object) -> str | None:
+    """Normalize a Neo4j temporal (or None) to an ISO string."""
+    if value is None:
+        return None
+    iso = getattr(value, "isoformat", None)
+    return iso() if callable(iso) else str(value)

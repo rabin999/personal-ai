@@ -77,6 +77,13 @@ export function getEpisodicMemories(
 export function getProceduralMemories(): Promise<{ items: ProceduralItem[] }> {
   return authed("/api/memories/procedural");
 }
+export interface PersonaItem {
+  id: string; text: string; kind: "style" | "interest" | "sensitivity";
+  dimension: string | null; confidence: number; evidence_count: number; active: boolean;
+}
+export function getPersonaMemories(): Promise<{ items: PersonaItem[] }> {
+  return authed("/api/memories/persona");
+}
 export function deleteEpisodicMemory(id: string): Promise<{ deleted: string }> {
   return authed(`/api/memories/episodic/${encodeURIComponent(id)}`, { method: "DELETE" });
 }

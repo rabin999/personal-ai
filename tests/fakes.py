@@ -189,6 +189,17 @@ class FakeGraphStore:
         ]
         return matches[:limit]
 
+    async def list_facts(self, user_id: str, limit: int = 200) -> list[Any]:
+        return list(self.facts_by_user.get(user_id, []))[:limit]
+
+    async def delete_fact(self, user_id: str, uuid: str) -> bool:
+        facts = self.facts_by_user.get(user_id, [])
+        for i, fact in enumerate(facts):
+            if getattr(fact, "uuid", None) == uuid:
+                facts.pop(i)
+                return True
+        return False
+
 
 class FakeLLM:
     """Scriptable LLM: pops queued response texts; records every call."""

@@ -89,6 +89,14 @@ class PsychProvider(Protocol):
     async def render_for_prompt(self, user_id: str) -> str: ...
 
 
+class PersonaProvider(Protocol):
+    """Implemented by the dynamic Persona store (brief U2): the "how to talk with
+    THIS user" style layer. Returns "" until something is learned; injected so the
+    same question gets a different STYLE per user."""
+
+    async def render_for_prompt(self, user_id: str) -> str: ...
+
+
 class AssembledPrompt(BaseModel):
     user_id: str
     session_id: str
@@ -125,6 +133,9 @@ class AssembledPrompt(BaseModel):
     # were known and used to FRAME this answer — recorded in the trace as evidence
     # the user-model actually drives responses, not just that it's stored.
     user_context_signals: list[str] = Field(default_factory=list)
+    # brief U2: whether the dynamic persona ("how to talk with this user") shaped
+    # this reply — recorded in the trace as evidence the persona drives responses.
+    persona_active: bool = False
     # Section name → rendered text, pre-trim; kept for tests and debugging.
     sections: dict[str, str] = Field(default_factory=dict)
 
@@ -151,6 +162,7 @@ class PromptAssembler:
         self_model: SelfModel,
         projects: ProjectContextProvider | None = None,
         psych: PsychProvider | None = None,
+        persona: PersonaProvider | None = None,
         preferences: PreferenceMemory | None = None,
         recall: ConversationRecall | None = None,
         char_budget: int = DEFAULT_CHAR_BUDGET,
@@ -165,6 +177,7 @@ class PromptAssembler:
         self._self_model = self_model
         self._projects = projects
         self._psych = psych
+        self._persona = persona
         self._preferences = preferences
         self._recall = recall
         self._budget = char_budget
@@ -257,6 +270,12 @@ class PromptAssembler:
         # §17 rule 3: soft psychological signals feed the prompt (empty until
         # the model has confident evidence; wording tuned by the user, §7).
         sections["psych"] = await self._psych.render_for_prompt(user_id) if self._psych else ""
+        # brief U2: the dynamic persona — HOW this user likes to be talked to —
+        # genuinely shapes tone/length/style so the same question differs per user.
+        persona_section = ""
+        if self._persona is not None:
+            persona_section = await _safe(self._persona.render_for_prompt(user_id), "", "persona")
+        sections["persona"] = persona_section
         sections["rules"] = "\n".join(f"- {r.rule_text}" for r in rules)
         sections["entities"] = "\n".join(
             f"- {c.name} ({c.entity_type}, id={c.entity_id})" for c in candidates
@@ -302,6 +321,7 @@ class PromptAssembler:
             active_traits=[{"id": t.id, "version": t.version} for t in traits],
             recall_source=recall_source,
             user_context_signals=ctx_signals,  # C5: user-model signals used this turn
+            persona_active=bool(persona_section),  # U2: persona shaped this reply
             sections=sections,
         )
 
@@ -348,6 +368,7 @@ _SECTION_TITLES: dict[str, str] = {
     "cold_start": "First contact",
     "traits": "Behavior traits",
     "comm_prefs": "Communication preferences",
+    "persona": "",  # brief U2: persona supplies its own header ("How THIS person…")
     "psych": "",  # describe_for_prompt supplies its own caveat header (§17)
     "rules": "Learned rules for this user",
     "entities": "Entities referenced in this message",

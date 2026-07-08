@@ -51,6 +51,7 @@ from core.observability.logger import StructuredLogger
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectService
 from core.psych.consolidation import Consolidator
+from core.psych.persona import PersonaStore
 from core.psych.user_model import PsychUserModel
 from core.reasoning.orchestrator import Orchestrator
 from core.reasoning.prompt_assembly import PromptAssembler
@@ -100,6 +101,7 @@ class Pipeline:
     orchestrator: Orchestrator
     self_model: SelfModel
     psych: PsychUserModel
+    persona: PersonaStore
     stt: FasterWhisperSTT
     tts: GrokTTS
     ser: Emotion2VecSER
@@ -219,6 +221,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     entities = EntityResolver(vectors)
     self_model = SelfModel(docs, vectors, llm)
     psych = PsychUserModel(docs)
+    persona = PersonaStore(docs)  # brief U2: dynamic per-user persona ("how to talk")
 
     queue = RedisTaskQueue(settings)
     tool_registry = ToolRegistry()
@@ -245,7 +248,9 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     # §2 Mem0 preference memory (fast personalization layer). Guarded init:
     # a failure degrades to None and the app still runs without it.
     preferences = Mem0PreferenceMemory(settings) if settings.preference_memory_enabled else None
-    extractor = MemoryExtractor(llm, episodic, semantic, projects, preferences=preferences)
+    extractor = MemoryExtractor(
+        llm, episodic, semantic, projects, persona=persona, preferences=preferences
+    )
 
     assembler = PromptAssembler(
         profiles,
@@ -258,6 +263,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         self_model,
         projects=projects,
         psych=psych,
+        persona=persona,  # brief U2: persona drives HOW the reply is delivered
         preferences=preferences,
         recall=ConversationRecall(conversations),  # F3/F4 conversation-recall routing
     )
@@ -303,6 +309,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         orchestrator=orchestrator,
         self_model=self_model,
         psych=psych,
+        persona=persona,
         stt=FasterWhisperSTT(
             model_size=settings.stt_model_size,
             final_model_size=settings.stt_final_model_size,

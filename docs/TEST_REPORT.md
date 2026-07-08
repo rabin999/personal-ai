@@ -1683,3 +1683,47 @@ a headless Chromium** at desktop (1280) + mobile (390), light + dark:
 `index-BDdNbE2_.js` live on `https://202-58-120-93.sslip.io`, health ok, and — critically —
 `/auth/me` + `/api/me` return **401 without a session**, confirming the `DEV_AUTH_USER` bypass is OFF
 in prod and Google auth is still enforced.
+
+## U0-U2 — Facts vs. Persona vs. Events layering + dynamic persona ✅
+
+**Problem (brief):** the three memory sections stored mostly gibberish, style was
+conflated with facts, and there was no dynamic per-user persona driving responses.
+
+**What was built:**
+- **Persona layer** (`core/psych/persona.py`) — a dynamic, per-user `PersonaStore`
+  holding readable style/interest/sensitivity notes with confidence + validity
+  windows. A *directly stated* preference lands high-confidence (shapes the very
+  next reply); an *inferred* style accrues over repeats before it drives; a
+  contradicting signal on the same dimension **supersedes** the old (validity
+  window, never stale+new). Deterministic merge/supersede logic (unit-tested).
+- **Correct routing at the WRITE step** (`core/memory/extraction.py`) — the memory
+  step now emits `style_signals` routed to the persona (NOT semantic facts),
+  keeping facts/events/persona in their correct layers, plus a hardened QUALITY BAR
+  (discard chit-chat/filler/one-off trivia/garbled fragments — store less on doubt).
+- **Persona drives responses** — injected into Prompt Assembly (`sections["persona"]`,
+  never trimmed); `AssembledPrompt.persona_active` records it on the trace.
+- **UI** — the "How I talk with you" tab reads the persona (readable statements with
+  an `active`/`learning` marker); the three tabs are relabelled to the brief's names.
+- **Cleanup of existing junk** (`core/memory/cleanup.py` + `scripts/clean_memory.py`)
+  — a pinned judge enumerates stored facts/events, drops gibberish (keeps on doubt),
+  and dedups episodic. Backed by new `GraphStore.list_facts`/`delete_fact` (Neo4j,
+  group-scoped) — which also power the U4 graph view.
+
+**Verification (REAL model + REAL stores, `tests/real_call/test_persona.py`):**
+- `test_style_request_routes_to_persona_not_facts` ✅ — "keep your answers short and
+  to the point" → routed to the persona, absent from semantic facts; persona now
+  renders "short/point".
+- `test_identity_statement_routes_to_facts_not_persona` ✅ — "I run Xenon
+  Technology" → routed to FACTS (`result.facts`), zero persona notes.
+- `test_persona_is_injected_and_differs_per_user` ✅ — same question, a blunt vs. a
+  warm persona → both prompts carry `persona_active`, and each system prompt carries
+  its OWN distinct style block ("blunt" only for one, "encouraging" only for other).
+- Unit: `tests/unit/test_persona.py` (7) ✅ — stated-vs-inferred confidence,
+  reinforcement, supersession via validity window, interests/sensitivities, and
+  two-user isolation.
+
+**Honest blocker:** the OpenRouter account is **out of credits** (HTTP 402 on every
+model), so the heavy end-to-end *generation* path (and Graphiti's internal
+extraction writes) can't complete right now. The persona routing/shaping proofs use
+the real extraction LLM + assembled prompt, which are unaffected; re-running the
+full generation-judged pass needs credits topped up.

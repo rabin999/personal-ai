@@ -3,23 +3,24 @@ import {
   correctSemanticFact,
   deleteEpisodicMemory,
   getEpisodicMemories,
-  getProceduralMemories,
+  getPersonaMemories,
   getSemanticMemories,
   type EpisodicItem,
-  type ProceduralItem,
+  type PersonaItem,
   type SemanticItem,
 } from "../lib/api";
 import { Loader } from "../components/States";
 
-// The user's own memory space, grouped by the supported types (no invented types):
-// semantic facts (with validity), episodic events (timestamped, deletable),
-// procedural rules (with confidence). Working memory is transient and not shown.
+// The user's own memory space, in the three distinct layers (brief U0):
+// facts about you (semantic, with validity), things that happened (episodic,
+// timestamped/deletable), and how I've learned to talk with you (the dynamic
+// persona — style/interests/sensitivities). Working memory is transient, not shown.
 type Tab = "facts" | "events" | "patterns";
 
 export default function MemoriesPage() {
   const [semantic, setSemantic] = useState<SemanticItem[]>([]);
   const [episodic, setEpisodic] = useState<EpisodicItem[]>([]);
-  const [procedural, setProcedural] = useState<ProceduralItem[]>([]);
+  const [persona, setPersona] = useState<PersonaItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("facts");
@@ -28,8 +29,8 @@ export default function MemoriesPage() {
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getSemanticMemories(), getEpisodicMemories(), getProceduralMemories()])
-      .then(([s, e, p]) => { setSemantic(s.items); setEpisodic(e.items); setProcedural(p.items); })
+    Promise.all([getSemanticMemories(), getEpisodicMemories(), getPersonaMemories()])
+      .then(([s, e, p]) => { setSemantic(s.items); setEpisodic(e.items); setPersona(p.items); })
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
   }, []);
@@ -40,9 +41,9 @@ export default function MemoriesPage() {
   }
 
   const tabs: { id: Tab; label: string; count: number; sub: string }[] = [
-    { id: "facts", label: "Facts", count: semantic.length, sub: "durable facts about you" },
-    { id: "events", label: "Events", count: episodic.length, sub: "timestamped things that happened" },
-    { id: "patterns", label: "Patterns", count: procedural.length, sub: "how I've learned to talk with you" },
+    { id: "facts", label: "Facts about you", count: semantic.length, sub: "durable facts about you" },
+    { id: "events", label: "Things that happened", count: episodic.length, sub: "timestamped things that happened" },
+    { id: "patterns", label: "How I talk with you", count: persona.length, sub: "how I've learned to talk with you" },
   ];
   const active = tabs.find((t) => t.id === tab)!;
 
@@ -104,11 +105,14 @@ export default function MemoriesPage() {
 
       {!loading && tab === "patterns" && (
         <div className="divide-y divide-neutral-200 rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
-          {procedural.length === 0 && <Empty />}
-          {procedural.map((p) => (
+          {persona.length === 0 && <Empty />}
+          {persona.map((p) => (
             <Row key={p.id}>
-              <span>{p.rule}</span>
-              <Tag>confidence {(p.confidence * 100).toFixed(0)}%</Tag>
+              <span className={p.active ? "" : "text-neutral-400"}>
+                {p.text}
+                {!p.active && <span className="ml-2 text-xs text-neutral-400">(learning)</span>}
+              </span>
+              <Tag>{p.kind}</Tag>
             </Row>
           ))}
         </div>

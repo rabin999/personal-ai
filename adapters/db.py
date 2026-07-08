@@ -84,6 +84,11 @@ class Database:
         """The pooled Qdrant client."""
         return self._qdrant
 
+    def neo4j(self) -> AsyncDriver:
+        """The pooled Neo4j driver — for graph reads/deletes (graph view, cleanup)
+        that Graphiti doesn't expose (spec §6; brief U1/U4)."""
+        return self._neo4j
+
     def graphiti(self) -> Graphiti:
         """Configured Graphiti instance (spec §6 wiring).
 

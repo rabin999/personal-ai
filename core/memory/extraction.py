@@ -28,6 +28,7 @@ from pydantic import BaseModel, ValidationError
 from core.memory.episodic import EpisodicMemory
 from core.memory.semantic import SemanticMemory
 from core.projects.service import ProjectService
+from core.psych.persona import STYLE_DIMENSIONS, PersonaStore, StyleSignal
 from ports.llm import LLM, LLMUnavailable
 from ports.preference_memory import PreferenceMemory
 
@@ -35,20 +36,36 @@ logger = logging.getLogger(__name__)
 
 FINANCE_TYPE = "finance_portfolio"
 
-_EXTRACT_INSTRUCTIONS = """
+_DIMS = ", ".join(STYLE_DIMENSIONS)
+
+_EXTRACT_INSTRUCTIONS = f"""
 You are the MEMORY step of a personal companion. Given the latest exchange,
-decide what is worth remembering long-term. Extract ONLY what the USER actually
-stated — never invent, never store the companion's own chatter or small talk.
+decide what — if anything — is worth remembering long-term, and WHERE it belongs.
+There are THREE distinct layers; keep them separate (mixing them is a bug):
+  • FACTS about the user (what is TRUE) → semantic_facts. Durable, objective.
+  • EVENTS the user experienced (what HAPPENED) → episodic_events. Timestamped.
+  • PERSONA (HOW they like to be talked to / who they are as a conversational
+    partner) → style_signals. Delivery/style, NOT facts.
+
+QUALITY BAR — store MEANINGFUL things only. A few good memories beat many junk
+ones. DISCARD and set store_nothing when the turn is: a greeting, thanks, filler,
+one-off trivia that won't matter later, the companion's own chatter, a question,
+a recall/confirmation of something already known, or a malformed/garbled fragment.
+When in doubt, store LESS.
 
 Respond with ONLY a JSON object of this exact shape:
-{"episodic_events": ["a specific thing that happened, with its implicit time,
+{{"episodic_events": ["a specific thing that happened, with its implicit time,
     one short factual sentence"],
  "semantic_facts": ["a durable fact / preference / routine about the user,
     TIME-STRIPPED and generalized (e.g. 'takes blood-pressure medication daily
     around 8pm')"],
- "trades": [{"ticker": "SYMBOL", "side": "buy" or "sell", "qty": number,
-    "price": number}],
- "store_nothing": true if this was just small talk / nothing memorable}
+ "style_signals": [{{"text": "readable 2nd-person statement about how to talk with
+    them, e.g. 'You like me to get to the point'", "kind": "style"|"interest"|
+    "sensitivity", "dimension": one of [{_DIMS}] or null, "stated": true if the
+    user DIRECTLY asked for this ('keep it short'), false if merely inferred}}],
+ "trades": [{{"ticker": "SYMBOL", "side": "buy" or "sell", "qty": number,
+    "price": number}}],
+ "store_nothing": true if this was just small talk / nothing memorable}}
 
 Rules:
 - Extract ONLY NEW information the USER just stated. If the USER is asking a
@@ -64,14 +81,19 @@ Rules:
   "is stressed about a deadline") — is NOT a durable fact. Put transient states in
   episodic_events ONLY; NEVER as a semantic_fact. Do not turn "I have a headache
   right now" into a permanent fact about the user.
-- Only what the USER stated about THEMSELVES becomes a fact. Never store the
-  companion's own suggestions or chatter as a fact (e.g. if the companion suggests
-  "rest in a dark room", that is NOT a fact about the user).
+- PERSONA vs. FACT — style must NOT be stored as a fact. "prefers short, blunt
+  answers", "enjoys a bit of humor", "money topics tend to stress them so keep it
+  calm", "loves football", "communicates directly" → style_signals (with the right
+  kind + dimension), NOT semantic_facts. A style_signal captures DELIVERY (how to
+  say things); a fact captures CONTENT (what is true). Emit a style_signal when the
+  user asks you to change HOW you talk, reveals a topic interest/dislike, or shows a
+  clear, repeated conversational preference — not for a one-off mood.
+- Only what the USER stated about THEMSELVES becomes a fact/signal. Never store the
+  companion's own suggestions or chatter (e.g. if the companion suggests "rest in a
+  dark room", that is NOT a fact about the user).
 - A concrete NEW event -> an episodic_event AND, if it implies a standing
   fact/routine, a distilled semantic_fact.
 - An explicit NEW stock/share buy or sell the user just made -> a trades entry.
-- Greetings, thanks, chit-chat, questions, recall/confirmation ->
-  store_nothing: true, empty lists.
 - Keep every string short and literal; never paraphrase the user into something
   they didn't say.
 """.strip()
@@ -129,6 +151,7 @@ class ExtractedTrade(BaseModel):
 class Extraction(BaseModel):
     episodic_events: list[str] = []
     semantic_facts: list[str] = []
+    style_signals: list[StyleSignal] = []
     trades: list[ExtractedTrade] = []
     store_nothing: bool = False
 
@@ -138,9 +161,11 @@ class ExtractionResult(BaseModel):
 
     episodic_written: int = 0
     semantic_written: int = 0
+    persona_written: int = 0
     trades_written: int = 0
     facts: list[str] = []
     events: list[str] = []
+    persona: list[str] = []
 
 
 class MemoryExtractor:
@@ -150,12 +175,14 @@ class MemoryExtractor:
         episodic: EpisodicMemory,
         semantic: SemanticMemory,
         projects: ProjectService,
+        persona: PersonaStore | None = None,
         preferences: PreferenceMemory | None = None,
     ) -> None:
         self._llm = llm
         self._episodic = episodic
         self._semantic = semantic
         self._projects = projects
+        self._persona = persona
         self._preferences = preferences
 
     async def extract_and_store(
@@ -217,7 +244,19 @@ class MemoryExtractor:
             else:
                 durable_facts.append(fact)
 
-        result = ExtractionResult(facts=durable_facts, events=events)
+        result = ExtractionResult(
+            facts=durable_facts, events=events, persona=[s.text for s in extraction.style_signals]
+        )
+        # PERSONA (brief U2): route style signals to the dynamic persona store — the
+        # "How I've learned to talk with you" layer. Kept OUT of semantic facts so
+        # style never masquerades as a fact (brief U0). Best-effort, user-scoped.
+        if self._persona is not None and extraction.style_signals:
+            try:
+                result.persona_written = await self._persona.apply(
+                    user_id, extraction.style_signals
+                )
+            except Exception:
+                logger.exception("persona write failed")
         for event in events:
             try:
                 await self._episodic.write(user_id, session_id, [event])

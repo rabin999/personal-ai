@@ -70,5 +70,6 @@ class MemoryRouter:
             session_id=turn.get("session_id", ""),
             episodic=getattr(extracted, "episodic_written", 0),
             semantic=getattr(extracted, "semantic_written", 0),
+            persona=getattr(extracted, "persona_written", 0),
             trades=getattr(extracted, "trades_written", 0),
         )

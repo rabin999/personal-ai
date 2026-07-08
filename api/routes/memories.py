@@ -67,6 +67,15 @@ async def episodic_memories(
     }
 
 
+@router.get("/memories/persona")
+async def persona_memories(user: CurrentUser, request: Request) -> dict[str, Any]:
+    """The dynamic persona — "How I've learned to talk with you" (brief U2). Readable
+    style/interest/sensitivity learnings, each with confidence; ``active`` marks the
+    ones confident enough to shape responses right now."""
+    notes = await _pipeline(request).persona.readable(user.user_id)
+    return {"type": "persona", "items": notes}
+
+
 @router.get("/memories/procedural")
 async def procedural_memories(user: CurrentUser, request: Request) -> dict[str, Any]:
     rules = await _pipeline(request).procedural.rules_for(user.user_id)

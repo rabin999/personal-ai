@@ -12,7 +12,22 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-08
-**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅ + follow-up fixes F1–F16 ✅ + prod fix pass F17–F21 ✅)_
+**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅ + follow-up fixes F1–F16 ✅ + prod fix pass F17–F21 ✅ + companion-depth pass U0–U2 ✅, U3–U12 in progress)_
+
+> **Companion-depth pass (2026-07-08):** **U0–U2 ✅** — fixed the memory layering so
+> facts (semantic), events (episodic), and PERSONA (style) stay in their correct
+> sections instead of storing gibberish. New dynamic per-user persona
+> (`core/psych/persona.py`) — the "How I've learned to talk with you" layer — that
+> evolves (stated→immediate, inferred→accrues, contradiction→supersede) and is
+> injected into Prompt Assembly so the same question gets a different STYLE per user.
+> Extraction hardened with a quality bar + `style_signals` routing; cleanup pass
+> (`core/memory/cleanup.py` + `scripts/clean_memory.py`) removes accreted junk;
+> `GraphStore.list_facts`/`delete_fact` added (Neo4j, group-scoped, also feed the
+> U4 graph view). Proven by real-call routing + per-user shaping tests
+> (`tests/real_call/test_persona.py`) + 7 unit tests. See `docs/TEST_REPORT.md`.
+> Remaining U3–U12 (projects view, graph view, user-local time, context ladder,
+> cross-turn correlation, dynamic prosody, background delivery, audio awareness) in
+> progress.
 
 > **Prod fix pass (2026-07-08):** reported prod issues, root-caused against the live
 > stack. **F17 Pipecat prod voice:** `CompanionSTTService` extended the base `STTService`,

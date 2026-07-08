@@ -15,6 +15,9 @@ class Fact(BaseModel):
     valid_from: str | None = None
     valid_to: str | None = None
     created_at: str | None = None
+    uuid: str | None = None  # graph edge id — enables targeted delete (cleanup, U1)
+    source: str | None = None  # entity the relationship starts at (graph view, U4)
+    target: str | None = None  # entity the relationship points to (graph view, U4)
 
     @property
     def is_current(self) -> bool:
@@ -32,4 +35,14 @@ class GraphStore(Protocol):
 
     async def search_facts(self, user_id: str, query: str, limit: int = 10) -> list[Fact]:
         """Relevant facts for this user only, each with its validity window."""
+        ...
+
+    async def list_facts(self, user_id: str, limit: int = 200) -> list[Fact]:
+        """All of this user's relationship facts (source/target/validity/uuid) for the
+        knowledge-graph view (U4) and cleanup (U1). User-scoped by construction."""
+        ...
+
+    async def delete_fact(self, user_id: str, uuid: str) -> bool:
+        """Hard-delete one relationship edge (cleanup of accreted junk, U1). Scoped to
+        the user's group so it can never touch another user's graph. Returns removed."""
         ...

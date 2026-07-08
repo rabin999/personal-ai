@@ -51,3 +51,12 @@ class SemanticMemory:
     async def profile_facts(self, user_id: str, limit: int = 10) -> list[Fact]:
         """Stable facts about the user themself."""
         return await self._graph.search_facts(user_id, _PROFILE_QUERY, limit=limit)
+
+    async def all_facts(self, user_id: str, limit: int = 200) -> list[Fact]:
+        """Every relationship fact (with connected entities) for the knowledge-graph
+        view (U4) and cleanup (U1)."""
+        return await self._graph.list_facts(user_id, limit=limit)
+
+    async def delete_fact(self, user_id: str, uuid: str) -> bool:
+        """Remove one accreted/gibberish fact edge (cleanup, U1), user-scoped."""
+        return await self._graph.delete_fact(user_id, uuid)
