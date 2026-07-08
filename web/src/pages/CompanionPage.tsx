@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Orb } from "../components/Orb";
 import { Waveform } from "../components/Waveform";
 import { MicPicker } from "../components/MicPicker";
 import { TraceLog } from "../components/TraceLog";
@@ -418,11 +417,10 @@ export default function CompanionPage() {
           {/* Soft backdrop wash */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(14,165,233,0.08),transparent_70%)]" />
           <StatusChip state={turnState} />
-          <Orb state={turnState} level={level} />
-          {/* Live mic-input waveform — reacts to the user's voice while listening. */}
-          {conn === "active" && (
-            <Waveform level={level} active={turnState === "listening"} />
-          )}
+          {/* Single hero voice-bar (replaces the orb): reacts to your voice while
+              listening AND the companion's TTS while speaking, colour-coded by
+              state. Shown once connected; a flat idle line before that. */}
+          <Waveform level={level} state={conn === "active" ? turnState : "idle"} />
           {/* Live caption: your words while listening, the reply revealed
               word-by-word while speaking. 12px, muted. Pinned to the bottom of the
               animation panel so it's always visible (mobile + desktop), never
