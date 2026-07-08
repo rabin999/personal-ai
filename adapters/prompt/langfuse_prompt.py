@@ -100,7 +100,15 @@ class LangfusePromptProvider:
                     commit_message="seed from bundled default (F13)",
                 )
                 results[name] = "created"
-            except Exception:
-                logger.warning("could not seed prompt %s into Langfuse", name, exc_info=True)
-                results[name] = "error"
+            except Exception as exc:
+                # The API and worker both build the pipeline at startup and seed
+                # concurrently, so two processes can race to create the same prompt
+                # name → a unique-constraint error for the loser. That's benign: the
+                # prompt now exists (the winner made it). Treat it as 'exists', not a
+                # failure, so a normal deploy doesn't log a scary error.
+                if "unique constraint" in str(exc).lower() or "already exists" in str(exc).lower():
+                    results[name] = "exists"
+                else:
+                    logger.warning("could not seed prompt %s into Langfuse", name, exc_info=True)
+                    results[name] = "error"
         return results
