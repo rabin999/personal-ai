@@ -14,171 +14,143 @@ const SUBLABEL: Record<TurnState, string> = {
   speaking: "Talk over me to interrupt",
 };
 
-// Per-state visual palette. Gradients are inline so nothing depends on dynamic
-// Tailwind class generation. `accent` drives the caption dot, ripples and glow.
-interface Palette {
-  sphere: string;
-  glow: string;
-  accent: string;
-}
-
-const PALETTE: Record<TurnState, Palette> = {
-  idle: {
-    // Calm skies — soft sky blue.
-    sphere:
-      "radial-gradient(circle at 33% 28%, #bae6fd 0%, #38bdf8 42%, #075985 100%)",
-    glow: "#0ea5e9",
-    accent: "#7dd3fc",
-  },
-  listening: {
-    sphere:
-      "radial-gradient(circle at 33% 28%, #a7f3d0 0%, #10b981 44%, #065f46 100%)",
-    glow: "#10b981",
-    accent: "#6ee7b7",
-  },
-  thinking: {
-    sphere:
-      "radial-gradient(circle at 33% 28%, #fde68a 0%, #f59e0b 44%, #b45309 100%)",
-    glow: "#f59e0b",
-    accent: "#fcd34d",
-  },
-  speaking: {
-    // Fresh water — aqua/cyan.
-    sphere:
-      "radial-gradient(circle at 33% 28%, #a5f3fc 0%, #22d3ee 44%, #0e7490 100%)",
-    glow: "#06b6d4",
-    accent: "#67e8f9",
-  },
+// Accent (label dot + glow tint) per state.
+const ACCENT: Record<TurnState, string> = {
+  idle: "#38bdf8",
+  listening: "#34d399",
+  thinking: "#a78bfa",
+  speaking: "#22d3ee",
 };
 
-// Amplitude-reactive talking orb. The sphere scales with the audio `level`
-// (0..1) when it's the user's or companion's turn to make sound; `state` drives
-// colour, ripples and the caption. Idle breathes; thinking spins a sheen.
+// Color-FUSION visualization: heavily-blurred colour blobs drift, scale and blend
+// (screen) inside a dark panel into a living, shifting plasma. Reactive — the field
+// intensifies with the audio `level` and speeds up while thinking. No circle, no
+// bars: a modern gradient-mesh "fusion" that keeps attention during processing.
 export function Orb({ state, level }: { state: TurnState; level: number }) {
-  const p = PALETTE[state];
+  const accent = ACCENT[state];
   const reactive = state === "listening" || state === "speaking";
   const amp = reactive ? level : 0;
-  const scale = 1 + amp * 0.28;
-  const idle = state === "idle";
   const thinking = state === "thinking";
-  const rippling = reactive || thinking;
+  const idle = state === "idle";
+  // Animation pace: calm at idle, quicker when active, quickest while thinking.
+  const pace = thinking ? 0.55 : reactive ? 0.78 : 1.2;
+  const boost = thinking ? 0.22 : amp * 0.4; // extra blob opacity when busy
+
+  const blob = (
+    color: string,
+    pos: string,
+    keyframe: string,
+    base: number,
+    dur: number,
+  ): React.CSSProperties => ({
+    background: `radial-gradient(circle at center, ${color} 0%, ${color}00 68%)`,
+    opacity: Math.min(0.95, base + boost),
+    animation: `${keyframe} ${(dur * pace).toFixed(1)}s ease-in-out infinite`,
+    ...JSON.parse(pos),
+  });
 
   return (
     <div className="flex select-none flex-col items-center gap-7">
       <div
-        className="relative grid h-60 w-60 place-items-center sm:h-72 sm:w-72"
-        style={{ animation: "orb-float 7s ease-in-out infinite" }}
+        className="relative h-72 w-72 sm:h-96 sm:w-96 lg:h-[26rem] lg:w-[26rem]"
+        style={{ transform: `scale(${1 + amp * 0.07})`, transition: "transform 120ms ease-out" }}
       >
-        {/* Ambient glow */}
+        {/* Soft outer glow, tinted by the state accent */}
         <div
-          className="absolute inset-2 rounded-full blur-3xl transition-opacity duration-500"
-          style={{
-            background: p.glow,
-            opacity: (idle ? 0.3 : 0.5) + amp * 0.35,
-          }}
+          className="absolute -inset-5 rounded-[3rem] blur-3xl transition-opacity duration-700"
+          style={{ background: accent, opacity: (idle ? 0.18 : 0.32) + amp * 0.3 }}
         />
 
-        {/* Expanding ripples (listening / speaking / thinking) */}
-        {rippling && (
-          <>
-            <Ripple color={p.accent} delay="0s" />
-            <Ripple color={p.accent} delay="1.1s" />
-            {thinking && <Ripple color="#a78bfa" delay="0.55s" />}
-          </>
-        )}
-
-        {/* Multi-colour FUSION halo — only while thinking: a soft blend of sky /
-            violet / cyan / amber that slowly drifts in hue + counter-rotates, so
-            the "processing" moment feels alive without being a disco. */}
-        {thinking && (
+        {/* The plasma panel — dark so the screen-blended colours glow in any theme */}
+        <div className="relative h-full w-full overflow-hidden rounded-[2.75rem] bg-slate-950 shadow-2xl ring-1 ring-white/10">
+          {/* Drifting, blending colour blobs → the fusion. The whole field also
+              cycles HUE continuously (slow at idle, faster when busy) so the colours
+              are always shifting — never the same blend twice. */}
           <div
-            className="absolute inset-3 rounded-full blur-md"
+            className="absolute inset-0 [&>span]:absolute [&>span]:h-3/4 [&>span]:w-3/4 [&>span]:rounded-full [&>span]:blur-2xl [&>span]:mix-blend-screen"
+            style={{ animation: `orb-hue ${thinking ? 7 : reactive ? 12 : 20}s linear infinite` }}
+          >
+            <span style={blob("#38bdf8", '{"left":"2%","top":"6%"}', "fusion-a", 0.5, 11)} />
+            <span style={blob("#a78bfa", '{"right":"0%","top":"2%"}', "fusion-b", 0.5, 13)} />
+            <span style={blob("#22d3ee", '{"left":"6%","bottom":"2%"}', "fusion-c", 0.45, 15)} />
+            <span style={blob("#34d399", '{"right":"4%","bottom":"6%"}', "fusion-d", 0.4, 17)} />
+            <span style={blob(thinking ? "#f472b6" : accent, '{"left":"22%","top":"26%"}', "fusion-a", 0.35, 19)} />
+          </div>
+
+          {/* Slow rotating sheen for extra flow (faster while thinking) */}
+          <div
+            className="absolute inset-[-25%] mix-blend-screen"
             style={{
               background:
-                "conic-gradient(from 0deg, #38bdf8, #a78bfa, #22d3ee, #fbbf24, #38bdf8)",
-              opacity: 0.55,
-              animation: "orb-spin-rev 6s linear infinite, orb-hue 8s linear infinite",
+                "conic-gradient(from 0deg, transparent, rgba(255,255,255,0.10), transparent 40%, rgba(255,255,255,0.06), transparent)",
+              animation: `fusion-drift ${thinking ? 8 : 22}s linear infinite`,
             }}
           />
-        )}
 
-        {/* Rotating conic sheen — most visible while thinking */}
-        <div
-          className="absolute inset-6 rounded-full transition-opacity duration-500"
-          style={{
-            background: `conic-gradient(from 0deg, transparent 0%, ${p.accent}88 25%, transparent 55%, ${p.accent}55 80%, transparent 100%)`,
-            opacity: thinking ? 0.9 : 0.18,
-            animation: `orb-spin ${thinking ? 2.6 : 9}s linear infinite`,
-          }}
-        />
+          {/* Converging particles — spiral INTO the core (the fusing fuel). */}
+          {(reactive || thinking) && (
+            <div className="absolute left-1/2 top-1/2 h-0 w-0">
+              {[0, 1, 2, 3, 4].map((i) => (
+                <div
+                  key={i}
+                  className="absolute left-0 top-0"
+                  style={{
+                    width: 120,
+                    height: 120,
+                    marginLeft: -60,
+                    marginTop: -60,
+                    transformOrigin: "center",
+                    animation: `fusion-implode ${(thinking ? 1.5 : 2.1)}s linear infinite`,
+                    animationDelay: `${i * (thinking ? 0.3 : 0.42)}s`,
+                    transform: `rotate(${i * 72}deg)`,
+                  }}
+                >
+                  <span
+                    className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
+                    style={{ background: "#e0f2fe", boxShadow: `0 0 8px 2px ${accent}` }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
 
-        {/* Main sphere */}
-        <div
-          className="absolute inset-8 rounded-full shadow-2xl"
-          style={{
-            background: p.sphere,
-            transform: `scale(${scale})`,
-            transition: "transform 110ms ease-out",
-            animation: idle
-              ? "orb-breathe 4.5s ease-in-out infinite"
-              : thinking
-                ? "orb-pulse 2.2s ease-in-out infinite, orb-hue 10s linear infinite"
-                : undefined,
-            boxShadow: `0 20px 60px -12px ${p.glow}99`,
-          }}
-        >
-          {/* Glass highlight */}
+          {/* Discharging energy rings — pulses radiating from the fusion core. */}
+          {(reactive || thinking) && (
+            <>
+              <span className="absolute left-1/2 top-1/2 h-24 w-24 rounded-full border" style={{ borderColor: `${accent}aa`, animation: `fusion-ring ${thinking ? 1.8 : 2.4}s ease-out infinite` }} />
+              <span className="absolute left-1/2 top-1/2 h-24 w-24 rounded-full border" style={{ borderColor: `${accent}66`, animation: `fusion-ring ${thinking ? 1.8 : 2.4}s ease-out infinite`, animationDelay: "0.9s" }} />
+            </>
+          )}
+
+          {/* Hot fusion CORE — a bright plasma point that flares with the voice. */}
           <div
-            className="absolute inset-0 rounded-full"
+            className="absolute left-1/2 top-1/2 h-20 w-20 rounded-full blur-md"
             style={{
-              background:
-                "radial-gradient(circle at 32% 26%, rgba(255,255,255,0.55) 0%, rgba(255,255,255,0) 42%)",
+              background: `radial-gradient(circle, #ffffff 0%, ${accent} 34%, ${accent}00 70%)`,
+              transform: `translate(-50%, -50%) scale(${0.6 + amp * 1.5})`,
+              opacity: 0.7 + amp * 0.3,
+              transition: "transform 110ms ease-out",
+              animation: thinking ? "fusion-core 1.5s ease-in-out infinite" : undefined,
             }}
           />
-          {/* Inner well */}
-          <div className="absolute inset-[28%] rounded-full bg-black/25 backdrop-blur-sm" />
+
+          {/* Fine top sheen so the panel reads as glass */}
+          <div
+            className="absolute inset-0"
+            style={{ background: "linear-gradient(160deg, rgba(255,255,255,0.10), transparent 45%)" }}
+          />
         </div>
-
-        {/* Reactive core */}
-        <div
-          className="relative h-3 w-3 rounded-full bg-white"
-          style={{
-            transform: `scale(${1 + amp * 2.4 + (thinking ? 0.3 : 0)})`,
-            transition: "transform 110ms ease-out",
-            boxShadow: `0 0 16px 4px ${p.accent}`,
-            animation: thinking ? "orb-breathe 1.4s ease-in-out infinite" : undefined,
-          }}
-        />
       </div>
 
       <div className="flex flex-col items-center gap-1">
         <div className="flex items-center gap-2">
-          <span
-            className="h-1.5 w-1.5 rounded-full"
-            style={{ background: p.accent, boxShadow: `0 0 8px ${p.accent}` }}
-          />
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent, boxShadow: `0 0 8px ${accent}` }} />
           <span className="text-sm font-semibold tracking-wide text-slate-700 dark:text-slate-100">
             {LABEL[state]}
           </span>
         </div>
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          {SUBLABEL[state]}
-        </span>
+        <span className="text-xs text-slate-500 dark:text-slate-400">{SUBLABEL[state]}</span>
       </div>
     </div>
-  );
-}
-
-function Ripple({ color, delay }: { color: string; delay: string }) {
-  return (
-    <div
-      className="absolute inset-8 rounded-full"
-      style={{
-        border: `2px solid ${color}`,
-        animation: "orb-ripple 2.2s ease-out infinite",
-        animationDelay: delay,
-        opacity: 0,
-      }}
-    />
   );
 }

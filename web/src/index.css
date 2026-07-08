@@ -195,3 +195,61 @@ input[type="range"].slider::-moz-range-thumb {
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.045); }
 }
+
+/* ── Orb orbiting particles + aurora flow ───────────────────────────────────
+   Small accent dots circle the orb at different radii/speeds; the internal
+   aurora slowly rotates. Alive in every state, calm at idle, lively when active. */
+@keyframes orb-orbit { to { transform: rotate(360deg); } }
+@keyframes orb-orbit-rev { to { transform: rotate(-360deg); } }
+@keyframes orb-shimmer {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 0.85; }
+}
+
+/* ── Voice wave bars (central visualization, replaces the orb) ───────────────
+   A centered row of bars that breathe in a travelling wave; amplitude is scaled
+   live by the audio level. Modern, voice-native, not a circle. */
+@keyframes wave-bar {
+  0%, 100% { transform: scaleY(0.32); }
+  50% { transform: scaleY(1); }
+}
+
+/* ── Color-fusion field (central visualization) ─────────────────────────────
+   Several heavily-blurred colour blobs drift + scale and blend (screen) into a
+   living, shifting gradient — like a slow plasma fusion. Reactive scale/opacity
+   is applied inline from the audio level; here we just drive the drift. */
+@keyframes fusion-a {
+  0%, 100% { transform: translate(-18%, -12%) scale(1); }
+  33% { transform: translate(14%, 8%) scale(1.25); }
+  66% { transform: translate(-6%, 16%) scale(0.9); }
+}
+@keyframes fusion-b {
+  0%, 100% { transform: translate(16%, -14%) scale(1.1); }
+  33% { transform: translate(-14%, 10%) scale(0.85); }
+  66% { transform: translate(8%, -4%) scale(1.3); }
+}
+@keyframes fusion-c {
+  0%, 100% { transform: translate(-10%, 16%) scale(0.95); }
+  50% { transform: translate(12%, -14%) scale(1.35); }
+}
+@keyframes fusion-d {
+  0%, 100% { transform: translate(12%, 12%) scale(1.2); }
+  50% { transform: translate(-16%, -10%) scale(0.9); }
+}
+@keyframes fusion-drift { to { transform: rotate(360deg); } }
+
+/* ── Nuclear-fusion energy: converging particles + discharging rings ─────────*/
+@keyframes fusion-ring {
+  0% { transform: translate(-50%, -50%) scale(0.35); opacity: 0.7; }
+  100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; }
+}
+/* A particle riding a wrapper that rotates AND shrinks → it spirals into the core. */
+@keyframes fusion-implode {
+  0% { transform: rotate(0deg) scale(1); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: rotate(300deg) scale(0.05); opacity: 0; }
+}
+@keyframes fusion-core {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.85; }
+  50% { transform: translate(-50%, -50%) scale(1.18); opacity: 1; }
+}
