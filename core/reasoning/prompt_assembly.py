@@ -22,6 +22,7 @@ from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn, WorkingMemory
 from core.profile import ProfileService, TraitDef, TraitRegistry
+from core.profile.models import LocaleProfile
 from core.reasoning.recall import (
     ConversationRecall,
     classify_recall,
@@ -120,6 +121,10 @@ class AssembledPrompt(BaseModel):
     # "current" (this session's transcript), "past" (the conversation store), or
     # "none". Recorded in the trace so recall routing is inspectable.
     recall_source: str = "none"
+    # C5: which user-context signals (location/timezone/units/currency/language)
+    # were known and used to FRAME this answer — recorded in the trace as evidence
+    # the user-model actually drives responses, not just that it's stored.
+    user_context_signals: list[str] = Field(default_factory=list)
     # Section name → rendered text, pre-trim; kept for tests and debugging.
     sections: dict[str, str] = Field(default_factory=dict)
 
@@ -222,7 +227,13 @@ class PromptAssembler:
         # Step 9 — compose sections; trim order = reverse priority.
         cold_start = not profile.onboarded  # §3.1: first conversation
         sections: dict[str, str] = {}
-        sections["identity"] = _identity_section(profile.companion_name) + _now_section()
+        locale = getattr(profile, "locale", None)
+        user_ctx, ctx_signals = _user_context_section(locale)
+        # C4/C5: identity + user's local time + how-to-answer-them (humanize) are
+        # pinned into the identity block so they're never trimmed and shape every reply.
+        sections["identity"] = (
+            _identity_section(profile.companion_name) + _now_section(locale) + user_ctx
+        )
         sections["recall"] = recall_section  # F3/F4: authoritative transcript (may be "")
         # F14: the rolling summary of earlier turns compacted out of the live buffer,
         # so a long session stays coherent without every turn in the prompt.
@@ -290,6 +301,7 @@ class PromptAssembler:
             resolved_entities=candidates,
             active_traits=[{"id": t.id, "version": t.version} for t in traits],
             recall_source=recall_source,
+            user_context_signals=ctx_signals,  # C5: user-model signals used this turn
             sections=sections,
         )
 
@@ -395,17 +407,94 @@ def _prompt_version(traits: list[TraitDef]) -> str:
     return f"pt{PROMPT_TEMPLATE_VERSION}.{digest}"
 
 
-def _now_section() -> str:
+def _now_section(locale: "LocaleProfile | None" = None) -> str:
     """Inject the current UTC time so the companion can answer time/date questions
     directly (e.g. 'what time is it in Tokyo?') without a flaky web lookup, and knows
-    'today' for judging whether a fact is current. Common offsets given as anchors."""
+    'today' for judging whether a fact is current. When the user's timezone is known
+    (C5), ALSO state the user's own local clock time so 'this evening', 'in 2 hours',
+    and 'how many hours ahead is X' resolve to THEIR time — not UTC."""
     now = datetime.now(UTC)
-    return (
+    base = (
         f"\n\n## Right now\nThe current time is {now.strftime('%Y-%m-%d %H:%M')} UTC "
         f"({now.strftime('%A')}). Convert to whatever timezone the user asks about — "
         "e.g. Tokyo = UTC+9, Kathmandu = UTC+5:45, New York = UTC-4/-5, London = UTC+0/+1. "
-        "When asked the time or date somewhere, STATE the actual clock time; don't deflect."
+        "When asked the time or date somewhere, STATE the actual clock time in a natural "
+        "human way (e.g. 'just past midnight', 'about half four in the afternoon'), never a "
+        "UTC offset; don't deflect."
     )
+    tz = (locale.timezone if locale else "") or ""
+    if tz:
+        try:
+            from zoneinfo import ZoneInfo
+
+            local = now.astimezone(ZoneInfo(tz))
+            base += (
+                f"\nFOR THE USER it is currently {local.strftime('%H:%M')} "
+                f"({local.strftime('%A')}) in {tz}. Anchor times to THIS — when they ask the "
+                "time somewhere else, say it relative to them too (e.g. '~3 hours ahead of you')."
+            )
+        except Exception:
+            pass
+    return base
+
+
+def _user_context_section(locale: "LocaleProfile | None") -> tuple[str, list[str]]:
+    """C4/C5: tell the companion who/where the user is AND how to deliver answers the
+    way a thoughtful human would — framed for THIS user. Returns (section_text,
+    active_signals) so the trace can show which user-context signals shaped the turn.
+    Empty when nothing is known (then the humanize rules still apply, unit-agnostic)."""
+    signals: list[str] = []
+    known: list[str] = []
+    if locale is not None:
+        if locale.city or locale.country:
+            where = ", ".join(p for p in (locale.city, locale.country) if p)
+            known.append(f"lives in {where}")
+            signals.append("location")
+        if locale.timezone:
+            known.append(f"timezone {locale.timezone}")
+            signals.append("timezone")
+        if locale.units:
+            known.append(f"prefers {locale.units} units")
+            signals.append("units")
+        if locale.currency:
+            known.append(f"currency {locale.currency}")
+            signals.append("currency")
+        if locale.language:
+            known.append(f"language {locale.language}")
+            signals.append("language")
+    who = ("The user " + "; ".join(known) + ".\n") if known else ""
+    unit_line = ""
+    if locale and locale.units == "metric":
+        unit_line = (
+            "ALWAYS LEAD with metric — Celsius, kilometres, kg — for EVERY temperature, "
+            "distance, and weight (even ones that default to miles/Fahrenheit, like a "
+            "flight distance); mention the other unit only if it genuinely helps. "
+        )
+    elif locale and locale.units == "imperial":
+        unit_line = (
+            "ALWAYS LEAD with imperial — Fahrenheit, miles, pounds — for EVERY temperature, "
+            "distance, and weight; mention metric only if it genuinely helps. "
+        )
+    money = (
+        f"Give money in {locale.currency} (or both if the source is another currency). "
+        if locale and locale.currency
+        else ""
+    )
+    section = (
+        "\n\n## Who you're talking to & how to answer them\n"
+        f"{who}"
+        "Deliver EVERY answer the way a thoughtful human would — not raw data:\n"
+        "- Times → the actual local clock time, framed relative to the user's timezone "
+        "('about half four in the afternoon there, ~3 hours ahead of you'), never a UTC offset.\n"
+        f"- Temperatures, distances, weights → the user's unit system. {unit_line}\n"
+        f"- Money → their currency where it helps. {money}\n"
+        "- Paraphrase & synthesise raw search/tool output into a natural, concise spoken "
+        "answer; never read tables, fields, codes, or IDs aloud.\n"
+        "- Concrete answer first, then optional detail. Round where precision isn't needed. "
+        "Keep it short enough to say out loud.\n"
+        "- If a unit/timezone the answer needs is genuinely unknown, ask once, briefly."
+    )
+    return section, signals
 
 
 def _identity_section(companion_name: str | None) -> str:

@@ -112,6 +112,8 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
             # so a turn's trace shows the traits' influence, not just their names.
             active_traits=[f"{t['id']}:v{t['version']}" for t in prompt.active_traits],
             trait_text=sections.get("traits", ""),
+            # C5: which user-model signals framed this answer (evidence it's used).
+            user_context_signals=prompt.user_context_signals,
             # F7: the REAL assembled prompt, verbatim — full system prompt + every
             # message actually sent to the model — so a turn is evaluable from the
             # trace alone (not a 4k-char summary).

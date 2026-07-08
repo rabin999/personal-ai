@@ -101,6 +101,7 @@ class RealTurns:
             system_prompt=prompt.system_prompt,  # F7: full verbatim prompt
             messages=prompt.messages,
             recall_source=prompt.recall_source,
+            user_context_signals=prompt.user_context_signals,  # C5 signals used
         )
         trace.emit(
             "router", f"routing to {prompt.complexity_hint} tier", tier=prompt.complexity_hint

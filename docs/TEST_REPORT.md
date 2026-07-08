@@ -1524,3 +1524,38 @@ inspectable in tests (also tightens C1 trace fidelity for the real-call suites).
   `relation=new_topic` — did NOT over-correlate.
 - **LLM-judge (strict, separate model): overall 1.0, verdict PASS** across all evaluated turns —
   correct intent, correct correlation, correct source (internal vs live vs both) every time.
+
+## C4 — Human-quality answer transformation + C5 — Know & use the user ✅
+
+**Diagnosed:** the companion already humanized weather/distance/currency well, but (a) TIME answers
+were machine-ish and NOT user-relative ("00:09 AM on …", no "hours ahead of you"), and (b) units
+defaulted to US (Fahrenheit/miles) regardless of the user — because the user model had NO
+location/timezone/units/currency/language fields at all (the foundational C5 gap).
+
+**What was done (C4 + C5, intertwined):**
+- Added `LocaleProfile` (timezone/city/country/units/currency/language) to `UserProfile` and a
+  `voice_speed` field (C7); nested-patchable via `ProfileService.update`.
+- Prompt assembly: `_now_section(locale)` now also injects the USER's own local clock time when the
+  timezone is known ("FOR THE USER it is currently 15:51 in Asia/Kathmandu … say it relative to them,
+  e.g. '~3 hours ahead of you'"); a new `_user_context_section` renders who/where the user is + a
+  general HUMANIZE directive (times as local clock never UTC offsets; temps/distances/weights LEADING
+  with the user's unit system; money in their currency; paraphrase raw tool output; concrete-first;
+  round; keep it short for voice). Pinned into the identity block so it's never trimmed and shapes
+  every reply. The spoken-reply instruction got the same humanize standard.
+- `AssembledPrompt.user_context_signals` records which signals were known+used, surfaced in the trace
+  (chat route + harness) — evidence the user-model actually FRAMES answers (C5 requirement).
+
+**Proven (real engine + stores, two users, LLM-judged):**
+- Direct prompt inspection: signals `['location','timezone','units','currency','language']`; identity
+  block carries "FOR THE USER it is currently 15:51 (Wednesday) in Asia/Kathmandu" + the humanize block.
+- SAME question, two locales: "weather in Tokyo" → Nepal user "27 degrees … 14 km/h" (Celsius/metric);
+  New York user "mid-80s … 88 degrees" (Fahrenheit/imperial). Localized per user.
+- **LLM-judge (strict, Kathmandu/metric/NPR user): overall 1.0, verdict PASS** — time "00:09 AM …
+  about 4 and a half hours behind you" (user-relative!), distance "~5,600 km first, miles secondary",
+  currency converted to NPR, weather in Celsius. First judge pass caught distance leading with miles
+  (0.55 FAIL) → strengthened the unit directive to "ALWAYS LEAD with the user's unit for every
+  temperature/distance/weight" → re-judged 1.0 PASS. Fast suite green.
+
+**Honest note:** locale is captured/persisted and drives responses; the profile UI slider to SET it
+(and voice speed) is wired in C7/C8. Populating locale by consent-gated inference (vs. explicit
+profile entry) is a smaller follow-up — the capture→use→trace path is proven with real runs.

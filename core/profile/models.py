@@ -23,6 +23,25 @@ class AudioPrefs(BaseModel):
     # companion speaks (AEC has removed our own TTS, so a lower bar catches the
     # user's double-talk-attenuated speech). Per-user tunable; floored at vad_min.
     barge_in_sensitivity: float = 0.2
+    # C7: TTS playback rate multiplier (1.0 = normal). Default 1.2 — the voice was
+    # a touch slow. Clamped to [0.8, 1.5] on write; applied to both voice engines
+    # behind the voice port and recorded in the trace.
+    voice_speed: float = Field(default=1.2, ge=0.8, le=1.5)
+
+
+class LocaleProfile(BaseModel):
+    """Who/where the user is, so answers can be framed for THEM (C5): times in their
+    local clock + relative to their timezone, temperatures/distances in their unit
+    system, money in their currency. Empty fields mean 'unknown' — the companion
+    then asks once (with consent) or falls back to neutral phrasing, never guesses a
+    wrong locale. All optional; captured from the profile UI or inferred with consent."""
+
+    timezone: str = ""  # IANA, e.g. "Asia/Kathmandu"
+    city: str = ""
+    country: str = ""
+    units: Literal["metric", "imperial", ""] = ""
+    currency: str = ""  # ISO 4217, e.g. "NPR", "USD"
+    language: str = ""  # e.g. "en", "ne"
 
 
 class CommPrefs(BaseModel):
@@ -57,6 +76,7 @@ class UserProfile(BaseModel):
     traits_enabled: dict[str, bool] = Field(default_factory=dict)
     comm_prefs: CommPrefs = Field(default_factory=CommPrefs)
     model_prefs: ModelPrefs = Field(default_factory=ModelPrefs)
+    locale: LocaleProfile = Field(default_factory=LocaleProfile)  # C5: know the user
     created_at: str
     onboarded: bool = False
 
