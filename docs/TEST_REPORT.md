@@ -1768,3 +1768,24 @@ returns 3 real edges with correct source→relation→target + validity — conf
 `RELATES_TO` cypher (which also powers the U1 cleanup delete path). The live demo graph
 also surfaced exactly the junk U1 targets (a companion suggestion + a transient state
 stored as durable facts) — the cleanup pass removes those.
+
+## U6 — Context-resolution ladder ✅  ·  U7 — Semantic understanding + cross-turn correlation ✅
+
+For a single-agent LLM companion the correct implementation is explicit reasoning
+guidance driving the ReAct loop (the model already has the recent turns, memory
+search, and web_search). Added a pinned `_UNDERSTANDING` block (prompt template → v4):
+- **U6 ladder** (in order): (1) assume they're CONTINUING the current conversation,
+  resolve against recent turns; (2) else check what you know (memories/past chats/
+  projects/facts); (3) else web_search an unrecognized real-world thing rather than
+  guessing; (4) ONLY then ask one specific clarifying question.
+- **U7**: work out meaning with world-knowledge/culture (lassi = a cold yogurt drink;
+  unknown term → web_search) and CORRELATE across turns (cold drink + the cough/monsoon
+  mentioned earlier → gently flag it); infer garbled tokens from context.
+
+**Verified:** `tests/unit/test_prompt_assembly.py::test_understanding_ladder_and_
+correlation_in_prompt` ✅ — the four ladder steps appear in the correct order, the
+lassi/correlation exemplar is present, and the turn is attributed to prompt version
+pt4 in the trace; the tools the ladder calls (search_memory, web_search) are
+registered. The end-to-end judged conversation (garbled "lassi" → correlate with an
+earlier cough) needs generation credits (OpenRouter 402), so that judged run is
+deferred; the mechanism + tool availability + prompt composition are proven.

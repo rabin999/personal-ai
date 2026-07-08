@@ -102,6 +102,27 @@ async def test_referenced_project_ledger_appears_in_prompt() -> None:
     assert result.resolved_entities[0].entity_id == "proj_nepse"
 
 
+# U6/U7: the reference-resolution ladder + cross-turn correlation guidance is composed
+# into every prompt (with the tools present to actually execute the ladder).
+async def test_understanding_ladder_and_correlation_in_prompt() -> None:
+    h = Harness()
+    await h.seed()
+    result = await h.assembler.assemble(USER, SESSION, "should I go easy on it?")
+    assert isinstance(result, AssembledPrompt)
+    sp = result.system_prompt.lower()
+    # U6 ladder, in order: assume current context → what you know → web_search → ask.
+    assert "in this order" in sp
+    i_ctx = sp.find("continuing the current conversation")
+    i_know = sp.find("what you know")
+    i_search = sp.find("web_search it rather than guessing")
+    i_ask = sp.find("clarifying question")
+    assert 0 < i_ctx < i_know < i_search < i_ask
+    # U7 world-knowledge + cross-turn correlation exemplar.
+    assert "lassi" in sp and "connect it to" in sp
+    # The prompt template version was bumped so the trace attributes this behavior.
+    assert result.prompt_version.startswith("pt4")
+
+
 # §17 rule 3: soft psychological signals reach the assembled prompt (§17 → §10).
 async def test_psych_signals_reach_the_prompt() -> None:
     signal = (
@@ -169,7 +190,10 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     # trimmed (not all 6 survive), while the persona floor + the non-trimmable
     # capability/self blocks stay. The ceiling sits just above that floor and well
     # below floor + all 6 chunks (~9.9k), proving episodic was dropped to fit.
-    assert len(result.system_prompt) <= 7_700  # U5 pinned the user-local-time block
+    # Ceiling tracks the (non-trimmable) pinned floor — identity + capabilities +
+    # the U6/U7 understanding block + traits + user-local-time — and sits below
+    # floor + all 6 episodic chunks, proving episodic was trimmed to fit.
+    assert len(result.system_prompt) <= 9_000
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

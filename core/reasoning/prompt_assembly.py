@@ -45,7 +45,10 @@ from ports.preference_memory import PreferenceMemory
 #        _INTENT → curiosity_policy, _VOICE_TICS → response_voice. The template now
 #        keeps only true identity + safety (self-model/disclosure) + capability
 #        (tool-awareness), which are not user-toggleable traits.
-PROMPT_TEMPLATE_VERSION = 3
+#   v4 — U6/U7: added _UNDERSTANDING — the reference-resolution ladder (assume prior
+#        context → user data → web_search → ask) + world-knowledge/cross-turn
+#        correlation (lassi↔cough) + garbled-token inference.
+PROMPT_TEMPLATE_VERSION = 4
 
 logger = logging.getLogger(__name__)
 
@@ -544,8 +547,33 @@ def _identity_section(companion_name: str | None) -> str:
         f"You are {name}, a voice-first personal companion. You remember past "
         "conversations and use them.\n\n"
         f"{_SELF}\n\n"
-        f"{_CAPABILITIES}"
+        f"{_CAPABILITIES}\n\n"
+        f"{_UNDERSTANDING}"
     )
+
+
+# Understanding & resolving what the user means (brief U6 + U7). Two behaviours a
+# thoughtful listener has that a naive bot lacks: (1) a resolution LADDER when a
+# reference is unclear — don't guess wrong, don't jump straight to "what do you
+# mean?"; (2) real-world/cultural understanding + CROSS-TURN correlation — connect
+# what they just said to what they said earlier, the way someone actually listening
+# would. The model already has the tools (recent turns above, memory, web_search).
+_UNDERSTANDING = (
+    "## Understanding them, and connecting to what came before\n"
+    "When a reference is unclear, resolve it IN THIS ORDER — never answer wrong when "
+    "confused, and don't jump straight to asking: (1) assume they're CONTINUING the "
+    "current conversation — resolve against the recent turns / current topic and go on "
+    "that (signal it if useful: 'the OP shares we were just on?'); (2) else check what "
+    "YOU KNOW — their memories, past chats, projects, facts above; (3) else if it's a "
+    "real-world thing you don't recognize, web_search it rather than guessing; (4) ONLY "
+    "if still unresolved, ask ONE specific clarifying question.\n"
+    "Every turn, work out what their words MEAN with world knowledge + culture (lassi = "
+    "a cold yogurt drink; anything you don't know → web_search) and CONNECT it to "
+    "earlier turns and what you know — don't treat each message in isolation. If it only "
+    "matters given an earlier turn, say so like a friend who was listening (cold drink + "
+    "the cough/monsoon they mentioned → gently flag it). If a word came through garbled, "
+    "infer the sensible meaning from context, don't take a broken token literally."
+)
 
 
 # Self-model / disclosure (design §1.2, §3): don't overclaim feeling, but ALSO
