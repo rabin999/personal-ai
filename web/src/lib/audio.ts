@@ -198,6 +198,12 @@ export class AudioPlayer {
   private sources = new Set<AudioBufferSourceNode>();
   private rate = 24_000;
   private remainder = new Uint8Array(0); // odd trailing byte carried to next chunk
+  // Barge-in gate (§24 / C2): once the user interrupts, DROP every audio chunk
+  // still arriving for the interrupted reply — server buffering + the WS/OS send
+  // buffer can deliver already-synthesized audio AFTER the barge-in signal, and
+  // re-enqueuing it is exactly why "the voice keeps playing". Stays muted until
+  // the NEXT reply actually starts synthesizing (unmute on its first TTS event).
+  private muted = false;
   // Playback lead (§2b): schedule the first buffer of a reply — and rebuild the
   // cushion after any underrun — this far in the future. TTS arrives as many
   // small, jittery network chunks; scheduling them with zero lead means a slow
@@ -224,6 +230,9 @@ export class AudioPlayer {
   }
 
   enqueue(pcm: ArrayBuffer): void {
+    // C2: after a barge-in, silently discard trailing audio from the interrupted
+    // reply until the next reply un-mutes us — otherwise it re-schedules playback.
+    if (this.muted) return;
     // Streamed PCM chunks split at arbitrary byte boundaries; keep samples
     // 16-bit aligned by carrying any odd trailing byte into the next chunk.
     const bytes = new Uint8Array(pcm);
@@ -276,6 +285,19 @@ export class AudioPlayer {
     this.sources.clear();
     this.cursor = this.ctx.currentTime;
     this.onLevel(0);
+  }
+
+  /** Barge-in (§24 / C2): stop what's playing AND drop any further audio for the
+   *  interrupted reply until the next reply starts. Called on the server's
+   *  barge_in signal — the audio-stop half of a real interruption. */
+  interrupt(): void {
+    this.muted = true;
+    this.stop();
+  }
+
+  /** The next reply is starting to synthesize — accept its audio again. */
+  resume(): void {
+    this.muted = false;
   }
 
   /** Replay a whole reply from its collected PCM16 chunks. */

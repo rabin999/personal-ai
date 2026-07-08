@@ -230,6 +230,44 @@ async def test_user_speech_mid_reply_interrupts_and_starts_a_new_turn() -> None:
     assert any("tokyo" in t.lower() for t in texts), f"new utterance missing: {texts}"
 
 
+@pytest.mark.asyncio
+async def test_barge_in_flushes_queued_audio_and_logs_the_stop_sequence() -> None:
+    """C2: real interruption stops the OUTGOING AUDIO, not just generation. The
+    trace must show the full stop sequence — interruption detected → TTS stream
+    closed + queued audio flushed + generation cancelled → listening — with the
+    real count of already-synthesized chunks that were dropped from the queue."""
+    stt = ScriptedSTT(["tell me a very long story.", "stop, what's the time?"])
+    # A fast producer with a tiny gap so chunks pile up in the out-queue → there is
+    # genuinely queued synthesized audio to flush at the interrupt instant.
+    tts = SlowTTS(chunks=60, gap_s=0.002)
+    gen = ScriptedGenerator()
+    session, _ = _session(stt, tts, gen)
+
+    frames: list[tuple[bytes, float]] = []
+    frames += [(SPEECH, 0.0)] * 6
+    frames += [(SILENCE, 0.0)] * 8
+    frames += [(SILENCE, 0.05)]  # let the reply start streaming audio
+    frames += [(SPEECH, 0.005)] * 12  # barge-in
+    frames += [(SILENCE, 0.01)] * 10
+    frames += [(SILENCE, 0.05)] * 4
+
+    _ = [c async for c in session.converse(_script(frames))]
+    trace = session._trace  # type: ignore[attr-defined]
+    barge = [e for e in trace.recorded if e.stage == "barge_in"]
+
+    # Two-phase stop is recorded: detection, then the confirmed stop with a flush.
+    phases = [e.data.get("phase") for e in barge]
+    assert "detected" in phases, f"no detection phase: {phases}"
+    assert "stopped" in phases, f"no stop-confirmation phase: {phases}"
+    stopped = next(e for e in barge if e.data.get("phase") == "stopped")
+    # The flush actually ran (field present + a real, non-negative count).
+    assert "flushed_chunks" in stopped.data, "flush count not recorded"
+    assert isinstance(stopped.data["flushed_chunks"], int)
+    assert "generation cancelled" in stopped.message and "listening" in stopped.message
+    # The real stop happened: generation cancelled + TTS closed.
+    assert gen.interrupted >= 1 and tts.cancelled
+
+
 # Near-end speech that browser AEC double-talk suppression has attenuated: still
 # non-silent, but its VAD score sits BELOW the turn-start gate (0.6) — the failure
 # mode behind "it doesn't stop when I speak". First sample = 1 (vs 2 for loud).

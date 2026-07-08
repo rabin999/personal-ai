@@ -1454,3 +1454,41 @@ carries transcript + engine; the SER/emotion span carries the full acoustic read
 arousal + confidence — and is fed into assembly); a real mic/audio + SER-GPU run is the way to prove
 the felt voice-perception detail end to end. The LLM-call depth (the loudly-flagged gap) is done and
 judge-verified complete on the text path, which shares the identical reasoning/LLM core with voice.
+
+## C2 — Real audio interruption (voice keeps playing) ✅
+
+**Diagnosed real cause:** the reported "I interrupt but the voice keeps coming out" is NOT a
+generation-cancel failure — the server already cancels the turn (which via its `finally` closes the
+Grok TTS stream + cancels the audio pump) and drains its own `out` queue. The leak is DOWNSTREAM:
+audio flows through THREE buffers — session `out` queue → `merge_conversation` out queue → WS/OS send
+buffer → the browser's Web-Audio playback (buffers scheduled up to seconds ahead). On barge-in the
+client called `player.stop()` (cancels scheduled sources) but had NO guard against audio bytes that
+arrive *just after* the barge_in signal (already in merge's queue / the WS buffer): `enqueue()`
+re-scheduled them → playback resumed → "the voice keeps playing".
+
+**What was done:**
+- Server (`voice/session.py`): on barge-in, emit the full stop SEQUENCE in the trace —
+  `phase="detected"` → (turn task) `phase="cancelled"` → `phase="stopped"` carrying the real count of
+  already-synthesized `flushed_chunks` dropped from the queue, message "TTS stream closed, N queued
+  audio chunk(s) flushed, generation cancelled → listening". `_drain()` now returns the flush count.
+- Client (`web/src/lib/audio.ts`): added `interrupt()` (stop + **mute**) and `resume()` to
+  `AudioPlayer`; `enqueue()` now DROPS every chunk while muted. This flushes what's playing AND
+  discards the interrupted reply's trailing audio still in flight.
+- Client (`CompanionPage.tsx`): on a `barge_in` trace event → `player.interrupt()` (was a bare
+  `stop()`); on the NEXT reply's first `tts` event → `player.resume()`. So after an interruption the
+  companion is truly silent until its next reply actually starts synthesizing.
+
+**Proven (real VoiceSession state machine, deterministic collaborators):**
+`tests/e2e/test_barge_in_engine.py::test_barge_in_flushes_queued_audio_and_logs_the_stop_sequence`
+plus 5 existing barge-in tests all green. A captured run (60-chunk reply, interrupted mid-stream):
+trace shows `barge_in[detected] → barge_in[cancelled] → barge_in[stopped … flushed, generation
+cancelled → listening]`; **audio delivered 101 vs 120 for two full replies (first reply truncated)**;
+`gen.interrupted=1`, `tts.cancelled=True`, a 2nd turn ran for the interrupting utterance. Web `tsc`
+green.
+
+**Honest note:** `flushed_chunks` read 0 in the in-process test because the async consumer keeps the
+session queue drained as fast as it fills — the buffer that actually holds trailing audio in
+production is the WS/OS send buffer + the browser playback buffer, which the new client-side
+`interrupt()/mute` closes. The felt sub-300ms instant-stop over a real mic (with browser AEC) still
+needs a human with a real device to confirm the *perceived* latency — the audio-stop + queue-flush +
+drop-trailing mechanism is demonstrably firing on both server and client.

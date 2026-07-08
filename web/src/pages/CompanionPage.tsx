@@ -181,12 +181,19 @@ export default function CompanionPage() {
         case "error":
           setConn("error");
           break;
-        case "trace":
-          // Server detected an interruption → flush the companion's buffered
-          // playback immediately so barge-in feels instant (§24).
-          if ((msg as TraceEvent).stage === "barge_in") playerRef.current?.stop();
-          handleTrace(msg as TraceEvent);
+        case "trace": {
+          const ev2 = msg as TraceEvent;
+          // Server detected an interruption → stop playback AND drop any trailing
+          // audio for the interrupted reply until the next one starts (§24 / C2).
+          // Server buffering + the WS/OS send buffer can deliver already-synthesized
+          // audio just after this signal; a plain stop() would let the next chunk
+          // re-schedule playback ("the voice keeps playing"). interrupt() mutes it.
+          if (ev2.stage === "barge_in") playerRef.current?.interrupt();
+          // The next reply is synthesizing → accept its audio again.
+          if (ev2.stage === "tts") playerRef.current?.resume();
+          handleTrace(ev2);
           break;
+        }
         case "conversation_ended":
           setTurn("idle");
           break;

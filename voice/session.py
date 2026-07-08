@@ -191,11 +191,28 @@ class VoiceSession:
                     speaking_over = frame.confidence >= self._barge_threshold
                     barge_frames = barge_frames + 1 if speaking_over else 0
                     if self._barge_in and barge_frames >= _BARGE_IN_FRAMES:
-                        self._trace.emit("barge_in", "user interrupted — stopping playback")
-                        turn.cancel()
-                        await asyncio.gather(turn, return_exceptions=True)
+                        # C2: real interruption — stop the OUTGOING AUDIO, not just
+                        # generation. Order matters: (1) tell the client to flush its
+                        # playback buffer immediately (barge_in event → client mutes +
+                        # drops in-flight audio), (2) cancel the turn which via its
+                        # finally closes the TTS stream + cancels the audio pump, then
+                        # (3) drain any already-synthesized chunks still queued here.
+                        self._trace.emit(
+                            "barge_in",
+                            "user interrupted — stopping playback",
+                            phase="detected",
+                        )
+                        turn.cancel()  # cancel in-flight generation + pending TTS
+                        await asyncio.gather(turn, return_exceptions=True)  # runs cleanup
                         turn = None
-                        self._drain(out)
+                        flushed = self._drain(out)  # flush queued synthesized audio
+                        self._trace.emit(
+                            "barge_in",
+                            f"playback stopped — TTS stream closed, {flushed} queued "
+                            f"audio chunk(s) flushed, generation cancelled → listening",
+                            phase="stopped",
+                            flushed_chunks=flushed,
+                        )
                         self._trace.begin_turn()
                         capturing, buffer, silence_ms, barge_frames = True, [frame.pcm], 0.0, 0
                     continue  # replying: ignore our own trailing silence
@@ -292,12 +309,17 @@ class VoiceSession:
                 await asyncio.gather(turn, return_exceptions=True)
             out.put_nowait(None)
 
-    def _drain(self, out: asyncio.Queue[bytes | None]) -> None:
+    def _drain(self, out: asyncio.Queue[bytes | None]) -> int:
+        """Flush all already-synthesized audio chunks still queued for the client
+        (C2). Returns how many were dropped so the trace can show the flush firing."""
+        dropped = 0
         while not out.empty():
             try:
                 out.get_nowait()
+                dropped += 1
             except asyncio.QueueEmpty:
                 break
+        return dropped
 
     # ── one turn (utterance already endpointed) ──────────────────────────
 
@@ -381,7 +403,7 @@ class VoiceSession:
             self._compact_if_needed()  # F14: bound the buffer over a long session
             self._trace.emit("tts", "reply audio complete")
         except asyncio.CancelledError:
-            self._trace.emit("barge_in", "reply cancelled")
+            self._trace.emit("barge_in", "reply cancelled", phase="cancelled")
             raise
         except Exception as exc:  # never let one turn kill the conversation
             logger.exception("voice turn failed")
