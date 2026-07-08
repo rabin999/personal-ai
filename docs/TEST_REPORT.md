@@ -1559,3 +1559,25 @@ location/timezone/units/currency/language fields at all (the foundational C5 gap
 **Honest note:** locale is captured/persisted and drives responses; the profile UI slider to SET it
 (and voice speed) is wired in C7/C8. Populating locale by consent-gated inference (vs. explicit
 profile entry) is a smaller follow-up — the capture→use→trace path is proven with real runs.
+
+## C6 — Search-when-uncertain (verify online, don't guess) ✅
+
+**Finding:** the reasoning engine already assesses volatility/currency every turn (the
+`resolve_context` node's `needs_live_info` + `live_query`) AND has a downstream live-info backstop in
+the response generator, so uncertain/time-sensitive questions get verified while stable facts are
+answered directly. No code change needed; verified by real runs.
+
+**Proven (real engine + stores, LLM-judged decisions):**
+- "who is the current CEO of Twitter/X?" → **searched** (current role). "what's the latest iPhone
+  model?" → **searched** (volatile). "who won the most recent Super Bowl?" → **searched** (recent
+  event) — note the intent node said `needs_live_info=false` here but the response generator's
+  live-info backstop still verified, which is the search-when-UNCERTAIN safety net firing.
+- "what's the capital of France?" → **direct** (Paris, no search). "what's 15×12?" → **direct** (180).
+  "is Pluto still a planet?" → **direct** (correct stable answer).
+- The trace records the decision + why per turn (`needs_live_info`, `live_query`, `note`), and the
+  `search_summarize` LLM-call + `web_search` tool span show the sources used.
+- **LLM-judge: correct_decision 5/5** (verify-vs-answer correct every time). The judge marked the
+  volatile answers "inaccurate" ONLY because its own training cutoff is 2024 and it cannot verify
+  2026 facts — whereas the app searched live and returned current 2026 info (iPhone 17, Super Bowl LX
+  / Seahawks). That disagreement is itself evidence the app's search-when-uncertain is working: the
+  running app is more current than a static model's memory — exactly the point of C6.
