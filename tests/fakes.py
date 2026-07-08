@@ -221,6 +221,7 @@ class FakeLLM:
         model: str | None = None,
         temperature: float | None = None,
         reasoning: Mapping[str, Any] | None = None,
+        seed: int | None = None,
         cache_prefix: str = "",
         purpose: str = "",
     ) -> Any:

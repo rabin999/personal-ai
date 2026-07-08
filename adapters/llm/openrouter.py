@@ -201,6 +201,7 @@ class OpenRouterLLM:
         model: str | None = None,
         temperature: float | None = None,
         reasoning: Mapping[str, Any] | None = None,
+        seed: int | None = None,
         cache_prefix: str = "",
         purpose: str = "",
     ) -> CompletionResult:
@@ -223,6 +224,7 @@ class OpenRouterLLM:
                     temperature,
                     cache_prefix,
                     reasoning,
+                    seed,
                 )
             except Exception as exc:
                 errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
@@ -347,6 +349,7 @@ class OpenRouterLLM:
         temperature: float | None = None,
         cache_prefix: str = "",
         reasoning: Mapping[str, Any] | None = None,
+        seed: int | None = None,
     ) -> CompletionResult:
         extra_body: dict[str, Any] = {"usage": {"include": True}}
         if reasoning is not None:  # P4: control the model's thinking budget per call
@@ -363,6 +366,8 @@ class OpenRouterLLM:
             kwargs["max_tokens"] = max_tokens
         if temperature is not None:
             kwargs["temperature"] = temperature
+        if seed is not None:  # P5: reproducible TEST runs only (never set in prod)
+            kwargs["seed"] = seed
         response = await self._client.chat.completions.create(**kwargs)
         choice = response.choices[0]
         usage = response.usage
