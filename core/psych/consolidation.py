@@ -186,6 +186,7 @@ class Consolidator:
                     "moderate",
                     response_format={"type": "json_object"},
                     session_id=session_id,
+                    temperature=0.2,  # P2: session analysis is a decision → low temp
                     purpose="psych_consolidation",
                 )
                 return SessionAnalysis.model_validate(json.loads(result.text))

@@ -1954,3 +1954,22 @@ names. Replaced the sequential `await`s with a single `asyncio.gather` (each sti
 degrades to empty on a store outage). Simple turns now ~1.6–1.8s end-to-end (single
 fast-tier reply + concurrent assembly), down from 7s at the session start. Unit suite
 green (prompt-assembly + prompt-cache).
+
+## P1 + P2 + P3 — per-step max_tokens & temperature; top_p left default ✅
+
+- **P2 temperature per step:** the companion REPLY runs at 0.7 (moderate — warmth +
+  variation, avoids the stiff robotic voice) on all three reply paths (stream / JSON /
+  plain fallback). Decision/routing/extraction calls run at 0.2 (consistent):
+  context_intent, memory_extraction, delivery_relevance, psych_consolidation, judge.
+- **P1 max_tokens per step:** REPLY_MAX_TOKENS=800 — a generous SAFETY ceiling on the
+  reply (never a brevity tool; brevity comes from the persona) so runaway generation
+  is bounded but a real answer never clips.
+- **P3:** top_p is left at the provider default (the LLM port exposes no top_p; nothing
+  sets it) — tune temperature OR top_p, not both. Satisfied by construction.
+- Also tightened `response_voice` (trait v4): short + CASUAL/informal by default, more
+  measured/formal only when the situation demands (serious/emotional/technical).
+
+**Quality (P0) — real turns + LLM-judge after the change:** greeting (91ch), an
+emotional vent (114ch), a math question ("15 percent of 240 is 36.", 24ch), and a
+nature question all PASS (score 4–5/5, not chatbot-like). No truncation; the voice is
+warm and now crisper/more casual.

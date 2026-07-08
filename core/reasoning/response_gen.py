@@ -43,6 +43,16 @@ Action = Literal["respond", "clarify", "curious_followup", "disambiguate"]
 # Agentic tool loop (§8/§14.11): max tool round-trips before the model must answer.
 MAX_TOOL_STEPS = 4
 
+# P2 temperature-per-step: the companion REPLY runs MODERATE for natural warmth and
+# variation (a near-zero temp here is the stiff, robotic voice we fight). Decision/
+# routing/extraction calls run LOW elsewhere for consistency. Both Gemini and Claude
+# accept 0-1; 0.7 is comfortably mid-range.
+REPLY_TEMPERATURE = 0.7
+# P1 max_tokens-per-step: a GENEROUS safety ceiling (stops runaway generation) sized
+# for a natural SPOKEN reply — never a brevity tool (brevity comes from the persona).
+# Voice replies are short; 800 tokens is far above a normal reply so it never clips.
+REPLY_MAX_TOKENS = 800
+
 
 class _CostBudget:
     """Per-turn spend accumulator for the cost ceiling (§10). Bounds a runaway
@@ -560,6 +570,7 @@ class ResponseGenerator:
             prompt.complexity_hint,
             session_id=prompt.session_id,
             model=prompt.model_override,
+            temperature=REPLY_TEMPERATURE,  # P2: moderate for warmth/variation
             cache_prefix=prompt.cache_prefix,  # L6: cache the stable prompt prefix
             purpose="response",
         ):
@@ -872,6 +883,8 @@ class ResponseGenerator:
                     response_format={"type": "json_object"},
                     session_id=prompt.session_id,
                     model=model,  # §4 user fast-model choice (first attempt only)
+                    temperature=REPLY_TEMPERATURE,  # P2: moderate for warmth
+                    max_tokens=REPLY_MAX_TOKENS,  # P1: generous safety ceiling
                     cache_prefix=prompt.cache_prefix,  # L6: cache the stable prefix
                     purpose="response",
                 )
@@ -911,7 +924,8 @@ class ResponseGenerator:
                 messages,
                 _ESCALATE_TIER[self._reasoning_tier],
                 session_id=prompt.session_id,
-                max_tokens=400,
+                temperature=REPLY_TEMPERATURE,  # P2: moderate for warmth
+                max_tokens=REPLY_MAX_TOKENS,  # P1: generous safety ceiling
                 cache_prefix=prompt.cache_prefix,  # L6: cache the stable prefix
                 purpose="response_plain",
             )

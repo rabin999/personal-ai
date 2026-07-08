@@ -160,6 +160,7 @@ class DeliveryComposer:
                     "simple",
                     response_format={"type": "json_object"},
                     session_id=task.session_id,
+                    temperature=0.2,  # P2: relevance decision → low temp
                     purpose="delivery_relevance",
                 )
                 composed = _Composed.model_validate_json(result.text)

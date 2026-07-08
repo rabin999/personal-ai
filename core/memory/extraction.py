@@ -222,6 +222,7 @@ class MemoryExtractor:
                     "simple",
                     response_format={"type": "json_object"},
                     session_id=session_id,
+                    temperature=0.2,  # P2: extraction is a decision → low temp
                     purpose="memory_extraction",
                 )
                 return Extraction.model_validate_json(_strip_fences(result.text))
