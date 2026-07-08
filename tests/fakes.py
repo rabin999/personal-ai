@@ -220,6 +220,7 @@ class FakeLLM:
         max_tokens: int | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        cache_prefix: str = "",
         purpose: str = "",
     ) -> Any:
         from ports.llm import CompletionResult

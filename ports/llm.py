@@ -41,6 +41,7 @@ class LLM(Protocol):
         max_tokens: int | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        cache_prefix: str = "",
         purpose: str = "",
     ) -> CompletionResult:
         """Route to the tier's model chain; raise LLMUnavailable if all fail.
@@ -64,6 +65,7 @@ class LLM(Protocol):
         session_id: str | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        cache_prefix: str = "",
         purpose: str = "",
     ) -> AsyncIterator[str]:
         """Stream the completion as text deltas (spec §8.12 — start TTS on the

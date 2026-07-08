@@ -560,6 +560,7 @@ class ResponseGenerator:
             prompt.complexity_hint,
             session_id=prompt.session_id,
             model=prompt.model_override,
+            cache_prefix=prompt.cache_prefix,  # L6: cache the stable prompt prefix
             purpose="response",
         ):
             text += delta
@@ -864,6 +865,7 @@ class ResponseGenerator:
                     response_format={"type": "json_object"},
                     session_id=prompt.session_id,
                     model=model,  # §4 user fast-model choice (first attempt only)
+                    cache_prefix=prompt.cache_prefix,  # L6: cache the stable prefix
                     purpose="response",
                 )
             except LLMUnavailable:
@@ -903,6 +905,7 @@ class ResponseGenerator:
                 _ESCALATE_TIER[self._reasoning_tier],
                 session_id=prompt.session_id,
                 max_tokens=400,
+                cache_prefix=prompt.cache_prefix,  # L6: cache the stable prefix
                 purpose="response_plain",
             )
         except LLMUnavailable:

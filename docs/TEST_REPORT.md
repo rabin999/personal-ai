@@ -1864,3 +1864,23 @@ py::test_audio_awareness_directives_gated_by_settings` — directives reach the 
 when settings on, absent when off. Pipeline builds with the stage wired. Acoustic
 accuracy (real cough/whisper/ambient on a real mic) needs a device — the mechanism,
 gating, and live-toggle behavior are proven.
+
+## L6 / #17 — Prompt caching ✅
+
+Restructured the assembled system prompt so the STABLE prefix (identity + traits +
+comm-prefs + how-to-answer-them) renders FIRST and byte-identical across a user's
+turns, with volatile per-turn content (time, memory, persona, recall) after it
+(`_STABLE_SECTIONS`; `AssembledPrompt.cache_prefix`). The LLM adapter places an
+Anthropic `cache_control: ephemeral` breakpoint on that prefix (`_with_cache_control`,
+guarded — falls back to plain messages on any mismatch); Gemini/OpenAI cache the
+identical prefix implicitly (no markers needed). Also fixed a bug: a user-selected
+CATALOG model (not in the configured tiers) is now honored by `complete`/`stream`.
+
+**Verified (REAL calls):** the same stable prefix sent twice to
+`anthropic/claude-sonnet-4.5` → call 1 `cached_tokens=0`, call 2 **`cached_tokens=2161`
+of 2182 input tokens (~99% prefix cache hit)** — confirmed hit on the expensive
+reasoning tier (big latency + cost win, zero output change). Gemini via OpenRouter
+doesn't surface `cached_tokens`, but stable-prefix ordering enables its server-side
+implicit caching. Unit: `tests/unit/test_prompt_cache.py` (6) — prefix is a real
+byte-exact prefix, stable across turns, Anthropic gets markers, non-Anthropic left
+plain, mismatch falls back safely, stable sections render first.

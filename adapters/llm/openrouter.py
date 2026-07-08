@@ -24,6 +24,34 @@ from ports.llm import CompletionResult, LLMUnavailable, Tier
 logger = logging.getLogger(__name__)
 
 
+def _with_cache_control(
+    messages: Sequence[Mapping[str, Any]], cache_prefix: str, model: str
+) -> list[Mapping[str, Any]]:
+    """Place an Anthropic prompt-cache breakpoint on the stable system prefix (L6).
+
+    Anthropic needs an explicit ``cache_control`` marker to cache a prefix; Gemini and
+    OpenAI cache identical prefixes implicitly, so we only restructure for Anthropic
+    models. The system message content is split into a cached prefix block + the rest.
+    Any mismatch (prefix isn't actually the leading text) falls back to the messages
+    unchanged — caching is a pure optimization, never a correctness risk."""
+    msgs = list(messages)
+    if not cache_prefix or "anthropic" not in model.lower() or not msgs:
+        return msgs
+    head = msgs[0]
+    content = head.get("content")
+    if head.get("role") != "system" or not isinstance(content, str):
+        return msgs
+    if not content.startswith(cache_prefix):
+        return msgs
+    rest = content[len(cache_prefix) :]
+    blocks: list[dict[str, Any]] = [
+        {"type": "text", "text": cache_prefix, "cache_control": {"type": "ephemeral"}}
+    ]
+    if rest.strip():
+        blocks.append({"type": "text", "text": rest})
+    return [{"role": "system", "content": blocks}, *msgs[1:]]
+
+
 def _cached_tokens(usage: Any) -> int:
     """Prompt-cache read tokens from an OpenAI/OpenRouter usage object.
 
@@ -172,21 +200,22 @@ class OpenRouterLLM:
         max_tokens: int | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        cache_prefix: str = "",
         purpose: str = "",
     ) -> CompletionResult:
         errors: list[str] = []
         chain = list(self._tiers[tier])
         # §4/F8: a valid user-selected model (fast on sub-steps, or the mature
         # 'thinking' model on the main turn) is tried first; the tier chain remains
-        # the fallback. Ignore an unknown id rather than trusting it blindly.
-        if model and model in self._known_models():
+        # the fallback. Any REAL catalog model is honored (not just configured tiers).
+        if model and self.is_selectable_model(model):
             chain = [model, *[m for m in chain if m != model]]
         for model_id in chain:
             wall_start = time.time()
             started = time.perf_counter()
             try:
                 result = await self._call(
-                    model_id, messages, response_format, max_tokens, temperature
+                    model_id, messages, response_format, max_tokens, temperature, cache_prefix
                 )
             except Exception as exc:
                 errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
@@ -219,6 +248,7 @@ class OpenRouterLLM:
         session_id: str | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        cache_prefix: str = "",
         purpose: str = "",
     ) -> AsyncIterator[str]:
         """Stream text deltas from the first model in the chain (§8.12).
@@ -227,14 +257,14 @@ class OpenRouterLLM:
         falls back to non-streamed ``complete`` (which walks the whole chain).
         """
         chain = list(self._tiers[tier])
-        if model and model in self._known_models():
+        if model and self.is_selectable_model(model):
             chain = [model, *[m for m in chain if m != model]]
         model_id = chain[0]
         wall_start = time.time()
         started = time.perf_counter()
         kwargs: dict[str, Any] = {
             "model": model_id,
-            "messages": list(messages),
+            "messages": _with_cache_control(messages, cache_prefix, model_id),
             "stream": True,
             "stream_options": {"include_usage": True},
             "extra_body": {"usage": {"include": True}},
@@ -304,10 +334,11 @@ class OpenRouterLLM:
         response_format: Mapping[str, Any] | None,
         max_tokens: int | None,
         temperature: float | None = None,
+        cache_prefix: str = "",
     ) -> CompletionResult:
         kwargs: dict[str, Any] = {
             "model": model,
-            "messages": list(messages),
+            "messages": _with_cache_control(messages, cache_prefix, model),
             # OpenRouter usage accounting: exact cost in the response.
             "extra_body": {"usage": {"include": True}},
         }
