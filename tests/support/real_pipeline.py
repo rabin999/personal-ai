@@ -53,6 +53,7 @@ class RealTurns:
     def __init__(self, pipeline: Pipeline, user_id: str = "u_demo_001") -> None:
         self._p = pipeline
         self._user = user_id
+        self._turns: dict[str, int] = {}  # per-session turn counter (trace fidelity)
 
     @classmethod
     async def build(cls, user_id: str = "u_demo_001") -> RealTurns:
@@ -60,8 +61,14 @@ class RealTurns:
 
     async def say(self, text: str, session_id: str) -> TurnResult:
         """Run one real turn through assembly → generation (real model + stores)."""
+        # Real per-session turn number (mirrors api/routes/chat.py) so each turn's
+        # spans — incl. the graph-node reasoning + per-LLM-call spans bound below —
+        # land under a DISTINCT turn in the durable store, not all collapsed to 1.
+        self._turns[session_id] = self._turns.get(session_id, 0) + 1
+        turn_no = self._turns[session_id]
         trace = RecordingTrace(session_id)
-        trace.begin_turn()
+        for _ in range(turn_no):
+            trace.begin_turn()  # advance the emitter to this turn index
         trace.emit("session", "text turn", user_id=self._user, text=text)
         self._p.working.append(session_id, Turn(role="user", text=text))
         prompt = await self._p.assembler.assemble(self._user, session_id, text)
@@ -102,7 +109,7 @@ class RealTurns:
         # Bind the logs so the generator's per-LLM-call / reflection spans persist
         # under this turn (mirrors api/routes/chat.py) — the trace then reconstructs
         # the whole pipeline, not just the stage headers we emit here.
-        with self._p.logs.bind(trace_id=session_id, turn_id=1, user_id=self._user):
+        with self._p.logs.bind(trace_id=session_id, turn_id=turn_no, user_id=self._user):
             # Exercise the WIRED engine (LangGraph orchestrator by default) — not
             # the native generator directly — so tests judge the real turn engine.
             result = await self._p.orchestrator.generate(prompt, self._p.dispatcher, ctx)
@@ -113,7 +120,7 @@ class RealTurns:
         # the turn from the trace alone (Item 6).
         for e in trace.recorded:
             span = e.model_dump()
-            span["turn"] = 1
+            span["turn"] = turn_no
             await self._p.traces.record(self._user, span)
         self._p.working.append(session_id, Turn(role="assistant", text=result.final_text))
         return TurnResult(

@@ -1492,3 +1492,35 @@ production is the WS/OS send buffer + the browser playback buffer, which the new
 `interrupt()/mute` closes. The felt sub-300ms instant-stop over a real mic (with browser AEC) still
 needs a human with a real device to confirm the *perceived* latency — the audio-stop + queue-flush +
 drop-trailing mechanism is demonstrably firing on both server and client.
+
+## C3 — Intent + context correlation (source routing, follow-ups, references) ✅
+
+**Finding:** the reasoning engine's `resolve_context` LangGraph node (intent + emotional-read +
+needs-live-info + reference resolution, F5) ALREADY handles the C3 cases correctly. The apparent
+failure surfaced first was a TEST-HARNESS trace-fidelity bug: `tests/support/real_pipeline.py`
+hard-coded `turn_id=1` for every `say()`, collapsing all turns of a session into turn 1 in the
+durable trace store, so a per-turn probe read the FIRST turn's intent for every later turn. (The
+production `api/routes/chat.py` uses the real per-turn `turn_no`, so the running app was unaffected.)
+
+**What was done:** fixed the harness to track a real per-session turn counter and bind
+`turn_id`/persist spans under the correct turn — so per-turn intent/reasoning is now accurately
+inspectable in tests (also tightens C1 trace fidelity for the real-call suites).
+
+**Proven (real engine, real stores, LLM-judged):**
+- "current LTP of API" (holds API) → **web search** for the live price, using the portfolio to
+  resolve the entity → "$4.11 … with your 100 shares"; "how many API shares do I have?" →
+  `needs_live_info=false`, **NO search**, "You have 100 shares of API." — the internal-vs-live
+  distinction is made correctly.
+- Follow-up correlation: after "stressed about my office shares (SYPNL)", a bare "and what about the
+  price?" → `relation=follow_up`, `refers_to='SYPNL'`, `needs_live_info=true` → live SYPNL price
+  contextualized against the 230 buy-in. Combines internal (which share) + live (current price).
+- Garbled-word follow-up: "is it hard on the fingies at first?" → decoded to fingers, correlated to
+  the guitar topic ("refers_to='learning guitar'").
+- Cross-turn reference: "which of those two has better weather?" → resolved Kathmandu+Pokhara + live
+  weather; "what about the first one you said?" → resolved to Kathmandu.
+- Indirect intent: "what's happening in Nepal is giving me real pain" → `needs_live_info=true`,
+  fetched current Nepal events (PM stepping down / unrest) AND met the emotional weight.
+- Genuine topic switch: after hiking chat, "anyway, what's the compound interest formula?" →
+  `relation=new_topic` — did NOT over-correlate.
+- **LLM-judge (strict, separate model): overall 1.0, verdict PASS** across all evaluated turns —
+  correct intent, correct correlation, correct source (internal vs live vs both) every time.
