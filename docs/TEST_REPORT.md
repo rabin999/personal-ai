@@ -1101,3 +1101,44 @@ Exactly the actual turns, in order — not a memory fact.
 
 **Also:** 6/6 unit tests for the classifier + transcript renderer (`tests/unit/test_recall_routing.py`);
 ruff + mypy clean.
+
+---
+
+## F5 — Intent inference for indirect/implicit requests
+
+**App-goal verified:** an indirect message ("what's happening in Nepal currently gives me pain")
+gets its underlying intent inferred, the right action taken (search current events when needed, not
+when it's purely emotional), an emotionally-attuned companion reply — and the inferred intent + why
+are recorded in the trace.
+
+**Diagnosis (tested BEFORE building):** the behavior was already largely right — the `_INTENT` +
+`_CAPABILITIES` prompt blocks push intent-first responses + tool use, and a real run showed the Nepal
+ask already fired `web_search` and answered with attunement. The genuine gaps were (a) the inferred
+intent/emotion/live-info decision were **not logged in the trace** (F5 explicitly requires this, and
+F7 needs it), and (b) intent inference was **skipped on first turns** (the resolve_context node only
+ran when there was prior history).
+
+**Fix (`adapters/orchestrator/langgraph_orchestrator.py`):** the context step is now a CONTEXT +
+INTENT step that runs **every turn** (even the first) and returns structured `intent`,
+`emotional_read`, `needs_live_info`, `live_query`, plus the existing relation/refers_to/note — all
+**logged in the `resolve_context` trace span**. The live-search suppression now never fires when
+`needs_live_info` is true, so an indirect current-events ask is always allowed to search.
+
+**Proof — real model + stores (`tests/real_call/test_intent_inference.py`, both green + captured):**
+```
+USER> you know what's happening in Nepal currently gives me lots of pain
+  trace.resolve_context: intent='express pain and concern about current events in Nepal'
+                         emotional_read='pain'  needs_live_info=True  live_query='current events in Nepal'
+  tools_fired=['web_search']
+COMPANION> I hear you, Nandi. The protests, the police shootings, the government being toppled —
+           that's a lot of turmoil and real pain for people there. What about it is hitting you hardest?
+
+USER> things at the office are rough lately
+  trace.resolve_context: intent='to express current difficulties at work'
+                         emotional_read='stress'  needs_live_info=False  live_query=''
+  tools_fired=[]
+COMPANION> Oh that sounds really tough. What's been going on there that's making it rough?
+```
+Tests assert: intent + emotional_read logged; Nepal → needs_live_info=True AND web_search fired;
+office → needs_live_info=False AND no search; both replies pass the companion-voice judge and avoid
+"what do you mean". ruff + mypy clean.

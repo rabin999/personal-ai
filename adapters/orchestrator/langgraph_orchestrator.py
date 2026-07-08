@@ -37,15 +37,29 @@ from ports.llm import LLM, LLMUnavailable
 logger = logging.getLogger(__name__)
 
 _CONTEXT_INSTRUCTIONS = (
-    "You are the CONTEXT step of a companion's mind. Look at the recent conversation "
-    "and the user's new message, and work out how the new message connects to what "
-    "was already said. Resolve references ('that', 'it', 'the second one', 'the "
-    "temperature you told me') to the specific earlier thing. Decide: is this a "
-    "follow-up to the previous topic, a new topic, a correction, or a continuation?\n"
-    'Respond ONLY with JSON: {"relation": "follow_up|new_topic|correction|'
-    'continuation", "refers_to": "<the specific earlier thing it refers to, or '
-    'empty>", "note": "<one short sentence the responder should know, e.g. \'They '
-    "mean the Kathmandu weather you just gave (23C, thunderstorms).'>\"}"
+    "You are the CONTEXT + INTENT step of a companion's mind. Look at the recent "
+    "conversation (if any) and the user's new message, and work out:\n"
+    "1. INTENT — what the user is REALLY trying to get from you, especially when they "
+    "ask INDIRECTLY. E.g. 'what's happening in Nepal really gives me pain' implies "
+    "they want you to KNOW the current events in Nepal AND to meet the emotional "
+    "weight — not to ask 'what do you mean?'. Infer the underlying want.\n"
+    "2. EMOTIONAL READ — the feeling behind it, if any (pain, excitement, stress), or "
+    "empty if neutral.\n"
+    "3. LIVE INFO — does answering well need CURRENT, real-world info the model can't "
+    "be sure of (news, scores, weather, prices, 'what's happening', an unfamiliar "
+    "name/term)? If so, give the search query. 'things at the office are rough' needs "
+    "NO search (it's emotional); 'that match last night' DOES (the result).\n"
+    "4. CONNECTION — how the new message connects to what was said: resolve references "
+    "('that', 'the temperature you told me') to the specific earlier thing, and label "
+    "the relation.\n"
+    'Respond ONLY with JSON: {"intent": "<what they really want, one phrase>", '
+    '"emotional_read": "<the feeling, or empty>", "needs_live_info": true|false, '
+    '"live_query": "<search query if needs_live_info, else empty>", '
+    '"relation": "follow_up|new_topic|correction|continuation", '
+    '"refers_to": "<the specific earlier thing it refers to, or empty>", '
+    '"note": "<one short sentence the responder should know, folding in the intent + '
+    "any reference, e.g. 'They mean the Kathmandu weather you just gave (23C); meet "
+    "the worry in their voice.'>\"}"
 )
 
 
@@ -152,43 +166,65 @@ class LangGraphOrchestrator:
         return {"context_note": note, "suppress_search": suppress}
 
     async def _resolve_note(self, prompt: AssembledPrompt) -> tuple[str, bool]:
-        """A3: reason about how this utterance connects to the conversation and
-        resolve references, so a follow-up like 'that temperature' is understood.
-        Shared by the text graph and the streaming voice path. Returns (note,
-        suppress_live_search)."""
+        """A3 + F5: reason about how this utterance connects to the conversation AND
+        infer the underlying intent behind indirect phrasing (what they really want,
+        the emotional weight, whether current info is needed). Runs every turn — even
+        the first, so an indirect first message ('what's happening in Nepal gives me
+        pain') gets its intent inferred and logged. Returns (note, suppress_live_search)
+        and logs the inferred intent + why in the trace (F5/F7)."""
         history = list(prompt.messages[1:-1])  # drop system + current utterance
         note = ""
         relation = "new_topic"
         refers_to = ""
-        if history:  # only worth resolving when there IS prior context
+        intent = ""
+        emotional_read = ""
+        needs_live_info = False
+        live_query = ""
+        if history:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in history[-6:])
             user_msg = f"Recent conversation:\n{convo}\n\nNew message: {prompt.utterance}"
-            messages = [
-                {"role": "system", "content": _CONTEXT_INSTRUCTIONS},
-                {"role": "user", "content": user_msg},
-            ]
-            try:
-                res = await self._llm.complete(
-                    prompt.user_id,
-                    messages,
-                    "moderate",
-                    response_format={"type": "json_object"},
-                    session_id=prompt.session_id,
-                )
-                parsed = json.loads(_strip(res.text))
-                relation = str(parsed.get("relation") or "new_topic")
-                note = str(parsed.get("note") or "").strip()
-                refers_to = str(parsed.get("refers_to") or "").strip()
-            except (LLMUnavailable, json.JSONDecodeError, ValueError, KeyError):
-                refers_to = ""
+        else:  # first turn: no history, but still infer intent from the message alone
+            user_msg = f"New message (start of conversation): {prompt.utterance}"
+        messages = [
+            {"role": "system", "content": _CONTEXT_INSTRUCTIONS},
+            {"role": "user", "content": user_msg},
+        ]
+        try:
+            res = await self._llm.complete(
+                prompt.user_id,
+                messages,
+                "moderate",
+                response_format={"type": "json_object"},
+                session_id=prompt.session_id,
+            )
+            parsed = json.loads(_strip(res.text))
+            relation = str(parsed.get("relation") or "new_topic")
+            note = str(parsed.get("note") or "").strip()
+            refers_to = str(parsed.get("refers_to") or "").strip()
+            intent = str(parsed.get("intent") or "").strip()
+            emotional_read = str(parsed.get("emotional_read") or "").strip()
+            needs_live_info = bool(parsed.get("needs_live_info"))
+            live_query = str(parsed.get("live_query") or "").strip()
+        except (LLMUnavailable, json.JSONDecodeError, ValueError, KeyError):
+            refers_to = ""
         # A3: a follow-up/continuation/correction whose answer is carried → suppress
         # the live-info search backstop so a fresh, irrelevant search can't override.
-        carried = relation in ("follow_up", "continuation", "correction") and bool(note)
+        # But NEVER suppress when this turn genuinely needs current info (F5): an
+        # indirect ask about current events must still be allowed to search.
+        carried = (
+            relation in ("follow_up", "continuation", "correction")
+            and bool(note)
+            and not needs_live_info
+        )
         self._span(
             "reasoning",
             node="resolve_context",
             relation=relation,
             refers_to=refers_to,
+            intent=intent,  # F5: the inferred underlying intent
+            emotional_read=emotional_read,  # F5: the emotional weight read
+            needs_live_info=needs_live_info,  # F5: was current info judged necessary
+            live_query=live_query,  # F5: the search the intent implies
             note=note
             or ("no prior context to connect to" if not history else "no clear reference"),
             suppress_live_search=carried,
