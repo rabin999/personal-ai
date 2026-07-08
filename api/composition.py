@@ -264,7 +264,11 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         orchestrator=orchestrator,
         self_model=self_model,
         psych=psych,
-        stt=FasterWhisperSTT(model_size=settings.stt_model_size, ledger=ledger),
+        stt=FasterWhisperSTT(
+            model_size=settings.stt_model_size,
+            final_model_size=settings.stt_final_model_size,
+            ledger=ledger,
+        ),
         tts=GrokTTS(settings, ledger=ledger),
         ser=Emotion2VecSER(settings),
         queue=queue,

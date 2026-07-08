@@ -302,7 +302,12 @@ class VoiceSession:
         self, transcript: str, utterance: bytes, out: asyncio.Queue[bytes | None]
     ) -> None:
         try:
-            self._trace.emit("stt", f"final: {transcript!r}", text=transcript)
+            self._trace.emit(
+                "stt",
+                f"final: {transcript!r}",
+                text=transcript,
+                engine=getattr(self._stt, "name", "stt"),  # §20: which STT produced this
+            )
 
             emotion = self._emotion_signal()
             if self._emotion is not None:

@@ -1010,3 +1010,47 @@ with a purpose-built AEC — the recommended engine for the most reliable barge-
 confirmed on a real device. The cancellation mechanism is demonstrably working (not theoretical),
 and the specific AEC-attenuation gap that caused the real-world failure is now closed on the native
 path. Human step: on a real device, talk over a reply — it should cut within ~250ms.
+
+---
+
+## F2 — Whisper STT quality behind the port (real audio-path A/B)
+
+**App-goal verified:** voice input transcribes accurately, especially the user's rare terms
+(names/places/project words), with the engine behind a swappable STT port and recorded in the trace.
+
+**What was already in place:** faster-whisper (openai/whisper models via the CTranslate2 backend —
+the task's explicit "or faster-whisper for speed") behind `ports.stt.STT`, streaming partials feeding
+endpointing, per-word confidence, $0 ledger logging, and vocab biasing seeded from Semantic Memory
+(`core/memory/vocab.py`). So "Whisper behind the port" was satisfied; the gaps were accuracy,
+selectability, and trace visibility.
+
+**Real espeak→whisper A/B (free, reproducible; `espeak` + `ffmpeg` on this box):** sentence
+`"I trade on NEPSE every morning with my friend Trishul from Kathmandu"`:
+
+| model | vocab | transcript |
+|---|---|---|
+| base | off | "I **train** on ⟨NEPSE dropped⟩ … my friend **Trisha**" |
+| base | on | "I **train** on NEPSE … Trishul" (names fixed; verb still wrong) |
+| small | off | "I trade on **neps** … **Tricia**" |
+| **small** | **on** | "I trade on **NEPSE** every morning with my friend **Trishul** from Kathmandu" ✅ |
+
+Finding: vocab biasing fixes the rare terms; the **accurate model fixes the content word**
+("trade" vs "train") that vocab can't. base+no-vocab (the old default) got the verb AND both names
+wrong. Latency (4.6s clip, CPU): base ~1.9s, small ~5.3s.
+
+**Fix (evidence-based):** dual-model adapter — a **fast model drafts streaming partials** (feed
+endpointing, where an error is harmless) and an **accurate model produces the final transcript** that
+drives reasoning. Defaults `stt_model_size="base"` (partials) + `stt_final_model_size="small"`
+(finals); a single model is shared when the sizes match (no extra RAM). Added `stt_engine` setting
+(port stays swappable) and a `name` property (`faster-whisper/base+small`) now **emitted on the STT
+trace event** so the engine is visible per turn.
+
+**Proof:** new `tests/integration/test_stt_quality.py` drives REAL espeak speech through the adapter
+and asserts "trade", "nepse", "trishul" are all present in the final transcript (was failing under
+base+no-vocab); `test_engine_name_reports_both_models` asserts the trace label. Existing streaming/
+cost contract test still green; ruff + mypy clean. Skips loudly (never a false pass) if
+espeak/ffmpeg or the models are unavailable.
+
+**Honest note:** espeak is clean synthetic speech; real accented human speech (the "Herak" mis-hear)
+can only be fully judged with a real mic, but the accuracy lever (accurate final model) + vocab
+biasing are proven to correct exactly this class of error on the real audio path.

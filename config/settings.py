@@ -74,9 +74,15 @@ class Settings(BaseSettings):
     tts_language: str = "en"
     tts_timeout_s: float = 30.0
 
-    # STT (§20): faster-whisper local model size. "tiny"/"base" are fast on
-    # CPU (real-time-ish); "small"/"medium" are more accurate but slower.
-    stt_model_size: str = "base"
+    # STT (§20): Whisper (openai/whisper models) behind the STT port. Dual-model —
+    # a fast model drafts streaming partials (feed endpointing), an accurate model
+    # produces the FINAL transcript that drives reasoning. A real espeak→whisper A/B
+    # (TEST_REPORT F2) showed small+vocab transcribes rare user terms perfectly where
+    # base mangles them, so the final defaults to "small". "tiny"/"base" are
+    # real-time on CPU; "small"/"medium" are more accurate but slower.
+    stt_engine: str = "faster-whisper"  # selectable STT engine (port is swappable)
+    stt_model_size: str = "base"  # streaming-partial (fast draft) model
+    stt_final_model_size: str = "small"  # final-transcript (accurate) model
 
     # SER (§22): self-hosted emotion2vec microservice on a small GPU box
     # (design doc §17.3) — separate service, its own hardware. Empty means
