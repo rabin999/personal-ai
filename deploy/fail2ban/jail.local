@@ -1,0 +1,18 @@
+# Personal AI Companion — fail2ban policy. Copy to /etc/fail2ban/jail.local and
+# `systemctl enable --now fail2ban`. Bans IPs that brute-force SSH or hammer nginx
+# with probe/exploit patterns (the internet scanning seen in the api logs).
+# See docs/DEPLOYMENT.md §11 (Security hardening).
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+
+[sshd]
+enabled = true
+
+[nginx-http-auth]
+enabled = true
+
+[nginx-botsearch]
+enabled = true

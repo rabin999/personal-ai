@@ -313,6 +313,37 @@ Then open the site, click **Continue with Google**, and confirm you land back si
 
 ---
 
+## 11. Security hardening (fail2ban + nginx rate-limit)
+
+The box is public and continuously scanned (the api log shows generic probe traffic
+like `GET /?template=../../root/.ssh/id_rsa` — harmless: the SPA catch-all returns
+`index.html`, there is no traversal/LFI, nothing leaks). Applied **2026-07-08**:
+
+- **fail2ban** (`deploy/fail2ban/jail.local` → `/etc/fail2ban/jail.local`): jails
+  `sshd`, `nginx-http-auth`, `nginx-botsearch`. Bans an IP for 1h after 5 failed
+  attempts in 10m.
+  ```bash
+  apt-get install -y fail2ban
+  install -m0644 /opt/companion/deploy/fail2ban/jail.local /etc/fail2ban/jail.local
+  systemctl enable --now fail2ban
+  fail2ban-client status sshd        # verify
+  ```
+- **nginx per-IP rate limit**: zone in `deploy/nginx/companion-ratelimit.conf`
+  (→ `/etc/nginx/conf.d/`), applied as `limit_req zone=companion burst=40 nodelay`
+  in `location /` of `companion.conf`. `20 r/s` with a 40-burst is generous for a
+  real page load but throttles floods (excess → `429`). **`/ws/voice` is deliberately
+  NOT limited** — a long-lived WebSocket must not be throttled. `install-nginx.sh`
+  installs both, so a re-provision keeps it. Verify: a burst to `/health` returns a
+  mix of `200`/`429`; `/ws/voice` still upgrades (`101`).
+
+> **Still open (by choice): SSH accepts passwords with root login.** `sshd_config`
+> has `PasswordAuthentication yes` + `PermitRootLogin yes` — the biggest remaining
+> gap (internet password brute-force). fail2ban blunts it; the durable fix is
+> key-only auth: `PasswordAuthentication no` + `PermitRootLogin prohibit-password`,
+> then `sshd -t && systemctl reload ssh` (key auth already works, so this is safe).
+
+---
+
 ## 10. Langfuse (self-hosted tracing) on prod
 
 Deployed **2026-07-08**. Langfuse runs as its own bundled stack (it does **not**

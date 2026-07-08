@@ -29,9 +29,12 @@ else
   echo "    nginx present: $(nginx -v 2>&1)"
 fi
 
-echo "==> [2/4] install site config"
+echo "==> [2/4] install site config + rate-limit zone"
 install -m 0644 "$APP_DIR/deploy/nginx/companion.conf" /etc/nginx/sites-available/companion
 ln -sf /etc/nginx/sites-available/companion /etc/nginx/sites-enabled/companion
+# Rate-limit zone (http context). companion.conf's `location /` references it, so it
+# must be present before validation. See docs/DEPLOYMENT.md §11 (Security hardening).
+install -m 0644 "$APP_DIR/deploy/nginx/companion-ratelimit.conf" /etc/nginx/conf.d/companion-ratelimit.conf
 # The stock default site also binds :80 and would shadow us - remove it.
 rm -f /etc/nginx/sites-enabled/default
 
