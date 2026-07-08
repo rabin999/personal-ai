@@ -11,10 +11,9 @@ import { getTools } from "../lib/api";
 // the tool links collapse into a compact menu (F12).
 
 const NAV = [
-  { to: "/", label: "Companion", end: true },
+  { to: "/", label: "Asaathi", end: true },
   { to: "/conversations", label: "Conversations", end: false },
   { to: "/memories", label: "Memories", end: false },
-  { to: "/traces", label: "Traces", end: false },
 ];
 
 interface ToolLinks {
@@ -46,7 +45,7 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
               <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
             </svg>
           </span>
-          <span className="hidden text-sm font-semibold sm:inline">Companion</span>
+          <span className="hidden text-sm font-semibold sm:inline">Asaathi</span>
         </NavLink>
 
         {/* Primary nav — scrolls horizontally on narrow screens (never clips). */}
@@ -59,8 +58,8 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
               className={({ isActive }) =>
                 `shrink-0 whitespace-nowrap rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors ${
                   isActive
-                    ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
-                    : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                    ? "text-sky-600 dark:text-sky-400"
+                    : "text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
                 }`
               }
             >
@@ -87,7 +86,13 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
               </svg>
             </button>
             {toolsOpen && (
-              <div className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+              // preventDefault on mousedown keeps the trigger focused so its onBlur
+              // doesn't close the menu before the link's click fires — the whole row
+              // reliably navigates (fixes: only some clicks opened Langfuse).
+              <div
+                onMouseDown={(e) => e.preventDefault()}
+                className="absolute right-0 top-11 z-30 w-52 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900"
+              >
                 <p className="px-3 pb-1 pt-2.5 text-[11px] font-medium uppercase tracking-wider text-neutral-400">
                   Open tool
                 </p>

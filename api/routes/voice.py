@@ -222,12 +222,12 @@ async def voice_ws(ws: WebSocket) -> None:
 
     voice = resolve_voice(auth.get("voice"))
     config = _pipeline_config(user)
-    # C7: the user's playback rate (default 1.2x), applied at the client audio sink
+    # C7: the user's playback rate (default 1.0x), applied at the client audio sink
     # for BOTH voice engines (it's the shared playback layer behind the voice port).
     try:
         voice_speed = AudioPrefs.model_validate(user.audio_prefs).voice_speed
     except Exception:
-        voice_speed = 1.2
+        voice_speed = 1.0
     await ws.send_json(
         {
             "type": "ready",

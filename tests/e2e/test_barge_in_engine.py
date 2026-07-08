@@ -230,6 +230,60 @@ async def test_user_speech_mid_reply_interrupts_and_starts_a_new_turn() -> None:
     assert any("tokyo" in t.lower() for t in texts), f"new utterance missing: {texts}"
 
 
+class FastTTS:
+    """Streams a lot of audio INSTANTLY (no gaps) → the turn task finishes almost
+    immediately, but the audio represents many seconds of playback. Models the real
+    case: the server sends the whole reply fast while the client keeps playing it."""
+
+    def __init__(self, chunks: int = 120) -> None:
+        self._chunks = chunks
+        self.cancelled = False
+
+    async def speak(
+        self,
+        text_with_tags: str,
+        voice: str | None = None,
+        *,
+        user_id: str,
+        session_id: str | None = None,
+    ) -> AsyncIterator[bytes]:
+        try:
+            for _ in range(self._chunks):
+                # 4800-byte 24kHz PCM16 chunk = 0.1s of audio each → 120 = 12s.
+                yield b"\x11\x22" * 2400
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+
+@pytest.mark.asyncio
+async def test_barge_in_fires_during_trailing_playback_after_turn_finished() -> None:
+    """C2 core fix: the server sends the whole reply in a few ms, but the client
+    keeps PLAYING it for seconds. Interrupting during that trailing playback — after
+    the turn task is already done — must still stop it. Before the fix, barge-in was
+    armed only while the turn task ran, so interrupting 'in the middle' of what you
+    HEAR did nothing and the voice kept talking."""
+    stt = ScriptedSTT(["tell me a long story.", "stop stop stop"])
+    tts = FastTTS(chunks=120)  # ~12s of audio, streamed instantly
+    gen = ScriptedGenerator()
+    session, _ = _session(stt, tts, gen)
+
+    frames: list[tuple[bytes, float]] = []
+    frames += [(SPEECH, 0.0)] * 6 + [(SILENCE, 0.0)] * 8  # utterance → endpoint → turn 1
+    # let the turn STREAM ALL audio and FINISH (it's instant), so turn.done() is True
+    frames += [(SILENCE, 0.1)]
+    # now interrupt during the trailing playback window (turn task already done)
+    frames += [(SPEECH, 0.005)] * 12
+    frames += [(SILENCE, 0.01)] * 10 + [(SILENCE, 0.05)] * 4
+
+    _ = [c async for c in session.converse(_script(frames))]
+    stages = [e.stage for e in session._trace.recorded]  # type: ignore[attr-defined]
+
+    assert "barge_in" in stages, "interrupt during trailing playback did not register"
+    # a second turn ran for the interrupting utterance → it actually listened
+    assert gen.turns_started >= 2, "did not start listening to the interrupting speech"
+
+
 @pytest.mark.asyncio
 async def test_barge_in_flushes_queued_audio_and_logs_the_stop_sequence() -> None:
     """C2: real interruption stops the OUTGOING AUDIO, not just generation. The

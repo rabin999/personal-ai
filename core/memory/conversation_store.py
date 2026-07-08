@@ -146,7 +146,32 @@ class ConversationStore:
             docs = [d for d in docs if d.get("last_ts", 0.0) <= end_ts]
         docs.sort(key=lambda d: d.get("last_ts", 0.0), reverse=True)
         total = len(docs)
-        return [_jsonable(d) for d in docs[offset : offset + limit]], total
+        page = [_jsonable(d) for d in docs[offset : offset + limit]]
+        # Self-healing preview: any header with no ``first_message`` (older sessions
+        # written before the preview existed, or a delivery-only opening turn) gets
+        # its preview derived from the first real USER turn — so the list never shows
+        # a blank "(no message)" for a conversation that actually has content.
+        missing = [d["session_id"] for d in page if not str(d.get("first_message") or "").strip()]
+        if missing:
+            previews = await self._first_user_messages(user_id, missing)
+            for d in page:
+                if not str(d.get("first_message") or "").strip():
+                    d["first_message"] = previews.get(d["session_id"], "")
+        return page, total
+
+    async def _first_user_messages(self, user_id: str, session_ids: list[str]) -> dict[str, str]:
+        """First non-empty user_text per session (for list previews). One scan."""
+        wanted = set(session_ids)
+        turns = await self._docs.find(
+            CONVERSATION_TURNS_COLLECTION, {"user_id": user_id}, limit=100000
+        )
+        turns.sort(key=lambda t: t.get("turn_index", 0))
+        out: dict[str, str] = {}
+        for t in turns:
+            sid = t.get("session_id")
+            if sid in wanted and sid not in out and str(t.get("user_text") or "").strip():
+                out[sid] = str(t["user_text"]).strip()
+        return out
 
     async def turns(
         self, user_id: str, session_id: str, *, offset: int = 0, limit: int = 200

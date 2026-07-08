@@ -175,7 +175,7 @@ export default function CompanionPage() {
           sessionIdRef.current = msg.session_id || "";
           sampleRateRef.current = msg.sample_rate ?? 24_000;
           playerRef.current?.configure(sampleRateRef.current);
-          playerRef.current?.setSpeed(msg.voice_speed ?? 1.2); // C7: per-user rate
+          playerRef.current?.setSpeed(msg.voice_speed ?? 1.0); // C7: per-user rate
           ws.send(JSON.stringify({ type: "start_conversation" }));
           await startCapture();
           break;
@@ -202,6 +202,17 @@ export default function CompanionPage() {
     };
     wsRef.current = ws;
   }, [voice, micId]);
+
+  // Live voice-speed: when the profile slider changes it, apply to the RUNNING
+  // player immediately (mid-conversation), not just on the next connect.
+  useEffect(() => {
+    const onSpeed = (e: Event) => {
+      const v = (e as CustomEvent<number>).detail;
+      if (typeof v === "number") playerRef.current?.setSpeed(v);
+    };
+    window.addEventListener("asaathi:voice-speed", onSpeed);
+    return () => window.removeEventListener("asaathi:voice-speed", onSpeed);
+  }, []);
 
   // Load the signed-in user for the header avatar; no session → back to login.
   useEffect(() => {

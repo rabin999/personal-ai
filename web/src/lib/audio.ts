@@ -204,10 +204,10 @@ export class AudioPlayer {
   // re-enqueuing it is exactly why "the voice keeps playing". Stays muted until
   // the NEXT reply actually starts synthesizing (unmute on its first TTS event).
   private muted = false;
-  // C7: playback rate multiplier (1.0 = normal). Default 1.2 — the voice was a
-  // touch slow; per-user configurable from the profile. Applied to every scheduled
+  // C7: playback rate multiplier (1.0 = normal, the default). Per-user configurable
+  // from the profile and updated live mid-conversation. Applied to every scheduled
   // buffer so BOTH voice engines (they share this sink) speak at the user's pace.
-  private speed = 1.2;
+  private speed = 1.0;
   // Playback lead (§2b): schedule the first buffer of a reply — and rebuild the
   // cushion after any underrun — this far in the future. TTS arrives as many
   // small, jittery network chunks; scheduling them with zero lead means a slow

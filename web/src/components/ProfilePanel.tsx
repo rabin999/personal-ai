@@ -80,7 +80,6 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
               [
                 ["/conversations", "Conversations"],
                 ["/memories", "Memories"],
-                ["/traces", "Traces"],
               ] as const
             ).map(([to, label]) => (
               <button
@@ -127,7 +126,7 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
 }
 
 function ProfileBody({ p }: { p: UserProfile }) {
-  const name = p.companion_name || "Companion";
+  const name = p.companion_name || "Asaathi";
   return (
     <div className="flex flex-col gap-6">
       {/* Identity */}
@@ -206,9 +205,15 @@ function ProfileBody({ p }: { p: UserProfile }) {
 // times/units/currency for the user, and speaks at their chosen pace. Saves to
 // /api/prefs; the speed applies on the next reply, locale on the next turn.
 function VoiceAndLocale({ p }: { p: UserProfile }) {
-  const [speed, setSpeed] = useState<number>(numOr(p.audio_prefs.voice_speed, 1.2));
+  const [speed, setSpeed] = useState<number>(numOr(p.audio_prefs.voice_speed, 1.0));
   const [loc, setLoc] = useState<LocaleProfile>({ ...p.locale });
   const [saved, setSaved] = useState<"" | "saving" | "ok" | "err">("");
+
+  // Reflect the new speed on the LIVE conversation immediately (the AudioPlayer in
+  // CompanionPage listens for this) — not just on the next connect.
+  function applyLive(v: number) {
+    window.dispatchEvent(new CustomEvent("asaathi:voice-speed", { detail: v }));
+  }
 
   async function save(patch: { voice_speed?: number; locale?: LocaleProfile }) {
     setSaved("saving");
@@ -249,13 +254,17 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
           max={1.5}
           step={0.05}
           value={speed}
-          onChange={(e) => setSpeed(parseFloat(e.target.value))}
+          onChange={(e) => {
+            const v = parseFloat(e.target.value);
+            setSpeed(v);
+            applyLive(v); // hear it change immediately, mid-conversation
+          }}
           onMouseUp={() => save({ voice_speed: speed })}
           onTouchEnd={() => save({ voice_speed: speed })}
           className="mt-1.5 w-full accent-sky-500"
         />
         <div className="flex justify-between text-[10px] text-slate-400">
-          <span>slower</span><span>1.2× default</span><span>faster</span>
+          <span>slower</span><span>1.0× default</span><span>faster</span>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2.5">

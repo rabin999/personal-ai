@@ -101,6 +101,12 @@ class VoiceSession:
         # Barge-in detects speech during playback at a lower bar than turn-start
         # (§24 + browser-AEC double-talk attenuation) — see PipelineConfig.
         self._barge_threshold = config.barge_in_threshold
+        # Monotonic time the CLIENT is expected to still be playing audio until.
+        # The turn task finishes when the server has *sent* all audio, but the client
+        # keeps playing that buffered audio for seconds — barge-in must stay armed for
+        # the whole real playback, not just while the turn task runs (C2 fix: "it
+        # keeps talking when I interrupt"). Updated per-chunk in ``converse``.
+        self._playback_until = 0.0
         self._stt = stt
         self._endpointer = endpointer
         self._assembler = assembler
@@ -145,6 +151,13 @@ class VoiceSession:
                 chunk = await out.get()
                 if chunk is None:
                     break
+                # Estimate how long the client will still be PLAYING: each 24kHz
+                # PCM16 chunk is len/(24000*2) seconds of audio. Chunks drain to the
+                # client faster than real time, so accumulate onto a running "playing
+                # until" cursor — this keeps barge-in armed for the whole reply even
+                # after the turn task has finished streaming (C2).
+                dur = len(chunk) / (TTS_SAMPLE_RATE * 2)
+                self._playback_until = max(self._playback_until, time.monotonic()) + dur
                 yield chunk
         finally:
             consumer.cancel()
@@ -180,11 +193,15 @@ class VoiceSession:
                 if turn is not None and turn.done():
                     turn = None  # reply finished; back to listening
 
-                # Barge-in: user speaks while the companion is talking (§24).
-                # Requires sustained *fresh* raw speech (not the just-ended
-                # utterance's hysteresis tail, and not a brief echo blip) so a
+                # Barge-in: user speaks while the companion is talking (§24). "Talking"
+                # means EITHER a turn task is still generating/streaming OR the client
+                # is still PLAYING already-sent audio (self._playback_until in the
+                # future) — the reply keeps sounding for seconds after the turn task
+                # finishes, and the user must be able to cut in during ALL of it (C2).
+                # Requires sustained *fresh* raw speech (not a brief echo blip) so a
                 # reply isn't self-interrupted.
-                if turn is not None:
+                speaking = turn is not None or time.monotonic() < self._playback_until
+                if speaking:
                     # Lower bar than turn-start: AEC has removed our own TTS, so a
                     # near-end signal over this threshold is the user — even when
                     # double-talk suppression has attenuated it below is_speech.
@@ -192,19 +209,22 @@ class VoiceSession:
                     barge_frames = barge_frames + 1 if speaking_over else 0
                     if self._barge_in and barge_frames >= _BARGE_IN_FRAMES:
                         # C2: real interruption — stop the OUTGOING AUDIO, not just
-                        # generation. Order matters: (1) tell the client to flush its
-                        # playback buffer immediately (barge_in event → client mutes +
-                        # drops in-flight audio), (2) cancel the turn which via its
-                        # finally closes the TTS stream + cancels the audio pump, then
-                        # (3) drain any already-synthesized chunks still queued here.
+                        # generation. Order: (1) tell the client to flush its playback
+                        # buffer immediately (barge_in event → client mutes + drops
+                        # in-flight audio), (2) cancel the in-flight turn (its finally
+                        # closes the TTS stream + cancels the audio pump), then (3) drain
+                        # any already-synthesized chunks still queued here and stop the
+                        # playback-tail clock so we don't re-trigger.
                         self._trace.emit(
                             "barge_in",
                             "user interrupted — stopping playback",
                             phase="detected",
                         )
-                        turn.cancel()  # cancel in-flight generation + pending TTS
-                        await asyncio.gather(turn, return_exceptions=True)  # runs cleanup
-                        turn = None
+                        if turn is not None:  # cancel in-flight generation + pending TTS
+                            turn.cancel()
+                            await asyncio.gather(turn, return_exceptions=True)
+                            turn = None
+                        self._playback_until = 0.0  # nothing should be playing now
                         flushed = self._drain(out)  # flush queued synthesized audio
                         self._trace.emit(
                             "barge_in",

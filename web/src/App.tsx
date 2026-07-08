@@ -7,8 +7,6 @@ import LoginPage from "./pages/LoginPage";
 import ConversationsPage from "./pages/ConversationsPage";
 import ConversationDetailPage from "./pages/ConversationDetailPage";
 import MemoriesPage from "./pages/MemoriesPage";
-import TracesPage from "./pages/TracesPage";
-import TraceDetailPage from "./pages/TraceDetailPage";
 import { fetchMe } from "./lib/session";
 
 // App router. BrowserRouter with REAL named paths (not a hash router): the FastAPI
@@ -18,7 +16,7 @@ import { fetchMe } from "./lib/session";
 //   /               → companion (voice session), guarded
 //   /conversations  → the user's conversation history (paginated, date-filtered)
 //   /memories       → the user's own memory space (semantic / episodic / procedural)
-//   /traces         → what happened per turn (readable view of the trace)
+//   /conversations/:id → the conversation + its full per-turn trace timeline
 export default function App() {
   return (
     <BrowserRouter>
@@ -37,14 +35,9 @@ export default function App() {
           path="/memories"
           element={<RequireAuth><Shell><MemoriesPage /></Shell></RequireAuth>}
         />
-        <Route
-          path="/traces"
-          element={<RequireAuth><Shell><TracesPage /></Shell></RequireAuth>}
-        />
-        <Route
-          path="/traces/:sessionId"
-          element={<RequireAuth><Shell><TraceDetailPage /></Shell></RequireAuth>}
-        />
+        {/* Traces are viewed per-conversation now (ConversationDetailPage renders
+            the full trace timeline); the standalone /traces list was removed.
+            Legacy /traces* links fall through to the catch-all → home. */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

@@ -31,7 +31,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
               <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
             </svg>
           </div>
-          <h1 className="text-2xl font-semibold tracking-tight">Meet your companion</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Meet Asaathi</h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             A voice-first friend that remembers you, adapts to how you feel, and
             keeps everything private to you.

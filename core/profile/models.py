@@ -23,10 +23,10 @@ class AudioPrefs(BaseModel):
     # companion speaks (AEC has removed our own TTS, so a lower bar catches the
     # user's double-talk-attenuated speech). Per-user tunable; floored at vad_min.
     barge_in_sensitivity: float = 0.2
-    # C7: TTS playback rate multiplier (1.0 = normal). Default 1.2 — the voice was
-    # a touch slow. Clamped to [0.8, 1.5] on write; applied to both voice engines
-    # behind the voice port and recorded in the trace.
-    voice_speed: float = Field(default=1.2, ge=0.8, le=1.5)
+    # C7: TTS playback rate multiplier (1.0 = normal, the default — >1.0 shifts pitch
+    # up and can sound chipmunk-y). Clamped to [0.8, 1.5] on write; applied to both
+    # voice engines behind the voice port and recorded in the trace.
+    voice_speed: float = Field(default=1.0, ge=0.8, le=1.5)
 
 
 class LocaleProfile(BaseModel):
