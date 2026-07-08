@@ -2003,3 +2003,23 @@ a phrase at 16 kHz → the Grok STT adapter transcribes it back accurately ("The
 brown fox jumps over the lazy dog."). Keyterm biasing accepted. The real-time WebSocket
 endpoint (interim results + Smart Turn detection) is a further upgrade left as a
 follow-up; this REST adapter proves the swap works end to end.
+
+## Fix — voice STT latency (§36) + tool-syntax leak + mobile
+
+**STT latency (§36):** the ~10s speech→text was faster-whisper "small" on the CPU host,
+run on every endpoint check. Default STT is now **Grok STT** (~1.5s/utterance, ~5% WER);
+faster-whisper stays selectable ($0, offline). Plus the session skips re-transcribing
+when only silence was added between the short/long-pause checks (no new words → reuse).
+
+**Tool-syntax leak (user report "web_search:: …" spoken):** a fast model occasionally
+echoes tool-call syntax into its draft. Added `strip_tool_leak` (core/reasoning/style)
+— strips leaked tool ids / `tool_request` / `functions.x` / stray tool JSON from BOTH
+the spoken and displayed text, applied in `_finish` and the streaming `_speak_clean`.
+Verified (`tests/unit/test_tool_leak.py`, 5): strips `web_search::…`, bare tool
+mentions, and stray tool JSON, while leaving normal prose (incl. the ordinary word
+"search") untouched. The pydantic-validation warnings during search are the expected
+JSON-retry/escalate mechanism (handled, non-fatal) — the leak scrubber removes the
+visible symptom.
+
+**Mobile:** trace turn cards show summary pills on mobile + tighter padding; Awareness
+settings rows keep controls on-screen (min-w-0 labels + shrink-0 controls).

@@ -107,6 +107,37 @@ def is_assistant_speak(text: str) -> bool:
     return bool(find_forbidden(text))
 
 
+# Tool-call syntax that a weaker/fast model sometimes leaks into its spoken draft
+# instead of emitting it as the structured tool_request (e.g. "web_search:: NEPSE
+# news", 'tool_request: {...}'). This scrubs those fragments from the USER-FACING text
+# so the companion never says a technical token out loud. Defense-in-depth — the
+# model is also instructed not to; this guarantees it.
+_TOOL_IDS = (
+    "web_search|search_memory|get_semantic_facts|get_project_state|list_projects|"
+    "log_entry|update_audio_prefs|set_companion_name|update_preference|recall_self|"
+    "resolve_entity|generate_insight|fetch_url|get_realtime_data|create_task|update_task"
+)
+_TOOL_LEAK: tuple[re.Pattern[str], ...] = (
+    # A tool id followed by ':' or '::' and its inline argument fragment.
+    re.compile(rf"\b(?:{_TOOL_IDS})\s*::?\s*\S[^.!?\n]*", re.IGNORECASE),
+    # A bare tool id / tool_request / functions.x mention.
+    re.compile(rf"\b(?:tool_request|tool_call|functions?\.\w+|{_TOOL_IDS})\b", re.IGNORECASE),
+    # A stray JSON tool-call object leaking into prose.
+    re.compile(r'\{\s*"?tool_id"?\s*:[^}]*\}', re.IGNORECASE),
+)
+
+
+def strip_tool_leak(text: str) -> str:
+    """Remove leaked tool-call syntax from user-facing text (never say it out loud)."""
+    cleaned = text
+    for pattern in _TOOL_LEAK:
+        cleaned = pattern.sub("", cleaned)
+    # Tidy up punctuation/space the removal left behind.
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    cleaned = re.sub(r"\s+([.,!?])", r"\1", cleaned)
+    return cleaned.strip(" :-—")
+
+
 # Sentence splitter for the deterministic scrub — keeps terminal punctuation.
 _SENTENCE = re.compile(r"[^.!?]*[.!?]+|\S[^.!?]*$")
 

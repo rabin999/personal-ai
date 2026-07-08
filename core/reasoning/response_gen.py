@@ -30,7 +30,7 @@ from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.prosody import prosody_directive, read_register, strip_inappropriate_tags
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
-from core.reasoning.style import find_forbidden, scrub_forbidden
+from core.reasoning.style import find_forbidden, scrub_forbidden, strip_tool_leak
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
@@ -592,6 +592,7 @@ class ResponseGenerator:
         """Sanitize a sentence (keep whitelisted voice tags, drop assistant-speak)
         and hand it to TTS. Skips empties."""
         text = scrub_forbidden(_sanitize_tags(sentence)) or _sanitize_tags(sentence)
+        text = strip_tool_leak(text)  # never speak a leaked tool token
         if text.strip():
             await speak(text)
 
@@ -995,9 +996,11 @@ class ResponseGenerator:
         # even if the model slipped a levity tag in. Register is from the emotional
         # read; recorded in the trace as proof prosody was selected per emotion.
         register = read_register(prompt.emotion)
-        voice_text = strip_inappropriate_tags(text, register)
+        # Never say a leaked tool token ("web_search:: …") out loud — scrub it from
+        # both the spoken and the displayed text (user report; defense-in-depth).
+        voice_text = strip_tool_leak(strip_inappropriate_tags(text, register))
         self._span("prosody", register=register, emotion=prompt.emotion or {})
-        clean_text = _strip_all_tags(voice_text)
+        clean_text = strip_tool_leak(_strip_all_tags(voice_text))
         # Rule 6: every turn logs to the self-model (cost is logged by §11).
         record = TurnRecord(
             user_id=prompt.user_id,
