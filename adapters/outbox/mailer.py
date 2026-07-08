@@ -36,6 +36,20 @@ class WelcomeMailer:
         # Disabled unless real Gmail credentials are present (brief §6).
         self._enabled = bool(settings.mail_username and settings.mail_password)
         self._fastmail = FastMail(_connection_config(settings)) if self._enabled else None
+        # Make the disabled state LOUD (F16): "I didn't get a welcome email" is
+        # otherwise a silent mystery — signup still succeeds and the outbox record is
+        # marked 'skipped' with no obvious signal. Warn once, at construction, in
+        # BOTH the API and worker processes (both build this via the composition root).
+        if self._enabled:
+            logger.info(
+                "welcome mailer enabled (from %s)", settings.mail_from or settings.mail_username
+            )
+        else:
+            logger.warning(
+                "welcome emails are DISABLED — set MAIL_USERNAME + MAIL_PASSWORD "
+                "(a Google App Password, not your login password) in .env to send them. "
+                "Signups still succeed; welcome outbox records are marked 'skipped'."
+            )
 
     @property
     def enabled(self) -> bool:

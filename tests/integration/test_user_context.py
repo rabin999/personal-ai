@@ -98,6 +98,42 @@ async def test_outbox_worker_delivers_or_skips(
     assert mine[0]["status"] in ("sent", "skipped")  # resolved, not stuck pending
 
 
+async def test_outbox_worker_sends_when_mail_is_configured(
+    accounts: tuple[AccountStore, OutboxStore, MongoDocStore],
+) -> None:
+    """F16: the root cause of 'I got no signup email' is that mail is UNCONFIGURED
+    (mailer disabled → records skipped). This proves the pipeline actually DELIVERS
+    once credentials are set: with an enabled mailer, the worker calls send_welcome
+    for the new user and marks the record 'sent' (FastMail stubbed — no real SMTP)."""
+    store, outbox, docs = accounts
+    result = await store.upsert_from_google(_identity())
+
+    mailer = WelcomeMailer(Settings(_env_file=None))
+    mailer._enabled = True  # simulate configured SMTP
+    sent: list[tuple[str, str | None]] = []
+
+    async def _fake_send(email: str, name: str | None) -> None:
+        sent.append((email, name))
+
+    mailer.send_welcome = _fake_send  # type: ignore[method-assign]
+
+    handled = await OutboxWorker(outbox, mailer).drain_once()
+    assert handled >= 1
+    assert any(e == result.account.email for e, _ in sent), f"welcome not sent: {sent}"
+
+    mine = [
+        o
+        for o in await docs.find(OUTBOX_COLLECTION, {}, limit=500)
+        if o.get("payload", {}).get("user_id") == result.account.user_id
+    ]
+    assert mine and mine[0]["status"] == "sent", f"record not marked sent: {mine}"
+
+
+def test_mailer_reports_disabled_without_credentials() -> None:
+    """F16: an unconfigured mailer is disabled (the cause of the missing email)."""
+    assert WelcomeMailer(Settings(_env_file=None)).enabled is False
+
+
 async def test_session_context_isolates_users(
     accounts: tuple[AccountStore, OutboxStore, MongoDocStore],
 ) -> None:

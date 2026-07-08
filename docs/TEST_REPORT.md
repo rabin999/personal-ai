@@ -1316,3 +1316,47 @@ to the bundled default on any error.
 the whole mechanism incl. version pickup + fallback + trace provenance); the large persona/identity
 template (`prompt_assembly`) is not yet moved into Langfuse — a mechanical follow-up using the same
 port, noted rather than silently skipped.
+
+---
+
+## F16 — No welcome email on first signup + edge-case testing pass
+
+**Root cause (confirmed by a real signup simulation):** the signup pipeline is CORRECT — a new
+Google sign-up creates the account, seeds the profile, and writes a *pending* `welcome_email` outbox
+record in the same operation; the outbox worker (in-process in dev via `run_worker_in_process`, and
+in the standalone `workers/consolidation_worker.py` for prod — both run `OutboxWorker.run_forever`)
+delivers it. The email isn't sent because **`MAIL_USERNAME`/`MAIL_PASSWORD` are not configured**, so
+`WelcomeMailer` is disabled and the worker marks the record `skipped` — silently. Verified live:
+`mailer enabled: False`, signup wrote the pending record, the worker drained it (→ skipped, no send).
+
+**Fix:**
+- **Made the silent state loud (the real defect):** `WelcomeMailer.__init__` now logs a clear WARNING
+  when disabled ("welcome emails are DISABLED — set MAIL_USERNAME + MAIL_PASSWORD …") in BOTH the API
+  and worker processes, and an INFO when enabled. "I got no email" is no longer a mystery.
+- **New tests:** `test_outbox_worker_sends_when_mail_is_configured` (enabled mailer + stubbed FastMail
+  → the worker calls `send_welcome` for the new user and marks the record `sent`) and
+  `test_mailer_reports_disabled_without_credentials`. Plus the existing queued-on-signup /
+  delivers-or-skips coverage. 11/11 user-context tests green.
+- **Honest human step (credential blocker I cannot complete):** set in `.env`:
+  `MAIL_USERNAME=you@gmail.com`, `MAIL_PASSWORD=<16-char Google App Password>` (2FA required — the
+  login password will NOT work), `MAIL_FROM=you@gmail.com`; restart the API/worker. Signups then send
+  the welcome email. (The whole delivery pipeline is proven correct once credentials exist.)
+
+**Edge-case testing pass (real model + stores) — trickier questions, tool/reasoning/results:**
+| case | inferred intent | tool | verdict |
+|---|---|---|---|
+| flight-time + timezone math | correct | none | ✅ reasoned KTM+5:45→TYO+9 = ~6:15 PM, no needless search |
+| "TCP vs UDP simply" | correct | none | ✅ no search (knowledge), clear analogy |
+| "everyone got promoted except me" | "left out / unsupported" | none | ✅ warm, curious_followup — no search on an emotional turn |
+| "how's my portfolio doing?" | correct | web_search | ✅ answered from the user's real SYPNL holdings + live price |
+| "who won the most recent F1 race?" | correct | web_search | ✅ real current result |
+| "what time is it in Tokyo right now?" | correct | **none** | ✅ answers directly from the injected UTC (after the fix) |
+
+**Edge found + improved:** date/time questions used to always `web_search` (2×) because `_CAPABILITIES`
+listed "today's date and time" as a search target — wasteful AND it returned a stale cached date.
+Clarified `_CAPABILITIES` + the `context_intent` prompt (bundled + Langfuse) that the current
+date/day/UTC-time are already injected → answer directly. Result: "time in Tokyo" now answers with NO
+search and the correct day. **Residual (honest):** "what's today's date" still sometimes searches
+(the reasoning model's own tool-judgment) and can then report the search's stale date over the correct
+injected UTC — fully suppressing that is judge-threshold/model tuning (§7); the injected time is
+authoritative and the guidance now steers against it. ruff + mypy clean.
