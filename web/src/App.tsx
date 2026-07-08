@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { AppHeader } from "./components/AppHeader";
+import { ProfileButton } from "./components/ProfileButton";
 import CompanionPage from "./pages/CompanionPage";
 import LoginPage from "./pages/LoginPage";
 import ConversationsPage from "./pages/ConversationsPage";
@@ -72,7 +73,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
-      <AppHeader />
+      <AppHeader right={<ProfileButton />} />
       <main className="mx-auto max-w-3xl px-4 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         {children}
       </main>

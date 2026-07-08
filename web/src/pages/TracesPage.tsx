@@ -100,7 +100,7 @@ export default function TracesPage() {
               className="flex items-center justify-between rounded-lg border border-neutral-200 px-4 py-3 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
             >
               <span className="font-medium">{fmt(s.last_ts)}</span>
-              <span className="text-sm text-neutral-500">{s.turn_count} turns →</span>
+              <span className="text-sm text-neutral-500">{s.turn_count} {s.turn_count === 1 ? "turn" : "turns"} →</span>
             </Link>
           </li>
         ))}

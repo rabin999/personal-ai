@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     # (HTTPS only); auto-derived from PUBLIC_BASE_URL scheme unless overridden.
     session_max_age_s: int = 14 * 24 * 3600
     session_cookie_secure: bool | None = None  # None → derive from public_base_url
+    # DEV/TEST auth bypass: when set to a user_id, every request resolves to that
+    # user WITHOUT a Google session — so the UI/pages can be driven locally (the
+    # secure session cookie can't ride http://localhost). MUST stay empty in prod
+    # (leave DEV_AUTH_USER unset); a non-empty value here is a deliberate dev flag.
+    dev_auth_user: str = ""
 
     # Conversation behaviors (§8/§14). Max background results delivered at a single
     # pause before we summarize-and-offer instead of dumping them (anti-machine-gun).

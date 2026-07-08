@@ -86,7 +86,7 @@ export default function ConversationsPage() {
                   {preview(c.first_message) || <span className="text-neutral-400">(no message)</span>}
                 </p>
                 <p className="mt-0.5 text-xs text-neutral-500">
-                  {fmt(c.last_at_iso || c.started_at_iso)} · {c.turn_count} turns
+                  {fmt(c.last_at_iso || c.started_at_iso)} · {c.turn_count} {c.turn_count === 1 ? "turn" : "turns"}
                 </p>
               </div>
               <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-neutral-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from adapters.user_context.accounts import AccountStore, GoogleIdentity
-from config.settings import Settings
+from config.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,19 @@ async def google_callback(request: Request) -> RedirectResponse:
 @router.get("/me")
 async def me(request: Request) -> JSONResponse:
     """The current authenticated user (401 if no valid session)."""
+    # DEV/TEST bypass (empty in prod): the client's auth guard hits THIS endpoint,
+    # so honor DEV_AUTH_USER here too — return a synthetic identity so the SPA
+    # renders the real authenticated pages locally over http.
+    dev_user = get_settings().dev_auth_user
+    if dev_user:
+        return JSONResponse(
+            {
+                "user_id": dev_user,
+                "email": f"{dev_user}@dev.local",
+                "name": "Dev User",
+                "picture": None,
+            }
+        )
     user_id = request.session.get(SESSION_USER_KEY)
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated")

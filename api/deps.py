@@ -11,6 +11,7 @@ from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
 
+from config.settings import get_settings
 from ports.user_context import UserContext, UserRecord
 
 SESSION_USER_KEY = "user_id"
@@ -24,6 +25,12 @@ async def get_user_record(request: Request) -> UserRecord:
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
             detail="UserContext adapter not wired yet",
         )
+    # DEV/TEST bypass (empty in prod): resolve to a fixed sample user with no
+    # Google session, so the UI can be driven locally over http. Off unless
+    # DEV_AUTH_USER is explicitly set.
+    dev_user = get_settings().dev_auth_user
+    if dev_user:
+        return await user_context.record_for(dev_user)
     user_id = request.session.get(SESSION_USER_KEY)
     if not user_id:
         raise HTTPException(
