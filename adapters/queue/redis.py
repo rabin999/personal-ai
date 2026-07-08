@@ -31,6 +31,9 @@ class RedisTaskQueue:
         self._queue_key = f"{ns}:tasks:queued"
         self._task_key = f"{ns}:task:{{task_id}}"
         self._session_key = f"{ns}:session_tasks:{{session_id}}"
+        # A per-user set so a result that finishes after its session closed can still
+        # be carried to the user's NEXT conversation (brief U9 cross-session delivery).
+        self._user_key = f"{ns}:user_tasks:{{user_id}}"
 
     async def enqueue(
         self, *, session_id: str, user_id: str, type: str, params: dict[str, Any]
@@ -46,6 +49,8 @@ class RedisTaskQueue:
         await self._save(task)
         await self._redis.sadd(self._session_key.format(session_id=session_id), task.task_id)
         await self._redis.expire(self._session_key.format(session_id=session_id), _TASK_TTL_S)
+        await self._redis.sadd(self._user_key.format(user_id=user_id), task.task_id)
+        await self._redis.expire(self._user_key.format(user_id=user_id), _TASK_TTL_S)
         await self._redis.lpush(self._queue_key, task.task_id)
         return task.task_id
 
@@ -60,6 +65,23 @@ class RedisTaskQueue:
             if raw is None:
                 continue
             task = QueuedTask.model_validate_json(raw)
+            if task.status == "completed" and task.delivery_state == "pending":
+                tasks.append(task)
+        tasks.sort(key=lambda t: t.created_at)
+        return tasks
+
+    async def pending_deliveries_for_user(
+        self, user_id: str, *, exclude_session: str | None = None
+    ) -> list[QueuedTask]:
+        task_ids = await self._redis.smembers(self._user_key.format(user_id=user_id))
+        tasks = []
+        for task_id in task_ids:
+            raw = await self._redis.get(self._task_key.format(task_id=task_id))
+            if raw is None:
+                continue
+            task = QueuedTask.model_validate_json(raw)
+            if task.session_id == exclude_session:
+                continue
             if task.status == "completed" and task.delivery_state == "pending":
                 tasks.append(task)
         tasks.sort(key=lambda t: t.created_at)

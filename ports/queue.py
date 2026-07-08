@@ -40,6 +40,15 @@ class TaskQueue(Protocol):
         """Completed tasks for this session that were not yet delivered."""
         ...
 
+    async def pending_deliveries_for_user(
+        self, user_id: str, *, exclude_session: str | None = None
+    ) -> list[QueuedTask]:
+        """Completed-but-undelivered tasks across ALL of a user's sessions (brief U9):
+        results that finished after a session closed must still be carried to the next
+        conversation the user opens. Optionally excludes the current session (handled
+        by the in-session path). User-scoped (isolation §0.5)."""
+        ...
+
     async def mark_delivered(self, task_id: str) -> None: ...
 
     async def mark_suppressed(self, task_id: str) -> None:

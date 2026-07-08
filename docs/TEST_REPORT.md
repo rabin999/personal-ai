@@ -1809,3 +1809,30 @@ the exact bug: a [laugh] tag is stripped on a sad turn while [gentle] stays; lev
 kept on an excited turn. Response-gen suite green (register selected + span emitted in
 `_finish`). Final "sounds right" wants a human ear on real TTS — the selection +
 application + mismatch guard are proven; the audible check is the human-listen item.
+
+## U9 — Background-work delivery lifecycle ✅
+
+**Problem (brief):** background results (e.g. a news search) that finished behind the
+scenes never got delivered — the in-session pull was session-scoped, so a result that
+completed after a session closed (or when the user reconnected with a new session_id)
+was stranded and "just sat there."
+
+**Fix:** the queue now also indexes tasks under a per-USER set
+(`pending_deliveries_for_user`, Redis `user_tasks:{user_id}`), and `DeliveryComposer.
+deliveries_at_open` carries completed-but-undelivered results to the NEXT conversation
+open — "oh hey, that thing you asked me to look up, I found it" — via the waiter model
+(LLM-composed offer, relevance-suppressed, pileup-capped to one offer). A staleness
+check DROPS time-sensitive results (news/scores/weather/"today") older than 6h instead
+of delivering them late; durable requests ("look up that book") still deliver. Wired
+into both edges: the chat route pulls it on the FIRST turn of a session, and the voice
+session pulls it once per open (guarded by `_carried_pulled`), excluding the current
+session (its in-session path handles those). In-session pause delivery was already
+wired (idle poll + per-turn); this closes the cross-session gap.
+
+**Verified:**
+- Unit (`tests/unit/test_delivery.py`, +3) ✅ — a prior-session result is carried at
+  open; a stale "news today" result is dropped (no LLM call); the current session is
+  excluded.
+- Real Redis (`tests/real_call/test_delivery_carry.py`) ✅ — enqueue+complete in
+  session A → `pending_deliveries_for_user` carries it to a new session, excludes the
+  origin session, is user-scoped, and clears once delivered.

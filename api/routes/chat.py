@@ -60,6 +60,14 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     # get delivered now, in the companion's voice, dropped if no longer relevant.
     recent = " ".join(t.text for t in pipeline.working.recent(body.session_id, n=4))
     deliveries = await pipeline.delivery.deliveries_for_pause(body.session_id, user.user_id, recent)
+    # Brief U9: on the FIRST turn of a session, also carry over results that finished
+    # while the user was away (in a now-closed session) — "that thing you asked me to
+    # look up, I found it" — dropping any that went stale. Once per session open.
+    if turn_no == 1:
+        deliveries = [
+            *await pipeline.delivery.deliveries_at_open(user.user_id, body.session_id),
+            *deliveries,
+        ]
     for d in deliveries:
         trace.emit("response", d.line, delivered=True)
         # Put the delivered result (news/search) into the conversation BEFORE we

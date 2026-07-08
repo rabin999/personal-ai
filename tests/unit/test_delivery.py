@@ -17,6 +17,18 @@ class FakeQueue:
     async def pending_deliveries(self, session_id: str) -> list[QueuedTask]:
         return [t for t in self.tasks if t.session_id == session_id]
 
+    async def pending_deliveries_for_user(
+        self, user_id: str, *, exclude_session: str | None = None
+    ) -> list[QueuedTask]:
+        return [
+            t
+            for t in self.tasks
+            if t.user_id == user_id
+            and t.session_id != exclude_session
+            and t.status == "completed"
+            and t.delivery_state == "pending"
+        ]
+
     async def mark_delivered(self, task_id: str) -> None:
         self.delivered.append(task_id)
 
@@ -136,6 +148,71 @@ async def test_within_cap_delivers_each_directly() -> None:
 
     assert len(interjections) == 2
     assert set(queue.delivered) == {"t0", "t1"}
+
+
+# ── U9: carry undelivered results to the next conversation open ───────────
+
+
+def _prior_task(task_id: str, *, query: str, created_at: str, session: str = "s_old") -> QueuedTask:
+    return QueuedTask(
+        task_id=task_id,
+        session_id=session,
+        user_id="u_demo_001",
+        type="web_search",
+        params={"query": query},
+        status="completed",
+        result={"summary": f"result for {query}"},
+        created_at=created_at,
+    )
+
+
+async def test_carry_result_from_a_prior_session_at_open() -> None:
+    """A result that finished in a now-closed session is offered at the next open."""
+    line = "oh hey — that book you asked me to look up, I found it"
+    llm = FakeLLM([json.dumps({"relevant": True, "line": line})])
+    # A durable ("look up a book") task from a prior session, not stale.
+    queue = FakeQueue(
+        [_prior_task("t_old", query="look up that book", created_at="2026-07-08T09:00:00+00:00")]
+    )
+    composer = DeliveryComposer(queue, llm)
+
+    out = await composer.deliveries_at_open("u_demo_001", "s_new")
+
+    assert len(out) == 1 and "found it" in out[0].line
+    assert queue.delivered == ["t_old"]
+
+
+async def test_stale_time_sensitive_result_dropped_at_open() -> None:
+    """A "news today" result asked long ago has expired → dropped, never delivered late."""
+    llm = FakeLLM([json.dumps({"relevant": True, "line": "should not be used"})])
+    old = _prior_task("t_news", query="top news today", created_at="2026-07-01T09:00:00+00:00")
+    queue = FakeQueue([old])
+    composer = DeliveryComposer(queue, llm)
+
+    out = await composer.deliveries_at_open("u_demo_001", "s_new")
+
+    assert out == []
+    assert queue.suppressed == ["t_news"]  # dropped as stale, no LLM composition
+
+
+async def test_current_session_excluded_from_at_open() -> None:
+    """The current session's results are handled by the in-session path, not carried."""
+    llm = FakeLLM([json.dumps({"relevant": True, "line": "x"})])
+    queue = FakeQueue(
+        [
+            _prior_task(
+                "t_cur",
+                query="look up a thing",
+                created_at="2026-07-08T09:00:00+00:00",
+                session="s_new",
+            )
+        ]
+    )
+    composer = DeliveryComposer(queue, llm)
+
+    out = await composer.deliveries_at_open("u_demo_001", "s_new")
+
+    assert out == []
 
 
 async def test_stale_ones_purged_before_cap_counts() -> None:

@@ -50,6 +50,10 @@ class Delivery(Protocol):
         self, session_id: str, user_id: str, recent_context: str
     ) -> list[Any]: ...
 
+    async def deliveries_at_open(self, user_id: str, session_id: str) -> list[Any]:
+        """Results that finished while the user was away, carried to this open (U9)."""
+        ...
+
 
 SAMPLE_RATE = 16_000
 _MS_PER_BYTE = 1000.0 / (SAMPLE_RATE * 2)  # PCM16 mono
@@ -159,6 +163,9 @@ class VoiceSession:
         # before either marks it delivered, the same result gets spoken 2-3x (§14).
         self._delivery_lock = asyncio.Lock()
         self._delivered_ids: set[str] = set()
+        # U9: pull results carried over from a prior (closed) session exactly once,
+        # at the first delivery check of this conversation open.
+        self._carried_pulled = False
         # A4 multi-utterance: the previous endpointed (transcript, monotonic ms) and
         # whether the in-flight turn has begun speaking (→ an addition is a barge-in).
         self._prev_endpoint: tuple[str, float] | None = None
@@ -614,6 +621,14 @@ class VoiceSession:
                 deliveries = await self._delivery.deliveries_for_pause(
                     self._session_id, self._user_id, recent
                 )
+                # U9: once per open, also surface results that finished while the user
+                # was away in a prior session (stale ones are dropped inside).
+                if not self._carried_pulled:
+                    self._carried_pulled = True
+                    carried = await self._delivery.deliveries_at_open(
+                        self._user_id, self._session_id
+                    )
+                    deliveries = [*carried, *deliveries]
             except Exception:  # delivery is best-effort; never break the turn
                 logger.exception("background delivery failed")
                 return

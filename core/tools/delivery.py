@@ -8,6 +8,7 @@ result is suppressed instead of spoken.
 
 import json
 import logging
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ValidationError
 
@@ -15,6 +16,22 @@ from ports.llm import LLM, LLMUnavailable
 from ports.queue import QueuedTask, TaskQueue
 
 logger = logging.getLogger(__name__)
+
+# Time-sensitive results (news/scores/weather/"today") go stale and must be DROPPED
+# rather than delivered late at the next conversation open (brief U9 staleness check).
+_STALE_AFTER_S = 6 * 3600
+_TIME_SENSITIVE_HINTS = (
+    "today",
+    "now",
+    "current",
+    "latest",
+    "news",
+    "score",
+    "weather",
+    "open",
+    "price",
+    "tonight",
+)
 
 _COMPOSE_INSTRUCTIONS = (
     "A background task you started for the user earlier has finished. Given its "
@@ -27,6 +44,19 @@ _COMPOSE_INSTRUCTIONS = (
     "If the user has clearly moved on or the result no longer matters, set "
     "relevant to false."
 )
+
+
+def _is_stale(task: QueuedTask) -> bool:
+    """True when a time-sensitive result has aged past the staleness window (U9)."""
+    blob = f"{task.type} {json.dumps(task.params)}".lower()
+    if not any(hint in blob for hint in _TIME_SENSITIVE_HINTS):
+        return False
+    stamp = task.resolved_at or task.created_at
+    try:
+        age = (datetime.now(UTC) - datetime.fromisoformat(stamp)).total_seconds()
+    except (TypeError, ValueError):
+        return False
+    return age > _STALE_AFTER_S
 
 
 class _Composed(BaseModel):
@@ -79,6 +109,36 @@ class DeliveryComposer:
             )
             return [Interjection(task_id=relevant[0].task_id, line=offer)]
 
+        for item in relevant:
+            await self._queue.mark_delivered(item.task_id)
+        return relevant
+
+    async def deliveries_at_open(self, user_id: str, session_id: str) -> list[Interjection]:
+        """Brief U9: at conversation OPEN, surface results that finished while the user
+        was away (in a now-closed session) — 'oh hey, that thing you asked me to look
+        up — I found it.' Time-sensitive results that have gone stale are DROPPED, not
+        delivered late. Excludes the current session (its in-session path handles it).
+        User-scoped; capped/offered like the pause path."""
+        carried = await self._queue.pending_deliveries_for_user(user_id, exclude_session=session_id)
+        relevant: list[Interjection] = []
+        for task in carried:
+            if _is_stale(task):  # expired time-sensitive result → drop silently
+                await self._queue.mark_suppressed(task.task_id)
+                continue
+            # No live conversation context at open — compose against the request itself.
+            line = await self._compose(user_id, task, "(the user just opened a new conversation)")
+            if line is None:
+                await self._queue.mark_suppressed(task.task_id)
+                continue
+            relevant.append(Interjection(task_id=task.task_id, line=line))
+        if len(relevant) > self._max:
+            for item in relevant:
+                await self._queue.mark_delivered(item.task_id)
+            offer = (
+                f"Hey — while you were gone I finished {len(relevant)} things you'd asked "
+                "about. Want me to run through them?"
+            )
+            return [Interjection(task_id=relevant[0].task_id, line=offer)]
         for item in relevant:
             await self._queue.mark_delivered(item.task_id)
         return relevant
