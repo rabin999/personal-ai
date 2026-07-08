@@ -49,76 +49,85 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
     ...JSON.parse(pos),
   });
 
+  void blob;
   return (
-    <div className="flex select-none flex-col items-center gap-7">
+    <div className="relative flex select-none items-center justify-center">
       <div
-        className="relative h-72 w-72 sm:h-96 sm:w-96 lg:h-[26rem] lg:w-[26rem]"
-        style={{ transform: `scale(${1 + amp * 0.07})`, transition: "transform 120ms ease-out" }}
+        className="relative h-80 w-80 sm:h-[28rem] sm:w-[28rem] lg:h-[34rem] lg:w-[34rem]"
+        style={{ transform: `scale(${1 + amp * 0.06})`, transition: "transform 120ms ease-out" }}
       >
-        {/* Soft outer glow, tinted by the state accent */}
+        {/* Wide outer glow, tinted by the state accent */}
         <div
-          className="absolute -inset-8 blur-3xl transition-opacity duration-700"
+          className="absolute -inset-10 blur-3xl transition-opacity duration-700"
           style={{
-            background: `radial-gradient(circle at center, ${accent} 0%, ${accent}00 62%)`,
-            opacity: (idle ? 0.16 : 0.3) + amp * 0.3,
+            background: `radial-gradient(circle at center, ${accent} 0%, ${accent}00 60%)`,
+            opacity: (idle ? 0.18 : 0.34) + amp * 0.3,
           }}
         />
 
-        {/* FREE-FLOATING plasma — no panel, no border, no hard box. A soft dark
-            core base gives the screen-blended colours something to glow against,
-            and the whole field is radially MASKED so it dissolves into the page at
-            the edges (never looks capped/boxed). */}
+        {/* FREE-FLOATING plasma — masked so it dissolves into the page (no box). */}
         <div
           className="absolute inset-0"
           style={{
-            WebkitMaskImage: "radial-gradient(circle at 50% 50%, #000 46%, transparent 72%)",
-            maskImage: "radial-gradient(circle at 50% 50%, #000 46%, transparent 72%)",
+            WebkitMaskImage: "radial-gradient(circle at 50% 50%, #000 60%, transparent 92%)",
+            maskImage: "radial-gradient(circle at 50% 50%, #000 60%, transparent 92%)",
           }}
         >
-          {/* dark base for the screen blend, itself fading out */}
+          {/* FULL base fill — overlapping colour fields on a dark core so the plasma
+              is COMPLETE (never patchy/empty); hue-cycles so it's always shifting. */}
           <div
             className="absolute inset-0"
             style={{
               background:
-                "radial-gradient(circle at 50% 50%, rgba(2,6,23,0.92) 0%, rgba(2,6,23,0.55) 42%, transparent 70%)",
+                "radial-gradient(circle at 30% 30%, rgba(56,189,248,0.9), transparent 52%), " +
+                "radial-gradient(circle at 72% 30%, rgba(167,139,250,0.9), transparent 52%), " +
+                "radial-gradient(circle at 32% 72%, rgba(34,211,238,0.85), transparent 52%), " +
+                "radial-gradient(circle at 70% 70%, rgba(52,211,153,0.85), transparent 52%), " +
+                "radial-gradient(circle at 50% 50%, rgba(2,6,23,0.55), rgba(2,6,23,0.95))",
+              animation: `orb-hue ${thinking ? 7 : reactive ? 12 : 22}s linear infinite`,
             }}
           />
-          {/* Drifting, blending colour blobs → the fusion. The whole field also
-              cycles HUE continuously (slow at idle, faster when busy) so the colours
-              are always shifting — never the same blend twice. */}
-          <div
-            className="absolute inset-0 [&>span]:absolute [&>span]:h-3/4 [&>span]:w-3/4 [&>span]:rounded-full [&>span]:blur-2xl [&>span]:mix-blend-screen"
-            style={{ animation: `orb-hue ${thinking ? 7 : reactive ? 12 : 20}s linear infinite` }}
-          >
-            <span style={blob("#38bdf8", '{"left":"2%","top":"6%"}', "fusion-a", 0.5, 11)} />
-            <span style={blob("#a78bfa", '{"right":"0%","top":"2%"}', "fusion-b", 0.5, 13)} />
-            <span style={blob("#22d3ee", '{"left":"6%","bottom":"2%"}', "fusion-c", 0.45, 15)} />
-            <span style={blob("#34d399", '{"right":"4%","bottom":"6%"}', "fusion-d", 0.4, 17)} />
-            <span style={blob(thinking ? "#f472b6" : accent, '{"left":"22%","top":"26%"}', "fusion-a", 0.35, 19)} />
+
+          {/* Moving blobs on top for depth/motion (less blur → more defined). */}
+          <div className="absolute inset-0 [&>span]:absolute [&>span]:h-[60%] [&>span]:w-[60%] [&>span]:rounded-full [&>span]:blur-xl [&>span]:mix-blend-screen">
+            <span style={{ left: "6%", top: "8%", background: "radial-gradient(circle, #38bdf8, transparent 64%)", opacity: 0.7, animation: `fusion-a ${(11 * pace).toFixed(1)}s ease-in-out infinite` }} />
+            <span style={{ right: "4%", top: "6%", background: "radial-gradient(circle, #a78bfa, transparent 64%)", opacity: 0.7, animation: `fusion-b ${(14 * pace).toFixed(1)}s ease-in-out infinite` }} />
+            <span style={{ left: "8%", bottom: "6%", background: "radial-gradient(circle, #22d3ee, transparent 64%)", opacity: 0.6, animation: `fusion-c ${(16 * pace).toFixed(1)}s ease-in-out infinite` }} />
+            <span style={{ right: "8%", bottom: "8%", background: "radial-gradient(circle, #34d399, transparent 64%)", opacity: 0.6, animation: `fusion-d ${(18 * pace).toFixed(1)}s ease-in-out infinite` }} />
           </div>
 
-          {/* FIERY layer — warm flickering flames + rising embers, for a living
-              nuclear-fire feel. Only when a conversation is ACTIVE; idle stays calm
-              (just the gentle plasma drift, no fire/embers/rings). */}
+          {/* FIERY nuclear fire — warm light radiating FROM the core, flickering,
+              plus rising embers. Active only; idle stays calm. */}
           {!idle && (
             <>
-              <div className="absolute inset-0 [&>span]:absolute [&>span]:rounded-full [&>span]:blur-2xl [&>span]:mix-blend-screen">
-                <span style={{ left: "18%", bottom: "6%", width: "52%", height: "52%", background: "radial-gradient(circle, #fb923c 0%, transparent 66%)", animation: `fusion-flicker ${(2.2 * (thinking ? 0.7 : 1)).toFixed(1)}s ease-in-out infinite` }} />
-                <span style={{ right: "20%", bottom: "10%", width: "42%", height: "46%", background: "radial-gradient(circle, #f97316 0%, transparent 66%)", animation: `fusion-flicker ${(1.7 * (thinking ? 0.7 : 1)).toFixed(1)}s ease-in-out infinite`, animationDelay: "0.4s" }} />
-                <span style={{ left: "33%", bottom: "16%", width: "36%", height: "42%", background: "radial-gradient(circle, #fbbf24 0%, transparent 66%)", animation: `fusion-flicker ${(2.6 * (thinking ? 0.7 : 1)).toFixed(1)}s ease-in-out infinite`, animationDelay: "0.9s" }} />
-              </div>
+              <div
+                className="absolute left-1/2 top-1/2 h-3/4 w-3/4 -translate-x-1/2 -translate-y-1/2 rounded-full blur-lg mix-blend-screen"
+                style={{
+                  background: "radial-gradient(circle, rgba(255,237,213,0.9) 0%, #fb923c 26%, #ea580c 48%, transparent 70%)",
+                  transform: `translate(-50%,-50%) scale(${0.85 + amp * 0.4})`,
+                  animation: `fusion-flicker ${(1.9 * (thinking ? 0.75 : 1)).toFixed(1)}s ease-in-out infinite`,
+                }}
+              />
+              <div
+                className="absolute left-1/2 top-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full blur-md mix-blend-screen"
+                style={{
+                  background: "radial-gradient(circle, #fde68a 0%, #f97316 40%, transparent 72%)",
+                  animation: `fusion-flicker ${(1.3 * (thinking ? 0.75 : 1)).toFixed(1)}s ease-in-out infinite`,
+                  animationDelay: "0.35s",
+                }}
+              />
               <div className="absolute inset-0">
-                {[8, 22, 38, 52, 66, 80, 92].map((x, i) => (
+                {[14, 28, 42, 50, 58, 72, 86].map((x, i) => (
                   <span
                     key={i}
-                    className="absolute h-1 w-1 rounded-full"
+                    className="absolute h-1.5 w-1.5 rounded-full"
                     style={{
                       left: `${x}%`,
-                      bottom: "18%",
-                      background: i % 2 ? "#fed7aa" : "#fdba74",
-                      boxShadow: "0 0 6px 1px #fb923c",
-                      animation: `ember-rise ${(3 + (i % 3)).toFixed(1)}s linear infinite`,
-                      animationDelay: `${(i * 0.5).toFixed(1)}s`,
+                      top: "52%",
+                      background: i % 2 ? "#fef3c7" : "#fdba74",
+                      boxShadow: "0 0 8px 2px #fb923c",
+                      animation: `ember-rise ${(2.6 + (i % 3) * 0.7).toFixed(1)}s linear infinite`,
+                      animationDelay: `${(i * 0.45).toFixed(1)}s`,
                     }}
                   />
                 ))}
@@ -126,79 +135,53 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
             </>
           )}
 
-          {/* Slow rotating sheen for extra flow (faster while thinking) */}
-          <div
-            className="absolute inset-[-25%] mix-blend-screen"
-            style={{
-              background:
-                "conic-gradient(from 0deg, transparent, rgba(255,255,255,0.10), transparent 40%, rgba(255,255,255,0.06), transparent)",
-              animation: `fusion-drift ${thinking ? 8 : 22}s linear infinite`,
-            }}
-          />
-
           {/* Converging particles — spiral INTO the core (the fusing fuel). */}
           {(reactive || thinking) && (
             <div className="absolute left-1/2 top-1/2 h-0 w-0">
-              {[0, 1, 2, 3, 4].map((i) => (
+              {[0, 1, 2, 3, 4, 5].map((i) => (
                 <div
                   key={i}
                   className="absolute left-0 top-0"
                   style={{
-                    width: 120,
-                    height: 120,
-                    marginLeft: -60,
-                    marginTop: -60,
-                    transformOrigin: "center",
-                    animation: `fusion-implode ${(thinking ? 1.5 : 2.1)}s linear infinite`,
-                    animationDelay: `${i * (thinking ? 0.3 : 0.42)}s`,
-                    transform: `rotate(${i * 72}deg)`,
+                    width: 200, height: 200, marginLeft: -100, marginTop: -100,
+                    animation: `fusion-implode ${thinking ? 1.5 : 2.1}s linear infinite`,
+                    animationDelay: `${i * (thinking ? 0.25 : 0.35)}s`,
+                    transform: `rotate(${i * 60}deg)`,
                   }}
                 >
-                  <span
-                    className="absolute left-1/2 top-0 h-1.5 w-1.5 -translate-x-1/2 rounded-full"
-                    style={{ background: "#e0f2fe", boxShadow: `0 0 8px 2px ${accent}` }}
-                  />
+                  <span className="absolute left-1/2 top-0 h-2 w-2 -translate-x-1/2 rounded-full" style={{ background: "#fff7ed", boxShadow: `0 0 10px 2px ${accent}` }} />
                 </div>
               ))}
             </div>
           )}
 
-          {/* Discharging energy rings — pulses radiating from the fusion core. */}
+          {/* Discharging energy rings */}
           {(reactive || thinking) && (
             <>
-              <span className="absolute left-1/2 top-1/2 h-24 w-24 rounded-full border" style={{ borderColor: `${accent}aa`, animation: `fusion-ring ${thinking ? 1.8 : 2.4}s ease-out infinite` }} />
-              <span className="absolute left-1/2 top-1/2 h-24 w-24 rounded-full border" style={{ borderColor: `${accent}66`, animation: `fusion-ring ${thinking ? 1.8 : 2.4}s ease-out infinite`, animationDelay: "0.9s" }} />
+              <span className="absolute left-1/2 top-1/2 h-32 w-32 rounded-full border-2" style={{ borderColor: `${accent}aa`, animation: `fusion-ring ${thinking ? 1.8 : 2.4}s ease-out infinite` }} />
+              <span className="absolute left-1/2 top-1/2 h-32 w-32 rounded-full border-2" style={{ borderColor: `${accent}55`, animation: `fusion-ring ${thinking ? 1.8 : 2.4}s ease-out infinite`, animationDelay: "0.9s" }} />
             </>
           )}
 
-          {/* Hot fusion CORE — a bright plasma point that flares with the voice. */}
+          {/* Hot fusion CORE */}
           <div
-            className="absolute left-1/2 top-1/2 h-20 w-20 rounded-full blur-md"
+            className="absolute left-1/2 top-1/2 h-24 w-24 rounded-full blur-md"
             style={{
-              background: `radial-gradient(circle, #ffffff 0%, ${accent} 34%, ${accent}00 70%)`,
-              transform: `translate(-50%, -50%) scale(${0.6 + amp * 1.5})`,
-              opacity: 0.7 + amp * 0.3,
+              background: `radial-gradient(circle, #ffffff 0%, ${idle ? accent : "#fed7aa"} 32%, transparent 70%)`,
+              transform: `translate(-50%, -50%) scale(${0.6 + amp * 1.4})`,
+              opacity: 0.75 + amp * 0.25,
               transition: "transform 110ms ease-out",
               animation: thinking ? "fusion-core 1.5s ease-in-out infinite" : undefined,
             }}
           />
-
-          {/* Fine top sheen so the panel reads as glass */}
-          <div
-            className="absolute inset-0"
-            style={{ background: "linear-gradient(160deg, rgba(255,255,255,0.10), transparent 45%)" }}
-          />
         </div>
-      </div>
 
-      <div className="flex flex-col items-center gap-1">
-        <div className="flex items-center gap-2">
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: accent, boxShadow: `0 0 8px ${accent}` }} />
-          <span className="text-sm font-semibold tracking-wide text-slate-700 dark:text-slate-100">
-            {LABEL[state]}
-          </span>
+        {/* Status — a floating glass pill at the bottom, over the plasma. */}
+        <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-slate-950/45 px-3.5 py-1.5 backdrop-blur-md">
+          <span className="h-2 w-2 rounded-full" style={{ background: accent, boxShadow: `0 0 8px ${accent}` }} />
+          <span className="text-sm font-semibold tracking-wide text-white">{LABEL[state]}</span>
+          <span className="hidden text-xs text-white/70 sm:inline">· {SUBLABEL[state]}</span>
         </div>
-        <span className="text-xs text-slate-500 dark:text-slate-400">{SUBLABEL[state]}</span>
       </div>
     </div>
   );
