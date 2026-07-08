@@ -71,4 +71,8 @@ async def test_traits_change_the_response_and_show_in_trace(real_turns) -> None:
         verdict = await judge_companion_voice(real_turns.llm, msg, on.reply)
         assert verdict.ok, f"traits-on reply judged chatbot-like: {verdict.reason} — {on.reply}"
     finally:
-        await profiles.update(real_turns.user_id, {"traits_enabled": original})
+        # Restore explicitly (not just the snapshot): merge-update means a killed run
+        # could leave the demo user disabled, so re-enable any trait that was on
+        # originally and default the rest to enabled (the demo user's known-good state).
+        restore = {t: original.get(t, True) for t in _TRAIT_IDS}
+        await profiles.update(real_turns.user_id, {"traits_enabled": restore})

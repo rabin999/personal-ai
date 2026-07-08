@@ -59,3 +59,27 @@ async def test_a_turn_is_fully_reconstructable_from_the_trace(real_turns) -> Non
     assert turn["llm_calls"] >= 1
     assert turn["tokens_in"] > 0 and turn["cost_usd"] > 0.0
     assert turn["reflected"] is True
+
+    # ── F7: everything needed to evaluate the turn is in the trace, VERBATIM ──
+    adata = assembly[-1]["data"]
+    # The REAL assembled prompt (full, not a 4k summary) + the actual messages sent.
+    assert len(adata.get("system_prompt", "")) > 4000, "system prompt not stored verbatim"
+    assert isinstance(adata.get("messages"), list) and adata["messages"], "messages array missing"
+    assert adata["messages"][-1]["content"] == "what's the weather in Kathmandu right now?"
+    # F6: the active traits + injected trait text are in the trace.
+    assert adata.get("active_traits") and adata.get("trait_text")
+    # F5: the inferred intent + emotional read + live-info decision are logged.
+    resolve = [
+        e
+        for e in events
+        if e["stage"] == "reasoning" and e["data"].get("node") == "resolve_context"
+    ]
+    assert resolve and resolve[0]["data"].get("intent"), "inferred intent not in trace"
+    # F7: self-reflection shows the actual draft → critique → (revision), not just a bool.
+    reflection = [e for e in events if e["stage"] == "reflection"]
+    assert reflection, "no reflection span"
+    rdata = reflection[-1]["data"]
+    assert "draft" in rdata and "critique" in rdata, f"reflection lacks draft/critique: {rdata}"
+    # A tool turn records the fetched data (search result) + the why-not for unused tools.
+    tool_spans = [e for e in events if e["stage"] == "tool"]
+    assert tool_spans and tool_spans[-1]["data"].get("result"), "tool result not captured"

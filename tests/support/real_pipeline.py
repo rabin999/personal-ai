@@ -91,6 +91,9 @@ class RealTurns:
             prompt_chars=len(prompt.system_prompt),
             active_traits=[f"{t['id']}:v{t['version']}" for t in prompt.active_traits],
             trait_text=sections.get("traits", ""),
+            system_prompt=prompt.system_prompt,  # F7: full verbatim prompt
+            messages=prompt.messages,
+            recall_source=prompt.recall_source,
         )
         trace.emit(
             "router", f"routing to {prompt.complexity_hint} tier", tier=prompt.complexity_hint

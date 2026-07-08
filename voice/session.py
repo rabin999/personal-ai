@@ -336,6 +336,14 @@ class VoiceSession:
                     f"prompt assembled (complexity={prompt.complexity_hint})",
                     complexity=prompt.complexity_hint,
                     entities=[c.name for c in prompt.resolved_entities],
+                    prompt_version=prompt.prompt_version,
+                    # F7: the real assembled prompt verbatim + trait/recall evidence,
+                    # so a voice turn is evaluable from its trace alone (parity w/ chat).
+                    system_prompt=prompt.system_prompt,
+                    messages=prompt.messages,
+                    active_traits=[f"{t['id']}:v{t['version']}" for t in prompt.active_traits],
+                    trait_text=prompt.sections.get("traits", ""),
+                    recall_source=prompt.recall_source,
                 )
                 self._trace.emit("router", f"routing to {prompt.complexity_hint} tier")
 

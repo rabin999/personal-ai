@@ -630,6 +630,7 @@ class ResponseGenerator:
         # If it slipped into assistant-speak, re-say it in-voice once. The span is
         # emitted EVERY turn (trace §3.8) — ran/what-it-checked/whether-it-revised —
         # so the trace shows self-reflection actually happened, not only on a catch.
+        draft_before = text  # F7: keep the pre-reflection draft for the trace
         flags_before = find_forbidden(text, allow_disclosure=allow_disc)
         revised = False
         scrubbed_used = False
@@ -653,6 +654,15 @@ class ResponseGenerator:
                 revised=revised,
                 scrubbed=scrubbed_used,
                 clean_after=not find_forbidden(text, allow_disclosure=allow_disc),
+                # F7: the actual draft → revision content, so the self-reflection
+                # step is fully inspectable (not just whether it ran/revised).
+                draft=draft_before,
+                critique=(
+                    f"forbidden assistant-speak: {flags_before}"
+                    if flags_before
+                    else "passed the response standard; no revision needed"
+                ),
+                revised_text=text if revised else "",
             )
         return await self._finish(prompt, text, action, turn.judgment)
 

@@ -1190,3 +1190,39 @@ The OFF variant reintroduces the exact assistant-speak ("I'd love to help you wi
 long lecture that the `response_voice` trait exists to prevent — direct evidence the trait is
 operative. ruff + mypy clean; prompt/golden/response-gen unit + golden suites still green (no
 regression from the v3 template change).
+
+---
+
+## F7 — Evaluate a whole turn from its trace alone
+
+**App-goal verified:** a single turn's persisted trace contains the ACTUAL, complete content needed
+to judge it — verbatim prompt, inferred intent/emotion, retrieved memory + fetched data, every tool
+call (+why-not), model/tokens/cost/cache, self-reflection draft→critique→revision, and the final
+response + raw voice text — inspectable in one place.
+
+**Baseline (already strong):** a real weather turn already persisted 18 spans to the durable trace
+store: `session, retrieval, assembly, router, reasoning×(perceive/resolve_context/respond/reflect_log),
+llm×N (model, input/output tokens, cost_usd, latency_ms, cache_hit, cached_tokens), tool (args,
+result, ok, status, latency), judgment (intent/novelty/salience/boundary), reflection, generation,
+response (voice_text), session (total_ms)` — plus `_turn_totals` rolling up llm_calls/tokens/cost.
+
+**Gaps closed (F7):**
+- **Verbatim prompt.** The assembly span stored only `system_prompt[:4000]` (chat) or nothing
+  (harness/voice). Now the assembly span carries the **full system prompt + the actual `messages`
+  array** sent to the model (chat route, voice session, and the real-call harness). "The real
+  assembled prompt, verbatim" — not a summary.
+- **Self-reflection content.** The reflection span logged only booleans (ran/revised). It now also
+  carries the actual **`draft` → `critique` → `revised_text`**, so the self-reflection step is fully
+  inspectable.
+- (F5) inferred `intent`/`emotional_read`/`needs_live_info`/`live_query`; (F6) `active_traits` +
+  injected `trait_text`; (F3/F4) `recall_source` — all added to the trace in their items and now
+  asserted here as part of one-turn completeness.
+
+**In-app inspectability:** the TraceDetailPage renders `event.data` generically (`Object.entries` →
+rows), so every one of these fields surfaces in the in-app trace detail automatically; the deep
+StructuredLogger spans also flow to Langfuse (A8) for the full-depth view.
+
+**Proof:** `tests/real_call/test_trace_reconstruction.py` extended and green — asserts the trace has
+the verbatim system prompt (>4000 chars, i.e. not truncated), the messages array (last message ==
+the user's utterance), active_traits + trait_text, the inferred intent, the reflection draft+critique,
+and the tool result. ruff + mypy clean; voice-session unit tests green.
