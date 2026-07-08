@@ -227,6 +227,10 @@ class VoiceSession:
         idle_frames = 0
         decided_incomplete = False
         capturing = False
+        # STT re-use: skip transcribing the same audio twice when only silence was
+        # added between the short- and long-pause endpoint checks (latency, §36).
+        speech_since_transcribe = False
+        last_transcript = ""
         turn: asyncio.Task[None] | None = None
         try:
             async for frame in self._pipeline.stream(frames):
@@ -288,6 +292,7 @@ class VoiceSession:
                         "vad", "speech detected — capturing", preroll_frames=len(buffer)
                     )
                     capturing, silence_ms, decided_incomplete = True, 0.0, False
+                    speech_since_transcribe, last_transcript = True, ""  # fresh utterance
                 if not capturing:
                     preroll.append(frame.pcm)  # keep the rolling pre-roll fresh
                     # §8.2: while idle, proactively deliver a finished background
@@ -303,6 +308,7 @@ class VoiceSession:
                 buffer.append(frame.pcm)
                 if frame.is_speech:  # raw per-frame verdict, not the gate hysteresis
                     silence_ms = 0.0
+                    speech_since_transcribe = True  # buffer's WORDS changed
                     continue
 
                 # Trailing silence inside an utterance → is the thought done? (§21)
@@ -315,7 +321,13 @@ class VoiceSession:
                 if silence_ms < threshold:
                     continue
 
-                transcript = await self._transcribe(buffer)
+                # Latency: only pay for STT when the SPEECH content changed. The
+                # incomplete→long-pause re-check adds only silence, so its transcript is
+                # identical — reuse it instead of transcribing the same audio twice.
+                if speech_since_transcribe or not last_transcript:
+                    last_transcript = await self._transcribe(buffer)
+                    speech_since_transcribe = False
+                transcript = last_transcript
                 if not transcript.strip():
                     capturing, buffer = False, []
                     continue

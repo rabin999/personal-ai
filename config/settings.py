@@ -82,7 +82,10 @@ class Settings(BaseSettings):
     # (TEST_REPORT F2) showed small+vocab transcribes rare user terms perfectly where
     # base mangles them, so the final defaults to "small". "tiny"/"base" are
     # real-time on CPU; "small"/"medium" are more accurate but slower.
-    stt_engine: str = "faster-whisper"  # "faster-whisper" (local, $0) | "grok" (xAI STT)
+    # STT engine. Default "grok" (xAI STT): ~1.5s/utterance + ~5% WER, vs local
+    # faster-whisper "small" which ran ~5-10s/utterance on the CPU host (the reported
+    # 10s speech→text). faster-whisper stays available ($0, offline) via this setting.
+    stt_engine: str = "grok"  # "grok" (xAI STT, fast) | "faster-whisper" (local, $0)
     stt_model_size: str = "base"  # streaming-partial (fast draft) model
     stt_final_model_size: str = "small"  # final-transcript (accurate) model
     stt_language: str = "en"  # Grok STT language hint (empty = auto-detect)
