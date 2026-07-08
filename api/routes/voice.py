@@ -55,9 +55,14 @@ def _pipeline_config(user: UserRecord) -> PipelineConfig:
 
 def _endpointer(user: UserRecord) -> SemanticEndpointer:
     prefs = AudioPrefs.model_validate(user.audio_prefs) if user.audio_prefs else AudioPrefs()
+    # Keep turn-taking IN SYNC with the companion's speaking pace (user request): a
+    # faster voice_speed → proportionally shorter endpoint pauses, so a snappy fast
+    # companion also takes its turn snappily, and a slower one is more patient. Scale
+    # inversely by voice_speed, clamped so it never gets so short it cuts people off.
+    scale = max(0.7, min(1.3, 1.0 / max(0.8, prefs.voice_speed)))
     return SemanticEndpointer(
-        short_pause_ms=prefs.endpoint_short_pause_ms,
-        long_pause_ms=prefs.endpoint_long_pause_ms,
+        short_pause_ms=int(prefs.endpoint_short_pause_ms * scale),
+        long_pause_ms=int(prefs.endpoint_long_pause_ms * scale),
     )
 
 
