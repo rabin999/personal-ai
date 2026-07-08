@@ -111,13 +111,13 @@ function TurnDetail({
       {/* Collapsible header: turn + headline metrics + the gist */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 px-5 py-3.5 text-left hover:bg-neutral-50 dark:hover:bg-neutral-900/60"
+        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3.5 text-left hover:bg-neutral-50 sm:px-5 dark:hover:bg-neutral-900/60"
       >
         <span className="text-neutral-500 dark:text-neutral-400">{open ? "▾" : "▸"}</span>
         <span className="text-sm font-semibold">Turn {turn}</span>
         {totals && <>
           <span className="mx-1 hidden h-3.5 w-px bg-neutral-300 sm:block dark:bg-neutral-700" />
-          <span className="hidden flex-wrap items-center gap-1.5 sm:flex">
+          <span className="flex flex-wrap items-center gap-1.5">
             <Pill>{totals.total_ms ? fmtMs(totals.total_ms) : "—"}</Pill>
             <Pill>{fmtNum(totals.tokens_in + totals.tokens_out)} tok</Pill>
             <Pill>${totals.cost_usd.toFixed(4)}</Pill>
@@ -136,7 +136,7 @@ function TurnDetail({
         <div className="border-t border-neutral-100 dark:border-neutral-800">
           {/* Exchange */}
           {(said || reply) && (
-            <div className="space-y-2 border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
+            <div className="space-y-2 border-b border-neutral-100 px-4 py-4 sm:px-5 dark:border-neutral-800">
               {said && (
                 <p className="text-[15px] leading-relaxed">
                   <span className="mr-1.5 rounded bg-neutral-100 px-1.5 py-0.5 text-sm font-semibold uppercase tracking-wide text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">You</span>
@@ -154,7 +154,7 @@ function TurnDetail({
 
           {/* Canonical event timeline — everything in chronological order, stamped
               with the offset from the turn start. */}
-          <div className="px-5 py-4">
+          <div className="px-4 py-4 sm:px-5">
             <div className="mb-3 flex items-baseline justify-between">
               <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Timeline</p>
               <p className="text-xs text-neutral-400">
@@ -207,7 +207,7 @@ function CallCard({ call }: { call: LlmCall }) {
         )}
       </div>
       {open && (
-        <div className="space-y-3 border-t border-neutral-200 px-3 py-3 dark:border-neutral-800">
+        <div className="space-y-3 border-t border-neutral-200 px-2.5 py-3 sm:px-3 dark:border-neutral-800">
           <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-neutral-500">
             <span>temp {str(params.temperature) || "—"}</span>
             <span>max_tokens {str(params.max_tokens) || "—"}</span>

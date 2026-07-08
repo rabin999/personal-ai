@@ -364,7 +364,7 @@ function AwarenessSettings({ p }: { p: UserProfile }) {
         onChange={(v) => { setHealth(v); void updatePrefs({ health_checkins: v }); }}
       />
       <label className="flex items-center justify-between gap-3">
-        <span className="flex flex-col">
+        <span className="flex min-w-0 flex-col">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Listening</span>
           <span className="text-[11px] text-slate-400 dark:text-slate-500">
             Near = just you · Surroundings = also what's around you
@@ -376,7 +376,7 @@ function AwarenessSettings({ p }: { p: UserProfile }) {
             const v = e.target.value as "near" | "surroundings";
             setMode(v); void updatePrefs({ ambient_mode: v });
           }}
-          className="rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
+          className="shrink-0 rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
         >
           <option value="near">Near / direct</option>
           <option value="surroundings">Surroundings</option>
@@ -395,7 +395,7 @@ function AwarenessSettings({ p }: { p: UserProfile }) {
 function Switch({ label, hint, on, onChange }: { label: string; hint: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
     <label className="flex items-center justify-between gap-3">
-      <span className="flex flex-col">
+      <span className="flex min-w-0 flex-col">
         <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
         <span className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</span>
       </span>
