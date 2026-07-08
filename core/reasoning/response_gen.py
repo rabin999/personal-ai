@@ -26,6 +26,7 @@ from pydantic import BaseModel, BeforeValidator, ValidationError
 from core.observability.logger import StructuredLogger
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
+from core.reasoning.prosody import prosody_directive, read_register, strip_inappropriate_tags
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
 from core.reasoning.style import find_forbidden, scrub_forbidden
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
@@ -511,8 +512,13 @@ class ResponseGenerator:
         sentences as they arrive. Returns None (→ caller falls back) on an empty
         stream. Used only for plain conversational turns (no tool/live-info)."""
         instructions = _SPOKEN_REPLY_INSTRUCTIONS
+        # U8: turn the emotional read into an explicit register directive so the model
+        # weaves the RIGHT delivery tags (sad→gentle/encouraging, excited→upbeat,
+        # stressed→calm) instead of a flat or mismatched tone.
+        _register, directive = prosody_directive(prompt.emotion)
+        instructions += f"\nDelivery register for THIS turn: {directive}"
         if prompt.emotion:
-            instructions += f"\nDetected voice emotion signal: {json.dumps(prompt.emotion)}"
+            instructions += f"\n(Raw emotion signal: {json.dumps(prompt.emotion)})"
         messages = [
             *prompt.messages[:-1],
             {"role": "system", "content": instructions},
@@ -799,8 +805,11 @@ class ResponseGenerator:
         budget: "_CostBudget | None" = None,
     ) -> LLMTurn | None:
         instructions = _JUDGMENT_INSTRUCTIONS
+        # U8: explicit per-turn delivery register from the emotional read.
+        _register, directive = prosody_directive(prompt.emotion)
+        instructions += f"\nDelivery register for THIS turn: {directive}"
         if prompt.emotion:
-            instructions += f"\nDetected voice emotion signal: {json.dumps(prompt.emotion)}"
+            instructions += f"\n(Raw emotion signal: {json.dumps(prompt.emotion)})"
         if dispatcher is not None and context is not None:
             instructions += _render_tool_instructions(
                 dispatcher.tools_for(context), tool_notes or []
@@ -851,9 +860,13 @@ class ResponseGenerator:
         the dual judgment+draft JSON, so a real turn (celebrating news, comforting)
         is salvaged instead of a canned fallback. Keeps the full persona; escalates
         a tier for reliability. Returns "" if the provider is fully down."""
+        _register, directive = prosody_directive(prompt.emotion)
         messages = [
             *prompt.messages[:-1],
-            {"role": "system", "content": _SPOKEN_REPLY_INSTRUCTIONS},
+            {
+                "role": "system",
+                "content": f"{_SPOKEN_REPLY_INSTRUCTIONS}\nDelivery register: {directive}",
+            },
             prompt.messages[-1],
         ]
         try:
@@ -920,8 +933,13 @@ class ResponseGenerator:
     ) -> GenerationResult:
         # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
         # and stored memory get the tag-free version (brief §1.4).
-        voice_text = text
-        clean_text = _strip_all_tags(text)
+        # U8: deterministic prosody backstop — never laugh on a down/stressed turn,
+        # even if the model slipped a levity tag in. Register is from the emotional
+        # read; recorded in the trace as proof prosody was selected per emotion.
+        register = read_register(prompt.emotion)
+        voice_text = strip_inappropriate_tags(text, register)
+        self._span("prosody", register=register, emotion=prompt.emotion or {})
+        clean_text = _strip_all_tags(voice_text)
         # Rule 6: every turn logs to the self-model (cost is logged by §11).
         record = TurnRecord(
             user_id=prompt.user_id,

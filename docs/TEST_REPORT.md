@@ -1789,3 +1789,23 @@ pt4 in the trace; the tools the ladder calls (search_memory, web_search) are
 registered. The end-to-end judged conversation (garbled "lassi" → correlate with an
 earlier cough) needs generation credits (OpenRouter 402), so that judged run is
 deferred; the mechanism + tool availability + prompt composition are proven.
+
+## U8 — Dynamic prosody per emotional read ✅
+
+**Problem (brief):** flat/static voice that even sounded off (laughing when it
+shouldn't). **Fix** (`core/reasoning/prosody.py`): the per-turn emotional read (SER
+valence/arousal + label, §22) maps to a delivery register — down→warm/gentle/
+encouraging, stressed→calm/steady, excited→upbeat, else natural — injected as an
+explicit register directive into generation (streamed + JSON + fallback paths) so the
+model weaves the RIGHT tags. A deterministic backstop (`strip_inappropriate_tags`)
+removes levity tags ([laugh]/[chuckle]/…) on a down/stressed turn so the voice never
+laughs when it shouldn't, even if the model slipped one in. Low-confidence reads
+default to neutral (never force a tone off a weak signal, §22). The chosen register +
+emotion are recorded in the trace (`prosody` span).
+
+**Verified:** `tests/unit/test_prosody.py` (8) ✅ — sad→gentle/encouraging (with the
+"no [laugh]" instruction), stressed→calm, excited→upbeat, low-confidence→neutral, and
+the exact bug: a [laugh] tag is stripped on a sad turn while [gentle] stays; levity
+kept on an excited turn. Response-gen suite green (register selected + span emitted in
+`_finish`). Final "sounds right" wants a human ear on real TTS — the selection +
+application + mismatch guard are proven; the audible check is the human-listen item.
