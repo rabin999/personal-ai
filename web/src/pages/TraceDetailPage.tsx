@@ -91,7 +91,20 @@ function TurnDetail({
     });
   }, [spans]);
   const anyParallel = calls.some((c) => c.concurrent);
-  const steps = spans.filter((e) => e.message !== "llm.call" && !isNoise(e));
+  const callMeta = useMemo(() => new Map(calls.map((c) => [c.event, c])), [calls]);
+
+  // Canonical event timeline: EVERYTHING that happened this turn (LLM calls + every
+  // pipeline stage), in chronological order, each stamped with its offset from the
+  // turn's first event — so you read the turn as "what happened, when".
+  const timeline = useMemo(() => {
+    const evs = spans
+      .filter((e) => !isNoise(e))
+      .map((e) => ({ e, t: num(e.data?.start_ts) || e.ts || 0 }))
+      .filter((x) => x.t > 0)
+      .sort((a, b) => a.t - b.t);
+    const t0 = evs.length ? evs[0].t : 0;
+    return evs.map(({ e, t }) => ({ e, offsetMs: Math.max(0, (t - t0) * 1000) }));
+  }, [spans]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900/40">
@@ -139,23 +152,20 @@ function TurnDetail({
             </div>
           )}
 
-          {/* Model calls map */}
-          {calls.length > 0 && (
-            <div className="border-b border-neutral-100 px-5 py-4 dark:border-neutral-800">
-              <p className="mb-2.5 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                {calls.length} model call{calls.length > 1 ? "s" : ""}
-              </p>
-              <div className="space-y-2">
-                {calls.map((c) => <CallCard key={c.index} call={c} />)}
-              </div>
-            </div>
-          )}
-
-          {/* Pipeline timeline */}
+          {/* Canonical event timeline — everything in chronological order, stamped
+              with the offset from the turn start. */}
           <div className="px-5 py-4">
-            <p className="mb-3 text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Pipeline</p>
-            <ol className="relative space-y-1 border-l border-neutral-200 pl-5 dark:border-neutral-800">
-              {steps.map((e, i) => <Step key={i} event={e} />)}
+            <div className="mb-3 flex items-baseline justify-between">
+              <p className="text-sm font-semibold uppercase tracking-wider text-neutral-500 dark:text-neutral-400">Timeline</p>
+              <p className="text-xs text-neutral-400">
+                {timeline.length} events · {calls.length} model call{calls.length === 1 ? "" : "s"}
+                {calls.length > 1 ? ` · ${anyParallel ? "some parallel" : "sequential"}` : ""}
+              </p>
+            </div>
+            <ol>
+              {timeline.map(({ e, offsetMs }, i) => (
+                <TimelineItem key={i} event={e} offsetMs={offsetMs} call={callMeta.get(e)} />
+              ))}
             </ol>
           </div>
 
@@ -223,20 +233,38 @@ function CallCard({ call }: { call: LlmCall }) {
   );
 }
 
-// ── one pipeline step on the timeline ──────────────────────────────────────
-function Step({ event }: { event: TraceEvent }) {
+// ── one chronological timeline entry: [time] │● content ────────────────────
+function TimelineItem({
+  event, offsetMs, call,
+}: { event: TraceEvent; offsetMs: number; call?: LlmCall }) {
+  const isCall = event.message === "llm.call";
+  const d = (event.data ?? {}) as Record<string, unknown>;
+  const dot = isCall ? "bg-violet-400" : stageMeta(event.stage, str(d.node)).dot;
+  return (
+    <li className="flex gap-3">
+      <span className="w-14 shrink-0 pt-0.5 text-right font-mono text-xs tabular-nums text-neutral-400">
+        {fmtOffset(offsetMs)}
+      </span>
+      <div className="relative flex-1 border-l border-neutral-200 pb-5 pl-5 dark:border-neutral-800">
+        <span className={`absolute -left-[7px] top-1 h-3.5 w-3.5 rounded-full ring-4 ring-white dark:ring-neutral-900/40 ${dot}`} />
+        {isCall && call ? <CallCard call={call} /> : <StepBody event={event} />}
+      </div>
+    </li>
+  );
+}
+
+// The content of a non-LLM pipeline step (title + fields + expandables).
+function StepBody({ event }: { event: TraceEvent }) {
   const d = (event.data ?? {}) as Record<string, unknown>;
   const meta = stageMeta(event.stage, str(d.node));
   const rows = fieldRows(event.stage, d);
   const longs = longFields(d);
   const warn = event.level === "warn" || event.stage === "error";
-
   return (
-    <li className="relative pb-4 pl-3 last:pb-0">
-      <span className={`absolute -left-[26px] top-0.5 h-3.5 w-3.5 rounded-full ring-4 ring-white dark:ring-neutral-900/40 ${meta.dot}`} />
+    <>
       <div className="flex flex-wrap items-baseline gap-x-2">
         <span className={`text-[15px] font-semibold ${warn ? "text-amber-600 dark:text-amber-400" : ""}`}>{meta.title}</span>
-        {meta.sub && <span className="text-[15px] text-neutral-500 dark:text-neutral-400">{meta.sub}</span>}
+        {meta.sub && <span className="text-sm text-neutral-500 dark:text-neutral-400">{meta.sub}</span>}
         {warn && <span className="text-amber-500">⚠</span>}
       </div>
       {rows.length > 0 && (
@@ -250,7 +278,7 @@ function Step({ event }: { event: TraceEvent }) {
         </dl>
       )}
       {longs.map(([label, text], i) => <Expandable key={i} label={label} text={text} />)}
-    </li>
+    </>
   );
 }
 
@@ -267,6 +295,9 @@ function Cell({ value }: { value: unknown }) {
     );
   }
   if (typeof value === "boolean") return <span>{value ? "yes" : "no"}</span>;
+  if (value && typeof value === "object") {
+    return <span className="break-words font-mono text-[13px]">{JSON.stringify(value)}</span>;
+  }
   return <span className="break-words">{clean(str(value))}</span>;
 }
 
@@ -444,6 +475,7 @@ function prettyPurpose(p: string): string {
 }
 function shortModel(m: string): string { return m.split("/").pop() ?? m; }
 function fmtMs(v: unknown): string { const n = num(v); return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`; }
+function fmtOffset(ms: number): string { return ms >= 1000 ? `+${(ms / 1000).toFixed(1)}s` : `+${Math.round(ms)}ms`; }
 function fmtNum(n: number): string { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
 function fmtCost(v: unknown): string { const n = num(v); return n > 0 ? n.toFixed(4) : "0"; }
 function clean(s: string): string { return s.replace(/^- /, "").trim(); }
