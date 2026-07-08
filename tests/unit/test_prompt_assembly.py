@@ -123,6 +123,36 @@ async def test_understanding_ladder_and_correlation_in_prompt() -> None:
     assert result.prompt_version.startswith("pt4")
 
 
+# U10/U11/U12: audio-awareness directives reach the prompt when settings are on, and
+# are absent when off / not in surroundings mode.
+async def test_audio_awareness_directives_gated_by_settings() -> None:
+    from core.audio.awareness import HealthMonitor
+    from ports.sound import SoundRead
+
+    h = Harness()
+    await h.seed()
+    # Settings ON: mimic tone + surroundings mode + health check-ins (default on).
+    await h.profiles.update(
+        USER, {"audio_prefs": {"mimic_tone": True, "ambient_mode": "surroundings"}}
+    )
+    whisper = SoundRead(vocal_register="whisper", ambient_voices=True)
+    checkin = HealthMonitor().observe(SoundRead(health_sounds=["cough"], confidence=0.9))
+    result = await h.assembler.assemble(USER, SESSION, "you there?", sound=whisper, health=checkin)
+    assert isinstance(result, AssembledPrompt)
+    sp = result.system_prompt.lower()
+    assert "whisper" in sp  # U11 mirror directive present
+    assert result.mirror_register == "whisper"
+    assert "another person" in sp  # U12 surroundings awareness
+    assert "not transcribing" in sp  # privacy gate note (transcribe_others default off)
+    assert "check in" in sp  # U10 caring check-in directive
+
+    # Settings OFF (mimic off, near mode) → none of those directives.
+    await h.profiles.update(USER, {"audio_prefs": {"mimic_tone": False, "ambient_mode": "near"}})
+    off = await h.assembler.assemble(USER, SESSION, "you there?", sound=whisper, health=checkin)
+    assert off.mirror_register is None
+    assert "another person" not in off.system_prompt.lower()
+
+
 # §17 rule 3: soft psychological signals reach the assembled prompt (§17 → §10).
 async def test_psych_signals_reach_the_prompt() -> None:
     signal = (

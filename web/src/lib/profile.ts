@@ -39,12 +39,17 @@ export interface UserProfile {
   locale: LocaleProfile;
 }
 
-/** Save voice speed (C7) and/or locale (C5). Partial — only sent keys change. */
+/** Save voice speed (C7), locale (C5), and the U10-U12 audio-awareness toggles.
+ * Partial — only sent keys change; toggles take effect on the next reply (live). */
 export async function updatePrefs(
   patch: {
     voice_speed?: number;
     locale?: LocaleProfile;
     comm_prefs?: { directness?: number; emotional_scaffolding?: number };
+    mimic_tone?: boolean;
+    ambient_mode?: "near" | "surroundings";
+    transcribe_others?: boolean;
+    health_checkins?: boolean;
   },
 ): Promise<{ voice_speed: number; locale: LocaleProfile }> {
   const res = await fetch("/api/prefs", {

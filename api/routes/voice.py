@@ -25,6 +25,7 @@ from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
 from voice.pipeline import PipelineConfig, VADModel
 from voice.session import TTS_SAMPLE_RATE, VoiceSession
+from voice.sound import LaggingSoundProvider
 from voice.trace import TraceEmitter
 
 logger = logging.getLogger(__name__)
@@ -144,6 +145,7 @@ def _start(
         trace=trace,
         episodic=pipeline.episodic,
         emotion=LaggingEmotionProvider(pipeline.ser),
+        sound=LaggingSoundProvider(pipeline.sound_classifier),  # U10-U12
         voice=voice,
         dispatcher=pipeline.dispatcher,
         delivery=pipeline.delivery,

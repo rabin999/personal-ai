@@ -16,6 +16,11 @@ from typing import Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field
 
+from core.audio.awareness import (
+    HealthCheckin,
+    register_mirror_directive,
+    surroundings_context,
+)
 from core.memory.entities import EntityCandidate, EntityResolver, is_ambiguous
 from core.memory.episodic import EpisodicMemory
 from core.memory.procedural import ProceduralMemory
@@ -32,6 +37,7 @@ from core.reasoning.recall import (
 from core.reasoning.self_model import SelfModel
 from ports.llm import Tier
 from ports.preference_memory import PreferenceMemory
+from ports.sound import SoundRead
 
 # Prompt template version (Item 7 / spec §7): the identity + behavior-composition
 # template. BUMP on any change to the persona/self/tics/capability blocks below,
@@ -140,6 +146,10 @@ class AssembledPrompt(BaseModel):
     # brief U2: whether the dynamic persona ("how to talk with this user") shaped
     # this reply — recorded in the trace as evidence the persona drives responses.
     persona_active: bool = False
+    # U11: the vocal register to MIRROR this turn (whisper/soft) when mimic_tone is on
+    # and the user went off-baseline; None → reply in the normal register. Consumed by
+    # the prosody path; recorded in the trace.
+    mirror_register: str | None = None
     # Section name → rendered text, pre-trim; kept for tests and debugging.
     sections: dict[str, str] = Field(default_factory=dict)
 
@@ -192,6 +202,8 @@ class PromptAssembler:
         session_id: str,
         utterance: str,
         emotion: Mapping[str, Any] | None = None,
+        sound: "SoundRead | None" = None,
+        health: "HealthCheckin | None" = None,
     ) -> AssembledPrompt | DisambiguationRequest:
         # Step 2 — entity resolution; close candidates halt assembly.
         candidates = await self._entities.resolve(user_id, utterance)
@@ -282,6 +294,23 @@ class PromptAssembler:
         if self._persona is not None:
             persona_section = await _safe(self._persona.render_for_prompt(user_id), "", "persona")
         sections["persona"] = persona_section
+        # U10/U11/U12: audio-awareness directives from the sound stage + per-user
+        # settings (read live each turn so a toggle takes effect on the next reply).
+        audio = profile.audio_prefs
+        mirror_directive, mirror_register = register_mirror_directive(
+            sound, mimic_tone=getattr(audio, "mimic_tone", False)
+        )
+        sections["surroundings"] = surroundings_context(
+            sound,
+            ambient_mode=getattr(audio, "ambient_mode", "near"),
+            transcribe_others=getattr(audio, "transcribe_others", False),
+        )
+        sections["mirror"] = mirror_directive
+        sections["health"] = (
+            health.directive
+            if (health and health.should_check_in and getattr(audio, "health_checkins", True))
+            else ""
+        )
         sections["rules"] = "\n".join(f"- {r.rule_text}" for r in rules)
         sections["entities"] = "\n".join(
             f"- {c.name} ({c.entity_type}, id={c.entity_id})" for c in candidates
@@ -328,6 +357,7 @@ class PromptAssembler:
             recall_source=recall_source,
             user_context_signals=ctx_signals,  # C5: user-model signals used this turn
             persona_active=bool(persona_section),  # U2: persona shaped this reply
+            mirror_register=mirror_register,  # U11: register to mirror this turn
             sections=sections,
         )
 
@@ -374,6 +404,9 @@ _SECTION_TITLES: dict[str, str] = {
     "cold_start": "First contact",
     "traits": "Behavior traits",
     "comm_prefs": "Communication preferences",
+    "health": "",  # U10: caring health-sound check-in directive (self-contained)
+    "mirror": "",  # U11: mirror the user's vocal register this turn
+    "surroundings": "",  # U12: ambient awareness (surroundings mode)
     "persona": "",  # brief U2: persona supplies its own header ("How THIS person…")
     "psych": "",  # describe_for_prompt supplies its own caveat header (§17)
     "rules": "Learned rules for this user",

@@ -58,7 +58,13 @@ class FakeSTT:
 
 class FakeAssembler:
     async def assemble(
-        self, user_id: str, session_id: str, utterance: str, emotion: object = None
+        self,
+        user_id: str,
+        session_id: str,
+        utterance: str,
+        emotion: object = None,
+        sound: object = None,
+        health: object = None,
     ) -> AssembledPrompt:
         return AssembledPrompt(
             user_id=user_id,
@@ -223,6 +229,9 @@ class RepeatingDelivery:
     ) -> list[_Interjection]:
         self.calls += 1
         return [self._item]
+
+    async def deliveries_at_open(self, user_id: str, session_id: str) -> list[_Interjection]:
+        return []
 
 
 async def test_background_result_delivered_at_most_once() -> None:

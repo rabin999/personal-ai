@@ -27,7 +27,13 @@ class FakeUserContext:
 
 class FakeAssembler:
     async def assemble(
-        self, user_id: str, session_id: str, utterance: str, emotion: object = None
+        self,
+        user_id: str,
+        session_id: str,
+        utterance: str,
+        emotion: object = None,
+        sound: object = None,
+        health: object = None,
     ) -> AssembledPrompt:
         return AssembledPrompt(
             user_id=user_id,
@@ -50,6 +56,9 @@ class FakeDelivery:
     async def deliveries_for_pause(
         self, session_id: str, user_id: str, recent: str
     ) -> list[object]:
+        return []
+
+    async def deliveries_at_open(self, user_id: str, session_id: str) -> list[object]:
         return []
 
 

@@ -1836,3 +1836,31 @@ wired (idle poll + per-turn); this closes the cross-session gap.
 - Real Redis (`tests/real_call/test_delivery_carry.py`) ✅ — enqueue+complete in
   session A → `pending_deliveries_for_user` carries it to a new session, excludes the
   origin session, is user-scoped, and clears once delivered.
+
+## U10 — Health-sound awareness · U11 — Tone mimic · U12 — Surroundings capture ✅ (mechanism)
+
+Implemented behind swappable ports with proven decision logic; acoustic accuracy on a
+real mic is the flagged hardware item (per the brief).
+- **Port + adapter:** `ports/sound.py` (SoundClassifier → SoundRead: health sounds,
+  vocal register, ambient) + `adapters/sound/heuristic.py` (energy/crest/ZCR default,
+  swappable for a trained CNN). `voice/sound.py` runs it one turn behind (like SER).
+- **U10:** `HealthMonitor` — confident/repeated cough/sneeze → a caring, context-aware
+  check-in (correlates with weather/earlier cough), no-nag cooldown, tracked as a
+  transient episodic observation (not a durable "is sick" fact).
+- **U11:** `register_mirror_directive` + `mimic_tone` setting (live per turn) — whisper
+  in → soft/whispered reply; setting off → always normal.
+- **U12:** `surroundings_context` + `ambient_mode` setting (near/surroundings, live) —
+  surroundings mode uses ambient as context; PRIVACY GATE `transcribe_others`
+  (default OFF) separate from ambient awareness.
+- Settings exposed live in the profile API (`/api/prefs`) + an "Awareness" panel with
+  toggles; wired into composition + the voice session; consumed by prompt assembly
+  (health/mirror/surroundings sections + `mirror_register` on the trace).
+
+**Verified:** `tests/unit/test_audio_awareness.py` (10) — confident cough → caring
+check-in with correlation; low-confidence/none → no check-in; no-nag cooldown; whisper
+mirrored only when the setting is on; near mode ignores ambient; surroundings surfaces
+it with the privacy note; privacy gate default-off. `tests/unit/test_prompt_assembly.
+py::test_audio_awareness_directives_gated_by_settings` — directives reach the prompt
+when settings on, absent when off. Pipeline builds with the stage wired. Acoustic
+accuracy (real cough/whisper/ambient on a real mic) needs a device — the mechanism,
+gating, and live-toggle behavior are proven.

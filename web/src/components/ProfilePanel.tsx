@@ -227,6 +227,9 @@ function ProfileBody({ p, me }: { p: UserProfile; me: Me | null }) {
 
       {/* Voice speed (C7) + locale (C5) — editable */}
       <VoiceAndLocale p={p} />
+
+      {/* U10-U12: health check-ins, tone mirroring, near/surroundings + privacy */}
+      <AwarenessSettings p={p} />
     </div>
   );
 }
@@ -331,6 +334,81 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
       {saved === "ok" && <p className="text-[11px] text-emerald-500">Saved</p>}
       {saved === "err" && <p className="text-[11px] text-red-500">Couldn't save</p>}
     </Section>
+  );
+}
+
+// U10-U12: audio-awareness settings — health check-ins, tone mirroring, and the
+// near-vs-surroundings sensitivity (+ the default-off privacy gate for transcribing
+// others). All take effect live (next reply), no restart.
+function AwarenessSettings({ p }: { p: UserProfile }) {
+  const a = p.audio_prefs;
+  const [mimic, setMimic] = useState<boolean>(a.mimic_tone === true);
+  const [health, setHealth] = useState<boolean>(a.health_checkins !== false);
+  const [others, setOthers] = useState<boolean>(a.transcribe_others === true);
+  const [mode, setMode] = useState<"near" | "surroundings">(
+    a.ambient_mode === "surroundings" ? "surroundings" : "near",
+  );
+
+  return (
+    <Section title="Awareness">
+      <Switch
+        label="Match my tone"
+        hint="If you whisper or go quiet, I'll answer in the same register."
+        on={mimic}
+        onChange={(v) => { setMimic(v); void updatePrefs({ mimic_tone: v }); }}
+      />
+      <Switch
+        label="Check in on my health"
+        hint="Notice a cough/sneeze and gently ask if you're okay."
+        on={health}
+        onChange={(v) => { setHealth(v); void updatePrefs({ health_checkins: v }); }}
+      />
+      <label className="flex items-center justify-between gap-3">
+        <span className="flex flex-col">
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Listening</span>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+            Near = just you · Surroundings = also what's around you
+          </span>
+        </span>
+        <select
+          value={mode}
+          onChange={(e) => {
+            const v = e.target.value as "near" | "surroundings";
+            setMode(v); void updatePrefs({ ambient_mode: v });
+          }}
+          className="rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
+        >
+          <option value="near">Near / direct</option>
+          <option value="surroundings">Surroundings</option>
+        </select>
+      </label>
+      <Switch
+        label="Transcribe others (privacy)"
+        hint="Off by default. Only turn on to let me transcribe other people nearby."
+        on={others}
+        onChange={(v) => { setOthers(v); void updatePrefs({ transcribe_others: v }); }}
+      />
+    </Section>
+  );
+}
+
+function Switch({ label, hint, on, onChange }: { label: string; hint: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-3">
+      <span className="flex flex-col">
+        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</span>
+      </span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={() => onChange(!on)}
+        className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${on ? "bg-sky-500" : "bg-slate-300 dark:bg-slate-600"}`}
+      >
+        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${on ? "translate-x-4" : "translate-x-0.5"}`} />
+      </button>
+    </label>
   );
 }
 

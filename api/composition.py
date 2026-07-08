@@ -27,6 +27,7 @@ from adapters.queue.redis import RedisTaskQueue
 from adapters.search.brave import BraveSearch
 from adapters.search.serper import SerperSearch
 from adapters.ser.emotion2vec_client import Emotion2VecSER
+from adapters.sound.heuristic import HeuristicSoundClassifier
 from adapters.stt.faster_whisper import FasterWhisperSTT
 from adapters.tts.grok import GrokTTS
 from adapters.user_context.accounts import AccountStore
@@ -105,6 +106,7 @@ class Pipeline:
     stt: FasterWhisperSTT
     tts: GrokTTS
     ser: Emotion2VecSER
+    sound_classifier: HeuristicSoundClassifier  # U10-U12 sound-awareness stage
     queue: RedisTaskQueue
     tool_registry: ToolRegistry
     dispatcher: ToolDispatcher
@@ -317,6 +319,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         ),
         tts=GrokTTS(settings, ledger=ledger),
         ser=Emotion2VecSER(settings),
+        sound_classifier=HeuristicSoundClassifier(),
         queue=queue,
         tool_registry=tool_registry,
         dispatcher=dispatcher,

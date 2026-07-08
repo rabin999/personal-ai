@@ -20,6 +20,7 @@ from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
+from core.audio.awareness import HealthCheckin, HealthMonitor
 from core.memory.compaction import SessionCompactor
 from core.memory.conversation_store import ConversationStore
 from core.memory.episodic import EpisodicMemory
@@ -36,6 +37,7 @@ from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
 from voice.multiutterance import classify_utterance, combine
 from voice.pipeline import AudioInputPipeline, PipelineConfig, VADModel
+from voice.sound import LaggingSoundProvider
 from voice.trace import TraceEmitter
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,7 @@ class VoiceSession:
         trace: TraceEmitter,
         episodic: EpisodicMemory | None = None,
         emotion: LaggingEmotionProvider | None = None,
+        sound: LaggingSoundProvider | None = None,  # U10-U12 audio-awareness stage
         voice: str | None = None,
         barge_in: bool = True,
         dispatcher: "ToolDispatch | None" = None,
@@ -146,6 +149,8 @@ class VoiceSession:
         self._trace = trace
         self._episodic = episodic
         self._emotion = emotion
+        self._sound = sound  # U10-U12 sound stage (one turn behind)
+        self._health = HealthMonitor()  # U10 per-session cough tracker (no-nag)
         self._voice = voice
         self._barge_in = barge_in
         self._dispatcher = dispatcher
@@ -409,6 +414,17 @@ class VoiceSession:
                 self._emotion.schedule(
                     utterance, user_id=self._user_id, session_id=self._session_id
                 )
+            # U10-U12: read last turn's sound classification, then schedule this
+            # utterance's (one turn behind, like SER). Health check-in is debounced.
+            sound = self._sound.current() if self._sound is not None else None
+            health: HealthCheckin | None = None
+            if sound is not None:
+                recent = " ".join(t.text for t in self._working.recent(self._session_id, n=3))
+                health = self._health.observe(sound, context_hint=recent)
+                if health.should_check_in:
+                    self._trace.emit("audio", "health check-in", sound=health.sound)
+            if self._sound is not None:
+                self._sound.schedule(utterance, user_id=self._user_id, session_id=self._session_id)
 
             # Pull-at-pause (§14): deliver any background result that finished
             # since last turn (e.g. a web search), in-voice, before the reply.
@@ -416,7 +432,12 @@ class VoiceSession:
 
             self._working.append(self._session_id, Turn(role="user", text=transcript))
             prompt = await self._assembler.assemble(
-                self._user_id, self._session_id, transcript, emotion=emotion
+                self._user_id,
+                self._session_id,
+                transcript,
+                emotion=emotion,
+                sound=sound,
+                health=health,
             )
             context = self._tool_context(prompt)
             if isinstance(prompt, DisambiguationRequest):

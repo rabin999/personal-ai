@@ -101,13 +101,22 @@ async def set_prefs(body: dict[str, Any], user: CurrentUser, request: Request) -
     only the provided keys change; the model clamps/validates (speed → [0.8,1.5])."""
     pipeline = _pipeline(request)
     patch: dict[str, Any] = {}
+    audio: dict[str, Any] = {}
     if "voice_speed" in body:
         try:
-            patch["audio_prefs"] = {"voice_speed": float(body["voice_speed"])}
+            audio["voice_speed"] = float(body["voice_speed"])
         except (TypeError, ValueError):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="bad voice_speed"
             ) from None
+    # U10/U11/U12 audio-awareness toggles (live per turn — no restart needed).
+    for key in ("mimic_tone", "transcribe_others", "health_checkins"):
+        if key in body:
+            audio[key] = bool(body[key])
+    if body.get("ambient_mode") in ("near", "surroundings"):
+        audio["ambient_mode"] = body["ambient_mode"]
+    if audio:
+        patch["audio_prefs"] = audio
     if isinstance(body.get("locale"), dict):
         allowed = {"timezone", "city", "country", "units", "currency", "language"}
         patch["locale"] = {k: v for k, v in body["locale"].items() if k in allowed}
@@ -124,6 +133,10 @@ async def set_prefs(body: dict[str, Any], user: CurrentUser, request: Request) -
     updated = await pipeline.profiles.update(user.user_id, patch)
     return {
         "voice_speed": updated.audio_prefs.voice_speed,
+        "mimic_tone": updated.audio_prefs.mimic_tone,
+        "ambient_mode": updated.audio_prefs.ambient_mode,
+        "transcribe_others": updated.audio_prefs.transcribe_others,
+        "health_checkins": updated.audio_prefs.health_checkins,
         "locale": updated.locale.model_dump(),
         "comm_prefs": updated.comm_prefs.model_dump(),
     }

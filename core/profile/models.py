@@ -28,6 +28,19 @@ class AudioPrefs(BaseModel):
     # up and can sound chipmunk-y). Clamped to [0.8, 1.5] on write; applied to both
     # voice engines behind the voice port and recorded in the trace.
     voice_speed: float = Field(default=1.0, ge=0.8, le=1.5)
+    # U10: gently check in on detected health sounds (cough/sneeze/sniffle). On by
+    # default (caring); the user can turn it off if it's unwanted.
+    health_checkins: bool = True
+    # U11: mirror the user's vocal register when they go off-baseline (whisper → soft
+    # reply), until told not to. Off by default; live per-turn (no restart).
+    mimic_tone: bool = False
+    # U12: how much of the captured sound field to attend to. "near" (default) focuses
+    # on the close speaker; "surroundings" also uses the ambient field as context.
+    ambient_mode: Literal["near", "surroundings"] = "near"
+    # U12 PRIVACY GATE: actually transcribing OTHER nearby people's speech is
+    # privacy-sensitive — default OFF, separate from ambient awareness. Only when the
+    # user explicitly enables it is non-user speech transcribed.
+    transcribe_others: bool = False
 
 
 class LocaleProfile(BaseModel):
