@@ -41,6 +41,25 @@ const DEFAULT_VOICE = "orion"; // natural, less-warm default (26 available, fetc
 // reply's) are shown at once, so it never wraps or grows into a paragraph.
 const CAPTION_WINDOW = 8;
 
+// A warm, varied welcome shown when the conversation opens (displayed, not spoken —
+// the companion never initiates audio, §1.1). Uses the user's first name if known.
+function welcomeGreeting(name?: string | null): string {
+  const first = (name || "").trim().split(/\s+/)[0];
+  const withName = [
+    `Hey ${first} — good to see you. What's on your mind?`,
+    `Hi ${first}! I'm here — what's up?`,
+    `Hey ${first}, I'm listening whenever you're ready.`,
+    `Good to have you back, ${first}. What's going on?`,
+  ];
+  const noName = [
+    "Hey — good to see you. What's on your mind?",
+    "I'm here and listening — talk whenever you're ready.",
+    "Hey, what's going on?",
+  ];
+  const pool = first ? withName : noName;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
 // The companion route (/). Owns the real-time voice session: WebSocket
 // connect/auth/start/stop, mic capture, full-duplex playback + barge-in, the
 // talking orb, per-turn trace, and the profile panel.
@@ -234,6 +253,11 @@ export default function CompanionPage() {
       switch (msg.type) {
         case "ready":
           setConn("active");
+          // Warm, varied welcome shown the moment the conversation opens (the user
+          // asked for a greeting). Displayed only — the companion still never speaks
+          // first (§1.1); this is a UI ready-state, replaced by real captions once
+          // they talk. The first spoken reply also greets warmly (cold-start).
+          setCaption(welcomeGreeting(me?.name));
           sessionIdRef.current = msg.session_id || "";
           sampleRateRef.current = msg.sample_rate ?? 24_000;
           playerRef.current?.configure(sampleRateRef.current);
