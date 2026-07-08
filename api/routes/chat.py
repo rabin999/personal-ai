@@ -95,6 +95,8 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
             preferences=_lines(sections.get("preferences", "")),
             procedural=_lines(sections.get("rules", "")),
             entities=[c.name for c in prompt.resolved_entities],
+            # F3/F4: which conversation source an explicit recall question routed to.
+            recall_source=prompt.recall_source,
         )
         # Constructed-prompt span: the actual assembled prompt handed to the model.
         trace.emit(

@@ -81,6 +81,7 @@ class RealTurns:
             episodic=[ln for ln in sections.get("episodic", "").splitlines() if ln.strip()],
             semantic_facts=[ln for ln in sections.get("facts", "").splitlines() if ln.strip()],
             entities=[c.name for c in prompt.resolved_entities],
+            recall_source=prompt.recall_source,  # F3/F4 conversation-recall routing
         )
         trace.emit(
             "assembly",
@@ -116,6 +117,22 @@ class RealTurns:
             style_flags=result.style_flags,
             trace=trace.recorded,
         )
+
+    @property
+    def user_id(self) -> str:
+        return self._user
+
+    @property
+    def assembler(self):
+        return self._p.assembler
+
+    @property
+    def working(self):
+        return self._p.working
+
+    @property
+    def conversations(self):
+        return self._p.conversations
 
     @property
     def llm(self):

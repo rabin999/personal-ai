@@ -22,6 +22,11 @@ from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn, WorkingMemory
 from core.profile import ProfileService, TraitDef, TraitRegistry
+from core.reasoning.recall import (
+    ConversationRecall,
+    classify_recall,
+    render_current_transcript,
+)
 from core.reasoning.self_model import SelfModel
 from ports.llm import Tier
 from ports.preference_memory import PreferenceMemory
@@ -99,6 +104,10 @@ class AssembledPrompt(BaseModel):
     # backstop does NOT fire a fresh (irrelevant) search over the carried context.
     suppress_live_search: bool = False
     resolved_entities: list[EntityCandidate] = Field(default_factory=list)
+    # F3/F4: which conversation source (if any) this turn's recall was routed to —
+    # "current" (this session's transcript), "past" (the conversation store), or
+    # "none". Recorded in the trace so recall routing is inspectable.
+    recall_source: str = "none"
     # Section name → rendered text, pre-trim; kept for tests and debugging.
     sections: dict[str, str] = Field(default_factory=dict)
 
@@ -126,6 +135,7 @@ class PromptAssembler:
         projects: ProjectContextProvider | None = None,
         psych: PsychProvider | None = None,
         preferences: PreferenceMemory | None = None,
+        recall: ConversationRecall | None = None,
         char_budget: int = DEFAULT_CHAR_BUDGET,
     ) -> None:
         self._profiles = profiles
@@ -139,6 +149,7 @@ class PromptAssembler:
         self._projects = projects
         self._psych = psych
         self._preferences = preferences
+        self._recall = recall
         self._budget = char_budget
 
     async def assemble(
@@ -162,6 +173,10 @@ class PromptAssembler:
         # empty if that dependency is down (§10 graceful degradation): a Qdrant/
         # Neo4j/Mem0 outage drops that layer of context but the turn still completes.
         recent = self._working.recent(session_id, n=RECENT_TURNS)
+        # F3/F4: route an explicit conversation-recall question to the RIGHT source —
+        # this session's ordered transcript, or a past conversation from the store —
+        # so "what did I say before that" reads the actual turns, not a memory fact.
+        recall_source, recall_section = await self._recall_section(user_id, session_id, utterance)
         entity_names = [c.name for c in candidates]
         episodic_hits = await _safe(
             self._episodic.retrieve(user_id, utterance, k=EPISODIC_K), [], "episodic"
@@ -196,6 +211,7 @@ class PromptAssembler:
         cold_start = not profile.onboarded  # §3.1: first conversation
         sections: dict[str, str] = {}
         sections["identity"] = _identity_section(profile.companion_name) + _now_section()
+        sections["recall"] = recall_section  # F3/F4: authoritative transcript (may be "")
         if cold_start:
             sections["cold_start"] = _COLD_START_GUIDANCE
             # Greet-once: mark onboarded so later turns aren't cold-start; the
@@ -250,14 +266,49 @@ class PromptAssembler:
             emotion=dict(emotion) if emotion else None,
             cold_start=cold_start,
             resolved_entities=candidates,
+            recall_source=recall_source,
             sections=sections,
         )
+
+    async def _recall_section(
+        self, user_id: str, session_id: str, utterance: str
+    ) -> tuple[str, str]:
+        """F3/F4: build the authoritative recall transcript for a recall question.
+
+        Returns ``(recall_source, section_text)``. ``current`` reads this session's
+        ordered turns (working memory); ``past`` reads prior conversations from the
+        store. A store hiccup degrades to no section (never breaks the turn)."""
+        kind = classify_recall(utterance)
+        if kind == "none":
+            return "none", ""
+        profile = None
+        if kind == "current":
+            turns = self._working.all(session_id)
+            # Drop the just-appended current question so it doesn't read as an answer.
+            if turns and turns[-1].role == "user" and turns[-1].text == utterance:
+                turns = turns[:-1]
+            if not turns:
+                return "none", ""
+            try:
+                profile = await self._profiles.first_run_sync(user_id)
+            except Exception:
+                profile = None
+            name = profile.companion_name if profile else None
+            return "current", render_current_transcript(turns, name)
+        # kind == "past"
+        if self._recall is None:
+            return "none", ""
+        section, _sources = await _safe(
+            self._recall.past_section(user_id, session_id), ("", []), "recall_past"
+        )
+        return ("past", section) if section else ("none", "")
 
 
 # Rendering order is priority order; _TRIM_ORDER is which sections give way
 # first when over budget (rule 9: episodic snippets and older facts first).
 _SECTION_TITLES: dict[str, str] = {
     "identity": "",
+    "recall": "",  # F3/F4: authoritative conversation transcript (self-titled, non-trimmed)
     "cold_start": "First contact",
     "traits": "Behavior traits",
     "comm_prefs": "Communication preferences",

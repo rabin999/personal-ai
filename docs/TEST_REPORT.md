@@ -1054,3 +1054,50 @@ espeak/ffmpeg or the models are unavailable.
 **Honest note:** espeak is clean synthetic speech; real accented human speech (the "Herak" mis-hear)
 can only be fully judged with a real mic, but the accuracy lever (accurate final model) + vocab
 biasing are proven to correct exactly this class of error on the real audio path.
+
+---
+
+## F3/F4 — Conversation recall reads the ACTUAL turns, not memory facts
+
+**App-goal verified:** "what did I say before that" resolves against the real session transcript
+(F3); "what did we talk about last time" is answered from the stored PAST conversation (F4) — both
+routed to the RIGHT source instead of returning a long-term-memory fact.
+
+**Root cause:** the raw transcript (last 8 turns) was in the prompt, but on a recall question the
+model answered from the `## Relevant conversation memories` (episodic) / `## Known facts` sections
+that semantic-search surfaced, rather than counting back through the actual turns. There was no
+query-intent routing — every turn assembled the same way.
+
+**Fix (`core/reasoning/recall.py` + wired into Prompt Assembly):**
+- Deterministic `classify_recall(utterance)` → `current | past | none` (recall verb + in-session
+  vs past-session cue; statements like "I felt awful yesterday" stay `none`; an explicit past cue
+  beats a current cue).
+- `current` → an **authoritative, numbered, ordered transcript** of THIS session (from working
+  memory) is injected as a high-priority, non-trimmed section that tells the model to answer from
+  those exact messages, not from memory facts.
+- `past` → `ConversationRecall.past_section` reads the durable **conversation store** (prior
+  sessions by recency, `user_id`-scoped) and injects the real transcript(s) with their dates.
+- `AssembledPrompt.recall_source` records which source was used; **emitted on the retrieval trace
+  span** (chat route + harness) so recall routing is inspectable (F7).
+
+**Proof — real model + real stores (`tests/real_call/test_conversation_recall.py`, all green):**
+- Current recall reads the actual first turn (asserts dog/Mango/beagle) + trace shows
+  `recall_source="current"`.
+- Positional recall ("2 messages ago") returns the right message (engineer/Lalitpur).
+- Past recall builds an authoritative section from the store (asserts seeded "Biscuit" content) +
+  selects the seeded past session; `classify_recall("what did we talk about last time?") == "past"`.
+
+**Captured verbatim conversation (real model):**
+```
+USER> my dog Mango is a beagle and he loves the park
+USER> I just started learning the guitar last week
+USER> I'm planning a trip to Pokhara in December
+USER> what did I tell you at the very start of this chat?
+COMPANION> The very first thing you said was about your dog Mango — that he's a beagle and loves the park.
+USER> and what did I say right after that?
+COMPANION> Right after Mango, you told me you just started learning guitar last week.
+```
+Exactly the actual turns, in order — not a memory fact.
+
+**Also:** 6/6 unit tests for the classifier + transcript renderer (`tests/unit/test_recall_routing.py`);
+ruff + mypy clean.

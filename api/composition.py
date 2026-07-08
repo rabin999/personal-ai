@@ -51,6 +51,7 @@ from core.psych.consolidation import Consolidator
 from core.psych.user_model import PsychUserModel
 from core.reasoning.orchestrator import Orchestrator
 from core.reasoning.prompt_assembly import PromptAssembler
+from core.reasoning.recall import ConversationRecall
 from core.reasoning.response_gen import ResponseGenerator
 from core.reasoning.self_model import SelfModel
 from core.tools.builtin.core_tools import register_core_tools
@@ -223,6 +224,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         projects=projects,
         psych=psych,
         preferences=preferences,
+        recall=ConversationRecall(conversations),  # F3/F4 conversation-recall routing
     )
     generator = ResponseGenerator(
         llm,
