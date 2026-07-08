@@ -11,8 +11,24 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 && lint-imports && pytest` is green. (See CLAUDE.md §6.) Track test levels per module
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
-**Last updated:** 2026-07-08
-**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅ + follow-up fixes F1–F16 ✅ + prod fix pass F17–F21 ✅ + companion-depth pass U0–U2 ✅, U3–U12 in progress)_
+**Last updated:** 2026-07-09
+**Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
+
+> **Latency + UX pass (2026-07-09):** shipped the three follow-ups (prompt caching #17,
+> Grok STT adapter #18, 26-voice roster + natural default #19), the interactive
+> knowledge-graph, and a full latency program: profiled the turn (L0), right-sized the
+> reply model + gated context_intent on simple turns (L3/L5), parallelized the context
+> reads (L1), disabled fast-model "thinking" (P4), tuned per-step temperature/max_tokens
+> (P1–P3) — **simple turns 7032ms → ~1500ms, quality held (judge 4–5/5)**. Switched STT
+> default to Grok STT (~10s CPU-whisper → ~1.5s). Fixes from live use: never-speak-first,
+> shorter/less-warm/casual voice, name-not-"AI", instant search ack, searchable
+> full-catalog model picker (gemini-2.5-flash default), voice↔turn-taking sync, tool-
+> syntax leak scrub, tool-call trace args+results, search freshness (recency bias +
+> context-rich queries + graceful failure), welcome greeting, mobile fixes. Benchmark
+> across 5 fast LLMs → `docs/LATENCY_BENCHMARK.md`. All committed, pushed, deployed;
+> non-paid suite green except 3 known env failures (real-Graphiti, SMTP, pipecat audioop).
+
+> **Companion-depth pass (2026-07-08):** **U0–U12 ✅** — see below + docs/TEST_REPORT.md.
 
 > **Companion-depth pass (2026-07-08):** **U0–U2 ✅** — fixed the memory layering so
 > facts (semantic), events (episodic), and PERSONA (style) stay in their correct
