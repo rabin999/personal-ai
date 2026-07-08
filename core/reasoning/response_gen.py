@@ -798,6 +798,9 @@ class ResponseGenerator:
         back to the background/waiter path (§14).
         """
         call = ToolCall(tool_id=req.tool_id, args=req.args)
+        # Trace the tool CALL with its arguments (e.g. the exact search query) so the
+        # turn is fully inspectable — the user reported not seeing what was searched.
+        self._span("tool", tool=req.tool_id, phase="request", args=req.args)
         spec = next((t for t in dispatcher.tools_for(context) if t.id == req.tool_id), None)
         is_background = spec is not None and (
             spec.type == "background" or spec.latency_class == "slow"
@@ -822,17 +825,23 @@ class ResponseGenerator:
         if isinstance(outcome, ConfirmRequest):
             return outcome
         if isinstance(outcome, QueuedHandle):
+            self._span("tool", tool=req.tool_id, phase="result", status="queued_background")
             return (
                 f"(started '{req.tool_id}' in the background; its result will arrive at a "
                 "pause — briefly say you're on it, then continue naturally)"
             )
         # A failed/timed-out tool envelope: tell the model plainly, don't fabricate.
         if isinstance(outcome, ToolResult) and not outcome.ok:
+            self._span("tool", tool=req.tool_id, phase="result", status=str(outcome.status))
             return (
                 f"(tool '{req.tool_id}' didn't complete ({outcome.status}) — tell the user "
                 "plainly that this step failed; do not fabricate a result)"
             )
-        return f"(tool '{req.tool_id}' returned: {json.dumps(outcome.output)[:1500]})"
+        output_json = json.dumps(outcome.output)
+        # The actual RESULT the tool returned (search summary, project state, …) —
+        # recorded so the trace shows what came back, not just that a tool ran.
+        self._span("tool", tool=req.tool_id, phase="result", status="ok", result=output_json[:2000])
+        return f"(tool '{req.tool_id}' returned: {output_json[:1500]})"
 
     # ── steps ────────────────────────────────────────────────────────────
 
