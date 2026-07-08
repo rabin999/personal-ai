@@ -53,8 +53,11 @@ export default function CompanionPage() {
   const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
   const [showSetup, setShowSetup] = useState(false); // mobile: collapse config so the orb + Start are the hero
   const [micMuted, setMicMuted] = useState(false); // user-controlled mic mute
+  const [caption, setCaption] = useState(""); // live subtitle: your words / the reply
 
   const micMutedRef = useRef(false);
+  // Word-by-word reveal timer for the reply caption (cleared on new turn/stop).
+  const captionIvRef = useRef<number | null>(null);
   // Set when the user said goodbye: the conversation ends once the companion's
   // farewell finishes playing (see the player's onEnded), so the button returns
   // to "Start conversation" instead of stopping mid-sentence.
@@ -90,6 +93,10 @@ export default function CompanionPage() {
         }
       })
       .catch(() => {});
+  }, []);
+  // Tear down the caption reveal timer on unmount.
+  useEffect(() => () => {
+    if (captionIvRef.current !== null) clearInterval(captionIvRef.current);
   }, []);
   const turnStateRef = useRef<TurnState>("idle");
 
@@ -135,6 +142,31 @@ export default function CompanionPage() {
       audioTurnRef.current = e.turn;
       setTurn("speaking");
     }
+  };
+
+  const stopCaptionReveal = () => {
+    if (captionIvRef.current !== null) {
+      clearInterval(captionIvRef.current);
+      captionIvRef.current = null;
+    }
+  };
+
+  // Reveal the reply text word-by-word (~roughly speaking pace) so the caption
+  // reads as live captions rather than popping in all at once.
+  const revealCaption = (full: string) => {
+    stopCaptionReveal();
+    const words = full.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return;
+    let i = 1;
+    setCaption(words[0]);
+    captionIvRef.current = window.setInterval(() => {
+      if (i >= words.length) {
+        stopCaptionReveal();
+        return;
+      }
+      i += 1;
+      setCaption(words.slice(0, i).join(" "));
+    }, 170);
   };
 
   const connect = useCallback(() => {
@@ -200,11 +232,28 @@ export default function CompanionPage() {
           // Server buffering + the WS/OS send buffer can deliver already-synthesized
           // audio just after this signal; a plain stop() would let the next chunk
           // re-schedule playback ("the voice keeps playing"). interrupt() mutes it.
-          if (ev2.stage === "barge_in") playerRef.current?.interrupt();
+          if (ev2.stage === "barge_in") {
+            playerRef.current?.interrupt();
+            stopCaptionReveal();
+            setCaption(""); // interrupted → drop the stale reply caption
+          }
           // The next reply is synthesizing → accept its audio again.
           if (ev2.stage === "tts") playerRef.current?.resume();
           // User said "bye"/"close the conversation": end once the farewell plays out.
           if (ev2.data?.end_conversation) pendingEndRef.current = true;
+          // Live caption (12px, under the animation): show your words as STT
+          // finalizes them, then reveal the reply word-by-word as it's spoken.
+          if (ev2.stage === "vad") {
+            stopCaptionReveal();
+            setCaption(""); // fresh turn: clear until STT lands
+          }
+          if (ev2.stage === "stt" && typeof ev2.data?.text === "string") {
+            stopCaptionReveal();
+            setCaption(cleanCaption(ev2.data.text as string));
+          }
+          if (ev2.stage === "response" && !ev2.data?.delivered) {
+            revealCaption(cleanCaption((ev2.data?.voice_text as string) ?? ev2.message ?? ""));
+          }
           handleTrace(ev2);
           break;
         }
@@ -273,6 +322,8 @@ export default function CompanionPage() {
     // beat after Stop) + stop sending mic, THEN tell the server + close the socket.
     playerRef.current?.interrupt(); // flush + mute playback now
     micRef.current?.stop().catch(() => {});
+    stopCaptionReveal();
+    setCaption("");
     setLevel(0);
     setTurn("idle");
     try {
@@ -371,6 +422,13 @@ export default function CompanionPage() {
           {/* Live mic-input waveform — reacts to the user's voice while listening. */}
           {conn === "active" && (
             <Waveform level={level} active={turnState === "listening"} />
+          )}
+          {/* Live caption under the animation: your words while listening, the
+              reply revealed word-by-word while speaking. 12px, muted. */}
+          {conn === "active" && (
+            <p className="pointer-events-none line-clamp-2 min-h-[1.5rem] max-w-xl px-4 text-center text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              {caption}
+            </p>
           )}
         </div>
 
@@ -582,6 +640,16 @@ function StatusChip({ state }: { state: TurnState }) {
       {s.label}
     </div>
   );
+}
+
+// Caption text for display: drop inline TTS tags (e.g. "[warm]") and markdown
+// emphasis, collapse whitespace. What's shown is what's spoken/heard, nothing else.
+function cleanCaption(text: string): string {
+  return (text ?? "")
+    .replace(/\[[^\]]*\]/g, "")
+    .replace(/[*_`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // Two-letter avatar seed derived from the bearer token / demo user id.

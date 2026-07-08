@@ -138,7 +138,10 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
       const pulse = breath * breath; // sharper peaks
       const R = R0 * (0.9 + 0.16 * breath + 0.12 * amp) * (0.6 + 0.4 * energy);
       // Fold energy into brightness so idle is a calm, dimmer sun (not a flare).
-      const bright = (0.6 + 0.4 * breath + 0.25 * amp) * (0.72 + 0.28 * energy);
+      // The trailing DIM keeps peak output gentle — a white-hot sun is harsh at
+      // night, so overall luminance is capped while the palette/motion stay intact.
+      const DIM = 0.66;
+      const bright = (0.6 + 0.4 * breath + 0.25 * amp) * (0.72 + 0.28 * energy) * DIM;
 
       // Fade the previous frame toward transparent → motion trails on a see-through
       // background (no dark rectangle / box).
@@ -209,10 +212,12 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
 
       // Core layers — yellow surface → white-hot centre → tiny blue-hot pinpoint.
       glow(cx, cy, R * 2.0, AMBER, 0.5 * bright);
-      glow(cx, cy, R * 1.35, YELLOW, 0.65 * bright);
-      glow(cx, cy, R * 0.85, WHITE, Math.min(1, 0.4 + 0.35 * bright + 0.25 * energy));
-      glow(cx, cy, R * 0.4, BLUE, 0.18 * pulse); // electric-blue heat at peaks
-      glow(cx, cy, R * 0.24, WHITE, 0.85 + 0.15 * energy);
+      glow(cx, cy, R * 1.35, YELLOW, 0.55 * bright);
+      // White core kept deliberately soft (capped) — it's the harshest part on a
+      // dark screen. A warm-white, not a pure blast.
+      glow(cx, cy, R * 0.8, WHITE, Math.min(0.6, 0.2 + 0.28 * bright + 0.16 * energy));
+      glow(cx, cy, R * 0.4, BLUE, 0.14 * pulse); // electric-blue heat at peaks
+      glow(cx, cy, R * 0.22, WHITE, 0.5 + 0.18 * energy);
 
       // Embers / plasma fragments drifting outward with trails.
       const want = idle ? 26 : thinking ? 70 : 40 + Math.floor(amp * 55);
