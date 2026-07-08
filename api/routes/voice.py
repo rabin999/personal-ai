@@ -151,6 +151,7 @@ def _start(
         conversations=pipeline.conversations,
         extractor=pipeline.extractor,
         defer_routing=pipeline.settings.defer_memory_routing,
+        compactor=pipeline.compactor,  # F14: rolling-summary compaction
     )
 
     async def persist(event: dict[str, object]) -> None:

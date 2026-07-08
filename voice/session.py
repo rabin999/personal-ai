@@ -19,6 +19,7 @@ from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
+from core.memory.compaction import SessionCompactor
 from core.memory.conversation_store import ConversationStore
 from core.memory.episodic import EpisodicMemory
 from core.memory.extraction import MemoryExtractor
@@ -92,6 +93,7 @@ class VoiceSession:
         extractor: MemoryExtractor | None = None,
         defer_routing: bool = True,
         engine: str = "native",
+        compactor: "SessionCompactor | None" = None,
     ) -> None:
         self._user_id = user_id
         self._session_id = session_id
@@ -117,6 +119,7 @@ class VoiceSession:
         self._extractor = extractor
         self._defer_routing = defer_routing
         self._engine = engine
+        self._compactor = compactor
         self._turn_index = 0  # verbatim conversation-log turn counter (§6)
         self._vocab_terms: list[str] | None = None  # resolved once per session
         # Serialize background delivery: the idle poll and each turn both call
@@ -375,6 +378,7 @@ class VoiceSession:
             self._working.append(self._session_id, Turn(role="assistant", text=result.final_text))
             self._remember(transcript, result.final_text)
             self._log_conversation(transcript, result.final_text, emotion)
+            self._compact_if_needed()  # F14: bound the buffer over a long session
             self._trace.emit("tts", "reply audio complete")
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled")
@@ -574,6 +578,14 @@ class VoiceSession:
                 semantic=extracted.facts,
                 episodic=extracted.events,
             )
+
+    def _compact_if_needed(self) -> None:
+        """F14: fold older turns into the rolling summary when the session buffer
+        grows long — off the reply path, best-effort, so the prompt stays bounded."""
+        if self._compactor is None or not self._compactor.should_compact(self._session_id):
+            return
+        task = asyncio.create_task(self._compactor.maybe_compact(self._session_id, self._user_id))
+        task.add_done_callback(lambda t: t.exception())
 
     def _log_conversation(
         self, user_text: str, assistant_text: str, emotion: dict[str, Any] | None

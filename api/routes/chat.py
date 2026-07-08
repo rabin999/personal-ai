@@ -6,6 +6,7 @@ exercise the assembled pipeline. Returns the reply plus the full stage trace
 so the UI's log sidebar works for typed turns too.
 """
 
+import asyncio
 import logging
 import time
 
@@ -156,6 +157,12 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
         await _persist_turn(
             pipeline, user.user_id, body.session_id, body.text, result.final_text, trace, turn_no
         )
+
+    # F14: long-session compaction runs OFF the reply path — fold older turns into
+    # the rolling summary so the prompt stays bounded over a multi-hour session.
+    if pipeline.compactor.should_compact(body.session_id):
+        task = asyncio.create_task(pipeline.compactor.maybe_compact(body.session_id, user.user_id))
+        task.add_done_callback(lambda t: t.exception())
 
     # Any background result that landed during this turn is prepended to the reply.
     reply = " ".join([*(d.line for d in deliveries), result.final_text]).strip()

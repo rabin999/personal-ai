@@ -136,6 +136,10 @@ class RealTurns:
         return self._p.profiles
 
     @property
+    def compactor(self):
+        return self._p.compactor
+
+    @property
     def working(self):
         return self._p.working
 

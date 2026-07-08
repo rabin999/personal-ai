@@ -224,6 +224,14 @@ class PromptAssembler:
         sections: dict[str, str] = {}
         sections["identity"] = _identity_section(profile.companion_name) + _now_section()
         sections["recall"] = recall_section  # F3/F4: authoritative transcript (may be "")
+        # F14: the rolling summary of earlier turns compacted out of the live buffer,
+        # so a long session stays coherent without every turn in the prompt.
+        session_summary = self._working.summary(session_id)
+        sections["session_summary"] = (
+            f"Earlier in this conversation (running summary):\n{session_summary}"
+            if session_summary
+            else ""
+        )
         if cold_start:
             sections["cold_start"] = _COLD_START_GUIDANCE
             # Greet-once: mark onboarded so later turns aren't cold-start; the
@@ -324,6 +332,7 @@ class PromptAssembler:
 _SECTION_TITLES: dict[str, str] = {
     "identity": "",
     "recall": "",  # F3/F4: authoritative conversation transcript (self-titled, non-trimmed)
+    "session_summary": "",  # F14: running summary of compacted-out earlier turns
     "cold_start": "First contact",
     "traits": "Behavior traits",
     "comm_prefs": "Communication preferences",

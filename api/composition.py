@@ -35,6 +35,7 @@ from adapters.vector.qdrant import QdrantVectorStore
 from config.settings import Settings
 from core.cost import CostLedger
 from core.feedback import FeedbackStore
+from core.memory.compaction import SessionCompactor
 from core.memory.conversation_store import ConversationStore
 from core.memory.entities import EntityResolver
 from core.memory.episodic import EpisodicMemory
@@ -116,6 +117,7 @@ class Pipeline:
     feedback: FeedbackStore
     prompts: PromptProvider  # F13: runtime prompt management (Langfuse or bundled)
     scores: ScoreSink | None  # F13: eval/feedback scoring backend (Langfuse), if enabled
+    compactor: SessionCompactor  # F14: rolling-summary compaction for long sessions
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -319,6 +321,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         feedback=FeedbackStore(docs),
         prompts=prompts,
         scores=scores,
+        compactor=SessionCompactor(llm, working, logs=logs),
     )
 
 

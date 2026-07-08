@@ -1360,3 +1360,52 @@ search and the correct day. **Residual (honest):** "what's today's date" still s
 (the reasoning model's own tool-judgment) and can then report the search's stale date over the correct
 injected UTC — fully suppressing that is judge-threshold/model tuning (§7); the injected time is
 authoritative and the guidance now steers against it. ruff + mypy clean.
+
+---
+
+## F14 — Endurance for 6–8h+ sessions (rolling-summary compaction)
+
+**App-goal verified:** a session can run for hours/many turns without the prompt growing unbounded,
+without leaking the in-memory buffer, and while STILL recalling something said early in the session —
+via a rolling summary, with the raw turns kept in the durable store (F3/F4).
+
+**What was already bounded:** the prompt only ever includes the last `RECENT_TURNS=8` turns
+(`working.recent`) + budget-trimmed memory sections, so prompt *size* was already bounded. The
+endurance gap was **coherence**: with only 8 recent turns in-prompt, anything said 20+ turns ago fell
+out of context — a long conversation would "forget" its own thread.
+
+**Fix (rolling summary + compaction, off the reply path):**
+- `WorkingMemory` now carries a per-session rolling `summary` + a `compact(keep_recent, summary)` that
+  drops older turns from the live buffer (they remain in the conversation store) — bounding memory.
+- `core/memory/compaction.py::SessionCompactor` summarizes the overflow (cheap `simple`-tier LLM call,
+  run as a background task after a turn — never blocks the reply) into the rolling summary once the
+  buffer passes `COMPACT_THRESHOLD=24`, keeping the last `KEEP_RECENT=8` verbatim.
+- Prompt Assembly injects the rolling summary as a bounded "Earlier in this conversation (running
+  summary)" section, so the companion keeps the thread. Wired into both the chat route and the voice
+  session (triggered off the reply path).
+
+**Proof:**
+- Unit (`tests/unit/test_compaction.py`, 10 tests incl. these): appending 3×-threshold turns, the
+  buffer never exceeds the threshold (bounded); the overflow is summarized once and the early fact
+  survives in the summary; small sessions are a no-op.
+- **Real-call endurance E2E (`tests/real_call/test_endurance.py`, stable across repeated runs):** a
+  distinctive early fact ("my daughter Ishani … loves dinosaurs; code word {unique}") at turn 0, then
+  `COMPACT_THRESHOLD+6` filler turns.
+  - BEFORE compaction the unique marker is **absent** from the assembled prompt (beyond the 8-turn
+    window — a long session would forget it).
+  - After a REAL summarization the buffer is bounded to exactly `KEEP_RECENT=8`, and the rolling
+    summary captured both "Ishani" and the unique marker.
+  - AFTER compaction the fact is back **in the prompt via the summary**, and the prompt did **not**
+    grow proportionally to the ~30-turn history (`size_after < size_before + 4000`).
+  - A REAL recall turn late in the session answers "Ishani" — recalled from the summarized thread,
+    which it could not do without compaction.
+
+**Resource endurance:** the in-memory buffer is now bounded (compaction drops old turns; `close`
+clears summary + buffer), TTS/audio buffers were already bounded, background work is fire-and-forget
+with exceptions swallowed, and cost/latency stay flat because each turn's prompt is a fixed window +
+a compact summary rather than the whole growing transcript. ruff + mypy (touched files) +
+lint-imports clean.
+
+**Honest note:** multi-hour wall-clock stability (real connection pooling over 8h, no slow leaks) is
+best confirmed by a long-running soak on the deployed box; the mechanism that keeps prompt/coherence/
+memory bounded is proven here with real summarization + recall.
