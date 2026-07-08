@@ -29,6 +29,7 @@ from adapters.search.serper import SerperSearch
 from adapters.ser.emotion2vec_client import Emotion2VecSER
 from adapters.sound.heuristic import HeuristicSoundClassifier
 from adapters.stt.faster_whisper import FasterWhisperSTT
+from adapters.stt.grok import GrokSTT
 from adapters.tts.grok import GrokTTS
 from adapters.user_context.accounts import AccountStore
 from adapters.user_context.session import SessionUserContext
@@ -68,6 +69,7 @@ from core.tools.web_search import WebSearch
 from ports.doc_store import DocStore
 from ports.prompt import PromptProvider
 from ports.score_sink import ScoreSink
+from ports.stt import STT
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +105,7 @@ class Pipeline:
     self_model: SelfModel
     psych: PsychUserModel
     persona: PersonaStore
-    stt: FasterWhisperSTT
+    stt: STT  # faster-whisper (local) or Grok STT, per settings.stt_engine
     tts: GrokTTS
     ser: Emotion2VecSER
     sound_classifier: HeuristicSoundClassifier  # U10-U12 sound-awareness stage
@@ -133,6 +135,19 @@ class Pipeline:
         await self.queue.aclose()
         await self.db.aclose()
         self.logs.close()
+
+
+def _build_stt(settings: Settings, ledger: CostLedger) -> STT:
+    """Pick the STT engine (#18): xAI Grok STT (vendor-grade) or local faster-whisper
+    ($0, default), by ``settings.stt_engine`` — one wiring line, ``core/`` untouched."""
+    if settings.stt_engine == "grok":
+        logger.info("STT engine: Grok STT (xAI)")
+        return GrokSTT(settings, ledger=ledger)
+    return FasterWhisperSTT(
+        model_size=settings.stt_model_size,
+        final_model_size=settings.stt_final_model_size,
+        ledger=ledger,
+    )
 
 
 async def build_pipeline(settings: Settings) -> Pipeline:
@@ -312,11 +327,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         self_model=self_model,
         psych=psych,
         persona=persona,
-        stt=FasterWhisperSTT(
-            model_size=settings.stt_model_size,
-            final_model_size=settings.stt_final_model_size,
-            ledger=ledger,
-        ),
+        stt=_build_stt(settings, ledger),
         tts=GrokTTS(settings, ledger=ledger),
         ser=Emotion2VecSER(settings),
         sound_classifier=HeuristicSoundClassifier(),

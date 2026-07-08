@@ -82,9 +82,11 @@ class Settings(BaseSettings):
     # (TEST_REPORT F2) showed small+vocab transcribes rare user terms perfectly where
     # base mangles them, so the final defaults to "small". "tiny"/"base" are
     # real-time on CPU; "small"/"medium" are more accurate but slower.
-    stt_engine: str = "faster-whisper"  # selectable STT engine (port is swappable)
+    stt_engine: str = "faster-whisper"  # "faster-whisper" (local, $0) | "grok" (xAI STT)
     stt_model_size: str = "base"  # streaming-partial (fast draft) model
     stt_final_model_size: str = "small"  # final-transcript (accurate) model
+    stt_language: str = "en"  # Grok STT language hint (empty = auto-detect)
+    stt_timeout_s: float = 20.0  # Grok STT request timeout
 
     # SER (§22): self-hosted emotion2vec microservice on a small GPU box
     # (design doc §17.3) — separate service, its own hardware. Empty means

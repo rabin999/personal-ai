@@ -1987,3 +1987,19 @@ OFF where chain-of-thought adds latency without value:
 **Measured + quality (P0):** SIMPLE turns dropped to **~1467ms** (from ~2900ms after
 L1, ~7000ms originally); MODERATE ~2990ms. LLM-judge on the fast replies: 4–5/5, not
 chatbot-like — quality holds. Cumulative simple-turn latency: **7032ms → ~1500ms (−79%)**.
+
+## #18 — Grok STT adapter behind the STT port ✅
+
+xAI's standalone STT API (POST /v1/stt) wired as `adapters/stt/grok.GrokSTT`, selectable
+via `settings.stt_engine == "grok"` (faster-whisper stays the default — local, $0).
+Segmented flow: buffers the VAD-bounded utterance, POSTs raw PCM16 multipart
+(audio_format=pcm, sample_rate=16000, keyterm biasing from the user's vocab, ITN on),
+yields one final TranscriptPiece; cost logged to the ledger by audio seconds ($0.10/hr).
+`_build_stt` in the composition root picks the engine — one wiring line, `core/`
+untouched (Pipeline.stt is now the `STT` port type).
+
+**Verified (real round-trip, `tests/real_call/test_grok_stt.py`):** Grok TTS synthesises
+a phrase at 16 kHz → the Grok STT adapter transcribes it back accurately ("The quick
+brown fox jumps over the lazy dog."). Keyterm biasing accepted. The real-time WebSocket
+endpoint (interim results + Smart Turn detection) is a further upgrade left as a
+follow-up; this REST adapter proves the swap works end to end.
