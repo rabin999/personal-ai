@@ -22,7 +22,7 @@ from voice.pipecat.companion_processor import CompanionProcessor
 
 
 class _FakeAssembler:
-    async def assemble(self, user_id: str, session_id: str, utterance: str) -> Any:
+    async def assemble(self, user_id: str, session_id: str, utterance: str, **kw: Any) -> Any:
         from core.reasoning.prompt_assembly import AssembledPrompt
 
         return AssembledPrompt(

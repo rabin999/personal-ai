@@ -118,7 +118,14 @@ class SlowTTS:
 
 class ScriptedAssembler:
     async def assemble(
-        self, user_id: str, session_id: str, utterance: str, *, emotion=None
+        self,
+        user_id: str,
+        session_id: str,
+        utterance: str,
+        *,
+        emotion=None,
+        sound=None,
+        health=None,
     ) -> AssembledPrompt:
         return AssembledPrompt(
             user_id=user_id,
