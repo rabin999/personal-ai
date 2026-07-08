@@ -1944,3 +1944,13 @@ Two changes justified by the L0 profile (the two biggest sequential costs):
 philosophical question ALL score **5/5, chatbot_like=False, PASS** — companion voice
 fully intact. Replies stay warm, personalized ("Nandi"), and accurate (recalled the
 exact SYPNL trade). response-gen + model-selection unit suites green.
+
+## L1 — Parallelize the independent context reads (prompt assembly) ✅
+
+The ~9 memory/context reads in prompt assembly (recall routing, episodic, entity facts,
+profile facts, procedural rules, Mem0 preferences, profile, traits, self-statements,
+project data) are independent — they only need user_id + utterance + resolved entity
+names. Replaced the sequential `await`s with a single `asyncio.gather` (each still
+degrades to empty on a store outage). Simple turns now ~1.6–1.8s end-to-end (single
+fast-tier reply + concurrent assembly), down from 7s at the session start. Unit suite
+green (prompt-assembly + prompt-cache).

@@ -63,6 +63,12 @@ logger = logging.getLogger(__name__)
 _T = TypeVar("_T")
 
 
+async def _noop(value: _T) -> _T:
+    """An already-resolved value as an awaitable, so an optional read can still take a
+    slot in the concurrent ``asyncio.gather`` (L1) without a branch."""
+    return value
+
+
 async def _safe(coro: Awaitable[_T], default: _T, what: str) -> _T:
     """Await a memory-store read; degrade to ``default`` if it fails (§10).
 
@@ -222,43 +228,47 @@ class PromptAssembler:
                 candidates=candidates,
             )
 
-        # Steps 3-8 — gather context layers. Each memory store read degrades to
-        # empty if that dependency is down (§10 graceful degradation): a Qdrant/
-        # Neo4j/Mem0 outage drops that layer of context but the turn still completes.
+        # Steps 3-8 — gather context layers. These reads are INDEPENDENT of each other
+        # (they only need user_id + utterance + the resolved entity names), so they run
+        # CONCURRENTLY (L1 latency): one asyncio.gather instead of ~9 sequential awaits.
+        # Each still degrades to empty if its store is down (§10 graceful degradation):
+        # a Qdrant/Neo4j/Mem0 outage drops that layer but the turn completes.
         recent = self._working.recent(session_id, n=RECENT_TURNS)
-        # F3/F4: route an explicit conversation-recall question to the RIGHT source —
-        # this session's ordered transcript, or a past conversation from the store —
-        # so "what did I say before that" reads the actual turns, not a memory fact.
-        recall_source, recall_section = await self._recall_section(user_id, session_id, utterance)
         entity_names = [c.name for c in candidates]
-        episodic_hits = await _safe(
-            self._episodic.retrieve(user_id, utterance, k=EPISODIC_K), [], "episodic"
+        results: list[Any] = list(
+            await asyncio.gather(
+                self._recall_section(user_id, session_id, utterance),
+                _safe(self._episodic.retrieve(user_id, utterance, k=EPISODIC_K), [], "episodic"),
+                _safe(
+                    self._semantic.facts_for(user_id, entity_names, limit=FACTS_LIMIT), [], "facts"
+                ),
+                _safe(
+                    self._semantic.profile_facts(user_id, limit=FACTS_LIMIT), [], "profile_facts"
+                ),
+                _safe(self._procedural.rules_for(user_id, context=utterance), [], "rules"),
+                _safe(self._preferences.search(user_id, utterance), [], "preferences")
+                if self._preferences
+                else _noop([]),
+                self._profiles.first_run_sync(user_id),
+                self._registry.enabled_traits(user_id),
+                _safe(
+                    self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K),
+                    [],
+                    "self_model",
+                ),
+                self._project_section(user_id, candidates),
+            )
         )
-        entity_facts = await _safe(
-            self._semantic.facts_for(user_id, entity_names, limit=FACTS_LIMIT), [], "facts"
-        )
-        profile_facts = await _safe(
-            self._semantic.profile_facts(user_id, limit=FACTS_LIMIT), [], "profile_facts"
-        )
-        rules = await _safe(self._procedural.rules_for(user_id, context=utterance), [], "rules")
-        preferences = (
-            await _safe(self._preferences.search(user_id, utterance), [], "preferences")
-            if self._preferences
-            else []
-        )
-        profile = await self._profiles.first_run_sync(user_id)
-        traits = await self._registry.enabled_traits(user_id)
-        prior_statements = await _safe(
-            self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K), [], "self_model"
-        )
-        project_section = ""
-        if self._projects is not None:
-            for candidate in candidates:
-                if candidate.entity_type == "project":
-                    context = await self._projects.project_context(user_id, candidate.entity_id)
-                    if context:
-                        project_section = context
-                        break
+        recall_source, recall_section = results[0]  # F3/F4 conversation-recall routing
+        episodic_hits = results[1]
+        entity_facts = results[2]
+        profile_facts = results[3]
+        rules = results[4]
+        preferences = results[5]
+        profile = results[6]
+        traits = results[7]
+        prior_statements = results[8]
+        project_section = results[9]
 
         # Step 9 — compose sections; trim order = reverse priority.
         cold_start = not profile.onboarded  # §3.1: first conversation
@@ -374,6 +384,20 @@ class PromptAssembler:
             mirror_register=mirror_register,  # U11: register to mirror this turn
             sections=sections,
         )
+
+    async def _project_section(self, user_id: str, candidates: list[EntityCandidate]) -> str:
+        """§10 step 6: canonical data for the first referenced project (runs
+        concurrently with the other context reads, L1)."""
+        if self._projects is None:
+            return ""
+        for candidate in candidates:
+            if candidate.entity_type == "project":
+                context = await _safe(
+                    self._projects.project_context(user_id, candidate.entity_id), None, "project"
+                )
+                if context:
+                    return context
+        return ""
 
     async def _recall_section(
         self, user_id: str, session_id: str, utterance: str
