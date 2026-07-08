@@ -33,7 +33,9 @@ class StaticProvider:
     name = "serper"
     cost_per_query_usd = 0.0003
 
-    async def search(self, query: str, max_results: int = 8) -> list[SearchResult]:
+    async def search(
+        self, query: str, max_results: int = 8, *, recency: str | None = None
+    ) -> list[SearchResult]:
         return [
             SearchResult(
                 title="SYPNL phase-2 readout",
