@@ -310,3 +310,26 @@ curl -s -o /dev/null -w '%{redirect_url}\n' https://202-58-120-93.sslip.io/auth/
 ```
 
 Then open the site, click **Continue with Google**, and confirm you land back signed in.
+
+---
+
+## 10. Langfuse (self-hosted tracing) on prod
+
+Deployed **2026-07-08**. Langfuse runs as its own bundled stack (it does **not**
+share the app's `companion-redis` — BullMQ needs `maxmemory-policy noeviction`,
+which would break the app cache; and there is no app postgres to reuse).
+
+- **Compose:** `deploy/langfuse/docker-compose.yml` (in git) + `deploy/langfuse/.env`
+  (on the box only, mode 600 — secrets). 6 containers: `langfuse-web`,
+  `langfuse-worker`, `postgres`, `redis`, `clickhouse`, `minio` (all `restart: always`).
+- **Bring up / update:** `cd /opt/companion/deploy/langfuse && docker compose --env-file .env up -d`
+- **Public URL:** **`https://langfuse.202-58-120-93.sslip.io`** — the cloud security
+  group only permits 80/443, so port 3000 is NOT exposed; nginx vhost
+  `/etc/nginx/sites-available/langfuse` proxies 443 → `127.0.0.1:3000` (own Let's
+  Encrypt cert via `certbot --nginx`). Login: `rabin.bhandari999@gmail.com`.
+- **App wiring** (`/opt/companion/.env`): `LANGFUSE_ENABLED=true`,
+  `LANGFUSE_HOST=https://langfuse.202-58-120-93.sslip.io`, `LANGFUSE_PUBLIC_KEY`,
+  `LANGFUSE_SECRET_KEY`, `LANGFUSE_PROJECT=companion` → restart `companion-api`.
+- **Primary trace viewer is still in-app** (`/traces/:sessionId`, reads Mongo
+  `turn_traces`) and works even if Langfuse is down. Langfuse is the richer viewer
+  + the per-turn `full trace ↗` deep-link target.
