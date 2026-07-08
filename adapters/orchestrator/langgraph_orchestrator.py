@@ -231,6 +231,7 @@ class LangGraphOrchestrator:
                 response_format={"type": "json_object"},
                 session_id=prompt.session_id,
                 temperature=0.2,  # P2: routing/intent is a decision → low temp, consistent
+                reasoning={"enabled": False},  # P4: no chain-of-thought for a routing call
                 purpose="context_intent",
             )
             parsed = json.loads(_strip(res.text))

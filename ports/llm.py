@@ -41,6 +41,7 @@ class LLM(Protocol):
         max_tokens: int | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        reasoning: Mapping[str, Any] | None = None,
         cache_prefix: str = "",
         purpose: str = "",
     ) -> CompletionResult:
@@ -65,6 +66,7 @@ class LLM(Protocol):
         session_id: str | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        reasoning: Mapping[str, Any] | None = None,
         cache_prefix: str = "",
         purpose: str = "",
     ) -> AsyncIterator[str]:

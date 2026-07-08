@@ -200,6 +200,7 @@ class OpenRouterLLM:
         max_tokens: int | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        reasoning: Mapping[str, Any] | None = None,
         cache_prefix: str = "",
         purpose: str = "",
     ) -> CompletionResult:
@@ -215,7 +216,13 @@ class OpenRouterLLM:
             started = time.perf_counter()
             try:
                 result = await self._call(
-                    model_id, messages, response_format, max_tokens, temperature, cache_prefix
+                    model_id,
+                    messages,
+                    response_format,
+                    max_tokens,
+                    temperature,
+                    cache_prefix,
+                    reasoning,
                 )
             except Exception as exc:
                 errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
@@ -248,6 +255,7 @@ class OpenRouterLLM:
         session_id: str | None = None,
         model: str | None = None,
         temperature: float | None = None,
+        reasoning: Mapping[str, Any] | None = None,
         cache_prefix: str = "",
         purpose: str = "",
     ) -> AsyncIterator[str]:
@@ -262,12 +270,15 @@ class OpenRouterLLM:
         model_id = chain[0]
         wall_start = time.time()
         started = time.perf_counter()
+        extra_body: dict[str, Any] = {"usage": {"include": True}}
+        if reasoning is not None:  # P4: thinking-budget control per call
+            extra_body["reasoning"] = dict(reasoning)
         kwargs: dict[str, Any] = {
             "model": model_id,
             "messages": _with_cache_control(messages, cache_prefix, model_id),
             "stream": True,
             "stream_options": {"include_usage": True},
-            "extra_body": {"usage": {"include": True}},
+            "extra_body": extra_body,
         }
         if response_format is not None:
             kwargs["response_format"] = response_format
@@ -335,12 +346,16 @@ class OpenRouterLLM:
         max_tokens: int | None,
         temperature: float | None = None,
         cache_prefix: str = "",
+        reasoning: Mapping[str, Any] | None = None,
     ) -> CompletionResult:
+        extra_body: dict[str, Any] = {"usage": {"include": True}}
+        if reasoning is not None:  # P4: control the model's thinking budget per call
+            extra_body["reasoning"] = dict(reasoning)
         kwargs: dict[str, Any] = {
             "model": model,
             "messages": _with_cache_control(messages, cache_prefix, model),
             # OpenRouter usage accounting: exact cost in the response.
-            "extra_body": {"usage": {"include": True}},
+            "extra_body": extra_body,
         }
         if response_format is not None:
             kwargs["response_format"] = response_format

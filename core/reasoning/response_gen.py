@@ -864,8 +864,10 @@ class ResponseGenerator:
         # profile). COMPLEX turns — and turns where the user explicitly pinned a
         # "thinking" model — still use the mature reasoning tier for depth (quality
         # holds where it matters, P0). Attempt 1 escalates one tier on failure.
+        base: Tier
+        main_model: str | None
         if prompt.reasoning_model_override:
-            base: Tier = self._reasoning_tier  # user explicitly chose a thinking model
+            base = self._reasoning_tier  # user explicitly chose a thinking model
             main_model = prompt.reasoning_model_override
         elif prompt.complexity_hint == "complex":
             base = self._reasoning_tier  # hard turns → mature model
@@ -873,6 +875,10 @@ class ResponseGenerator:
         else:
             base = prompt.complexity_hint  # simple/moderate → the fast tiers
             main_model = prompt.model_override  # the user's fast model if they set one
+        # P4: on a SIMPLE turn (greeting / casual), turn OFF the fast model's built-in
+        # "thinking" — a one-line social reply needs no chain-of-thought, and Gemini
+        # 2.5 Flash thinks by default (extra latency). MODERATE/COMPLEX keep it.
+        resp_reasoning = {"enabled": False} if prompt.complexity_hint == "simple" else None
         attempts = [(base, main_model), (_ESCALATE_TIER[base], None)]
         for attempt, (tier, model) in enumerate(attempts):  # rule 1: validate; retry once
             try:
@@ -883,6 +889,7 @@ class ResponseGenerator:
                     response_format={"type": "json_object"},
                     session_id=prompt.session_id,
                     model=model,  # §4 user fast-model choice (first attempt only)
+                    reasoning=resp_reasoning,  # P4: no thinking on simple turns
                     temperature=REPLY_TEMPERATURE,  # P2: moderate for warmth
                     max_tokens=REPLY_MAX_TOKENS,  # P1: generous safety ceiling
                     cache_prefix=prompt.cache_prefix,  # L6: cache the stable prefix

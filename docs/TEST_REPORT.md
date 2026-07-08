@@ -1973,3 +1973,17 @@ green (prompt-assembly + prompt-cache).
 emotional vent (114ch), a math question ("15 percent of 240 is 36.", 24ch), and a
 nature question all PASS (score 4–5/5, not chatbot-like). No truncation; the voice is
 warm and now crisper/more casual.
+
+## P4 — thinking-budget / reasoning-effort per step ✅
+
+Gemini 2.5 Flash "thinks" by default (extra latency) — confirmed via OpenRouter docs
+that `extra_body={"reasoning": {"enabled": false}}` disables it for the fastest output.
+Added a `reasoning` passthrough to the LLM port + OpenRouter adapter and turned thinking
+OFF where chain-of-thought adds latency without value:
+- `context_intent` (a routing decision) → reasoning disabled;
+- the companion reply on **SIMPLE** turns (a one-line social reply needs no thinking) →
+  reasoning disabled; MODERATE/COMPLEX turns keep thinking.
+
+**Measured + quality (P0):** SIMPLE turns dropped to **~1467ms** (from ~2900ms after
+L1, ~7000ms originally); MODERATE ~2990ms. LLM-judge on the fast replies: 4–5/5, not
+chatbot-like — quality holds. Cumulative simple-turn latency: **7032ms → ~1500ms (−79%)**.
