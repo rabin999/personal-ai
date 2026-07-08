@@ -633,6 +633,7 @@ dependencies = [
     { name = "qdrant-client" },
     { name = "redis" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.optional-dependencies]
@@ -683,6 +684,7 @@ requires-dist = [
     { name = "torch", marker = "extra == 'ser'", specifier = ">=2.6.0" },
     { name = "torchaudio", marker = "extra == 'ser'", specifier = ">=2.6.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.50.2" },
+    { name = "websockets", specifier = ">=15" },
 ]
 provides-extras = ["voice", "ser"]
 

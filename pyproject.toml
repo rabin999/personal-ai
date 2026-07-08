@@ -23,6 +23,7 @@ dependencies = [
     "qdrant-client>=1.18.0",
     "redis>=8.0.1",
     "uvicorn[standard]>=0.50.2",
+    "websockets>=15",
 ]
 
 [project.optional-dependencies]

@@ -11,11 +11,15 @@ downloads, so a barge-in (§24) stops playback by closing the iterator between
 or mid chunk. Character cost is logged to the Cost Ledger (rule 5).
 """
 
+import base64
+import json
 import logging
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from urllib.parse import urlencode
 
 import httpx
+import websockets
 
 from config.settings import Settings
 from core.cost import CostEntry, CostLedger, CostMetadata
@@ -106,6 +110,40 @@ class GrokTTS:
             # submitted to xAI are billed either way (rule 5).
             self._log_cost(user_id, session_id, spoken_chars)
 
+    async def open_stream(
+        self,
+        voice: str | None = None,
+        *,
+        user_id: str,
+        session_id: str | None = None,
+    ) -> "GrokTTSStream":
+        """Open ONE bidirectional WebSocket synthesis session for a whole turn
+        (xAI wss /v1/tts, §23). Feeding every sentence of a reply into a single
+        session keeps ONE consistent voice for the entire turn — separate per-
+        sentence REST requests drift in timbre/prosody because xAI exposes no seed
+        (verified against the live API). Streams PCM as it synthesizes, so TTFT
+        stays low. Callers that can't stream still use ``speak`` (REST)."""
+        voice_id = resolve_voice(voice, self._settings.tts_voice)
+        query = urlencode(
+            {
+                "language": self._settings.tts_language,
+                "voice": voice_id,
+                "codec": "pcm",
+                "sample_rate": SAMPLE_RATE,
+                "optimize_streaming_latency": 2,
+            }
+        )
+        base = self._settings.xai_base_url.replace("https://", "wss://").replace("http://", "ws://")
+        ws = await websockets.connect(
+            f"{base}/tts?{query}",
+            additional_headers={"Authorization": f"Bearer {self._settings.xai_api_key}"},
+            open_timeout=self._settings.tts_timeout_s,
+        )
+        return GrokTTSStream(
+            ws,
+            on_close=lambda chars: self._log_cost(user_id, session_id, chars),
+        )
+
     async def _synthesize(self, text: str, voice_id: str) -> AsyncIterator[bytes]:
         payload = {
             "text": text,
@@ -137,3 +175,66 @@ class GrokTTS:
                 metadata=CostMetadata(session_id=session_id),
             )
         )
+
+
+class GrokTTSStream:
+    """One open xAI WebSocket TTS session for a whole turn (§23, §2b).
+
+    ``feed`` pushes text as it's generated (``text.delta``); ``finish`` flushes
+    (``text.done``); ``audio`` yields PCM16 chunks as they stream back. Because it
+    is a single session, the voice stays identical across every sentence of the
+    reply. Closing (barge-in §24, or turn end) stops synthesis and logs the
+    characters submitted (rule 5), billed either way."""
+
+    def __init__(
+        self,
+        ws: websockets.ClientConnection,
+        *,
+        on_close: Callable[[int], None],
+    ) -> None:
+        self._ws = ws
+        self._on_close = on_close
+        self._chars = 0
+        self._closed = False
+
+    async def feed(self, text: str) -> None:
+        if self._closed or not text.strip():
+            return
+        self._chars += len(text)
+        await self._ws.send(json.dumps({"type": "text.delta", "delta": text}))
+
+    async def finish(self) -> None:
+        """Signal end-of-text so xAI flushes the tail; audio keeps arriving until
+        ``audio.done`` (drained by the ``audio`` iterator)."""
+        if self._closed:
+            return
+        await self._ws.send(json.dumps({"type": "text.done"}))
+
+    async def audio(self) -> AsyncIterator[bytes]:
+        """Yield PCM16 as it streams; ends on ``audio.done`` or when the socket
+        closes (including a barge-in ``aclose``)."""
+        try:
+            async for message in self._ws:
+                if isinstance(message, (bytes, bytearray)):
+                    yield bytes(message)
+                    continue
+                event = json.loads(message)
+                kind = event.get("type")
+                if kind == "audio.delta":
+                    yield base64.b64decode(event["delta"])
+                elif kind == "audio.done":
+                    break
+                elif kind == "error":
+                    logger.warning("grok tts stream error: %s", event)
+                    break
+        except websockets.ConnectionClosed:
+            pass
+
+    async def aclose(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            await self._ws.close()
+        finally:
+            self._on_close(self._chars)

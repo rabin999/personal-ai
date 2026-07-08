@@ -25,10 +25,10 @@ from core.memory.extraction import MemoryExtractor
 from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
-from core.reasoning.response_gen import ResponseGenerator, ToolDispatch
+from core.reasoning.response_gen import GenerationResult, ResponseGenerator, ToolDispatch
 from core.tools.registry import ToolContext
 from ports.stt import STT
-from ports.tts import TTS
+from ports.tts import TTS, StreamingTTS
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
 from voice.multiutterance import classify_utterance, combine
@@ -329,18 +329,12 @@ class VoiceSession:
 
             # Stream the reply into TTS sentence-by-sentence (§8.12): the first
             # sentence starts synthesizing while the rest is still generating, so
-            # the user hears audio far sooner. TTS speaks the tagged text (prosody);
-            # a non-streamable turn (tool/live-info) falls back to one synth call.
+            # the user hears audio far sooner. When the adapter supports it, the
+            # whole turn feeds ONE WebSocket synthesis session so the voice stays
+            # consistent across sentences (§2b/§23) — separate per-sentence REST
+            # requests drift in tone. Falls back to per-call REST synthesis.
             self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)
-
-            async def speak(text: str) -> None:
-                self._turn_spoke = True  # A4: once speaking, a new utterance is a barge-in
-                async for chunk in self._tts.speak(
-                    text, self._voice, user_id=self._user_id, session_id=self._session_id
-                ):
-                    out.put_nowait(chunk)
-
-            result = await self._generator.generate_spoken(prompt, self._dispatcher, context, speak)
+            result = await self._speak_turn(prompt, context, out)
             self._trace.emit(
                 "generation",
                 f"action={result.action}",
@@ -405,6 +399,63 @@ class VoiceSession:
             return None
         self._trace.emit("emotion", f"acoustic read: {read.label}", **read.model_dump())
         return read.model_dump()
+
+    async def _speak_turn(
+        self,
+        prompt: AssembledPrompt | DisambiguationRequest,
+        context: ToolContext,
+        out: asyncio.Queue[bytes | None],
+    ) -> GenerationResult:
+        """Generate + speak one turn, routing ALL of the turn's speech through a
+        single TTS session so the voice never changes mid-reply (§2b). Prefers the
+        streaming WebSocket session; degrades to per-sentence REST if the adapter
+        can't stream or the session fails to open. Barge-in/turn-end always closes
+        the session (finally) so synthesis stops and cost is logged (rule 5)."""
+        stream = None
+        pump: asyncio.Task[None] | None = None
+        if isinstance(self._tts, StreamingTTS):
+            try:
+                stream = await self._tts.open_stream(
+                    self._voice, user_id=self._user_id, session_id=self._session_id
+                )
+            except Exception:  # network/handshake — never fail the turn on TTS setup
+                logger.warning("tts stream open failed; using per-call synthesis", exc_info=True)
+                stream = None
+
+        try:
+            if stream is not None:
+                s = stream  # bind for the closures/type-narrowing
+
+                async def _pump() -> None:
+                    async for chunk in s.audio():
+                        out.put_nowait(chunk)
+
+                pump = asyncio.create_task(_pump())
+
+                async def speak(text: str) -> None:
+                    self._turn_spoke = True  # A4: once speaking, a new utterance is a barge-in
+                    await s.feed(text)
+            else:
+
+                async def speak(text: str) -> None:
+                    self._turn_spoke = True
+                    async for chunk in self._tts.speak(
+                        text, self._voice, user_id=self._user_id, session_id=self._session_id
+                    ):
+                        out.put_nowait(chunk)
+
+            result = await self._generator.generate_spoken(prompt, self._dispatcher, context, speak)
+            if stream is not None:
+                await stream.finish()  # flush the tail
+                if pump is not None:
+                    await pump  # drain remaining audio before the turn completes
+            return result
+        finally:
+            if stream is not None:
+                await stream.aclose()
+            if pump is not None and not pump.done():
+                pump.cancel()
+                await asyncio.gather(pump, return_exceptions=True)
 
     async def _synthesize(self, text: str, out: asyncio.Queue[bytes | None]) -> None:
         self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)
