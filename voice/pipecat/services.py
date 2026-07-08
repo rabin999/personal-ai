@@ -10,7 +10,7 @@ STT) and text aggregation (reply text to TTS).
 from collections.abc import AsyncGenerator
 
 from pipecat.frames.frames import Frame, TranscriptionFrame, TTSAudioRawFrame
-from pipecat.services.stt_service import STTService
+from pipecat.services.stt_service import SegmentedSTTService
 from pipecat.services.tts_service import TTSService
 from pipecat.utils.time import time_now_iso8601
 
@@ -21,14 +21,30 @@ STT_SAMPLE_RATE = 16_000
 TTS_SAMPLE_RATE = 24_000  # Grok gpt-audio pcm16 output (§23)
 
 
-class CompanionSTTService(STTService):
-    """faster-whisper (§20) as a Pipecat STT service."""
+class CompanionSTTService(SegmentedSTTService):
+    """faster-whisper (§20) as a Pipecat STT service.
+
+    MUST extend ``SegmentedSTTService``, not the base ``STTService`` (CLAUDE.md §5):
+    the base calls ``run_stt`` on EVERY audio frame (~20 ms), so faster-whisper would
+    run on tiny fragments instead of whole utterances — no coherent transcript, and
+    the companion never really replies (the reported prod symptom). ``SegmentedSTTService``
+    buffers audio between the ``VADUserStartedSpeakingFrame`` / ``VADUserStoppedSpeakingFrame``
+    the pipeline's ``VADProcessor`` emits and calls ``run_stt`` ONCE with the full
+    VAD-bounded utterance — the buffering the design asks Pipecat to own.
+    """
 
     def __init__(self, stt: STT, *, user_id: str, session_id: str) -> None:
         super().__init__(sample_rate=STT_SAMPLE_RATE)
         self._stt = stt
         self._user_id = user_id
         self._session_id = session_id
+
+    @property
+    def wants_wav_segments(self) -> bool:
+        # faster-whisper (§20) reads the buffer as raw 16-bit PCM — the same bytes
+        # the native runtime feeds it. Returning False keeps Pipecat from wrapping
+        # the segment in a 44-byte WAV header the adapter would misread as audio.
+        return False
 
     async def run_stt(  # type: ignore[override]  # pipecat annotates gen as coroutine
         self, audio: bytes

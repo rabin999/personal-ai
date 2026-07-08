@@ -45,6 +45,27 @@ def _cached_tokens(usage: Any) -> int:
     return 0
 
 
+# Cap per-field prompt/reply text in the durable trace so a long context can't bloat
+# the trace store; the head is what a human needs to see the prompt shape anyway.
+_MAX_TRACE_CHARS = 20_000
+
+
+def _trim_messages(
+    messages: "Sequence[Mapping[str, Any]] | None",
+) -> list[dict[str, Any]] | None:
+    """Role + bounded content for each message, so the trace shows the real prompt
+    (system + context + user) without persisting an unbounded blob."""
+    if not messages:
+        return None
+    trimmed: list[dict[str, Any]] = []
+    for m in messages:
+        content = m.get("content")
+        if isinstance(content, str) and len(content) > _MAX_TRACE_CHARS:
+            content = content[:_MAX_TRACE_CHARS] + "…"
+        trimmed.append({"role": m.get("role", ""), "content": content})
+    return trimmed
+
+
 # Fallback chains if provider_config carries no llm_router document.
 DEFAULT_TIERS: dict[str, list[str]] = {
     "simple": ["google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
@@ -152,9 +173,9 @@ class OpenRouterLLM:
                 logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
                 continue
             self._log_cost(user_id, result, session_id)
-            # Per-LLM-call span (CLAUDE.md §5): model / tokens / cost / latency,
-            # correlation-bound to the current turn so it lands in the trace.
-            self._log_call(result, tier, (time.perf_counter() - started) * 1000)
+            # Per-LLM-call span (CLAUDE.md §5): model / tokens / cost / latency +
+            # the actual prompt/reply, correlation-bound to the current turn.
+            self._log_call(result, tier, (time.perf_counter() - started) * 1000, messages)
             return result
         raise LLMUnavailable(f"all models failed for tier '{tier}': {'; '.join(errors)}")
 
@@ -205,7 +226,7 @@ class OpenRouterLLM:
 
         result = self._result_from_usage("".join(parts), model_id, usage)
         self._log_cost(user_id, result, session_id)
-        self._log_call(result, tier, (time.perf_counter() - started) * 1000)
+        self._log_call(result, tier, (time.perf_counter() - started) * 1000, messages)
 
     def _result_from_usage(self, text: str, model_id: str, usage: Any) -> CompletionResult:
         cost = 0.0
@@ -265,7 +286,13 @@ class OpenRouterLLM:
             cached_tokens=_cached_tokens(usage),
         )
 
-    def _log_call(self, result: CompletionResult, tier: Tier, latency_ms: float) -> None:
+    def _log_call(
+        self,
+        result: CompletionResult,
+        tier: Tier,
+        latency_ms: float,
+        messages: Sequence[Mapping[str, Any]] | None = None,
+    ) -> None:
         if self._logs is None:
             return
         self._logs.log(
@@ -282,6 +309,12 @@ class OpenRouterLLM:
             # (billed $0), and whether this call was a cache hit at all.
             cached_tokens=result.cached_tokens,
             cache_hit=result.cached_tokens > 0,
+            # The ACTUAL prompt (incl. the assembled system prompt) and the reply, so
+            # the Langfuse generation shows its input/output instead of an empty span
+            # (CLAUDE.md §5: per-LLM-call trace must be complete). Bounded to keep the
+            # durable trace store lean.
+            messages=_trim_messages(messages),
+            completion=result.text[:_MAX_TRACE_CHARS],
         )
 
     def _log_cost(self, user_id: str, result: CompletionResult, session_id: str | None) -> None:

@@ -34,6 +34,7 @@ from adapters.user_context.session import SessionUserContext
 from adapters.vector.qdrant import QdrantVectorStore
 from config.settings import Settings
 from core.cost import CostLedger
+from core.eval.evaluator import TurnEvaluator
 from core.feedback import FeedbackStore
 from core.memory.compaction import SessionCompactor
 from core.memory.conversation_store import ConversationStore
@@ -118,6 +119,8 @@ class Pipeline:
     prompts: PromptProvider  # F13: runtime prompt management (Langfuse or bundled)
     scores: ScoreSink | None  # F13: eval/feedback scoring backend (Langfuse), if enabled
     compactor: SessionCompactor  # F14: rolling-summary compaction for long sessions
+    langfuse: Any | None = None  # LangfuseTraceSink (deep-link builder), if enabled
+    evaluator: TurnEvaluator | None = None  # §6/§7 live LLM-as-judge, if enabled
 
     async def aclose(self) -> None:
         await self.ledger.flush()
@@ -143,17 +146,17 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     trace_sinks: list[Any] = [*build_log_sinks(settings), TraceStoreLogSink(traces)]
     # A8: also route the per-turn trace into self-hosted Langfuse when enabled
     # (behind the LogSink port — swappable). Guarded so a bad key never blocks boot.
+    langfuse_sink: Any | None = None
     if settings.langfuse_enabled and settings.langfuse_public_key:
         try:
             from adapters.tracing.langfuse_sink import LangfuseTraceSink
 
-            trace_sinks.append(
-                LangfuseTraceSink(
-                    settings.langfuse_public_key,
-                    settings.langfuse_secret_key,
-                    settings.langfuse_host,
-                )
+            langfuse_sink = LangfuseTraceSink(
+                settings.langfuse_public_key,
+                settings.langfuse_secret_key,
+                settings.langfuse_host,
             )
+            trace_sinks.append(langfuse_sink)
             logger.info("Langfuse tracing enabled → %s", settings.langfuse_host)
         except Exception:
             logger.exception("Langfuse sink init failed; continuing without it")
@@ -322,6 +325,8 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         prompts=prompts,
         scores=scores,
         compactor=SessionCompactor(llm, working, logs=logs),
+        langfuse=langfuse_sink,
+        evaluator=TurnEvaluator(llm, scores, enabled=settings.langfuse_eval_enabled),
     )
 
 

@@ -136,6 +136,10 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_project: str = "companion"  # for building trace-detail deep links (A9)
+    # §6/§7: run the companion-voice LLM-as-judge on every completed turn (off the
+    # reply path) and post its score to the turn's Langfuse trace. Off by default —
+    # it's an extra judge call per turn (cost) — enable to watch quality live.
+    langfuse_eval_enabled: bool = False
     # F9: optional LangGraph Studio URL to link out to from the app menu (only when
     # a `langgraph dev` / LangGraph Platform server is running). Empty → hidden.
     langgraph_studio_url: str = ""

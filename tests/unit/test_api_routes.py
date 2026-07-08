@@ -83,6 +83,9 @@ class FakeConversations:
     async def turns(self, user_id, session_id, *, offset=0, limit=200):  # type: ignore[no-untyped-def]
         return [{"user_id": user_id, "session_id": session_id, "turn_index": 1, "user_text": "hi"}]
 
+    async def record_turn(self, **kwargs):  # type: ignore[no-untyped-def]
+        return None
+
 
 class FakeFeedback:
     def __init__(self) -> None:
@@ -180,6 +183,10 @@ def _build_app(*, authed: bool) -> "object":
         semantic=FakeSemantic(),
         procedural=FakeProcedural(),
         traces=FakeTraces(),
+        # F14: long-session compaction check on the chat path (off in this fake).
+        compactor=SimpleNamespace(should_compact=lambda _s: False),
+        # §6/§7: live evaluator is opt-in; unset here (no eval on this turn).
+        evaluator=None,
         # Item 9: the chat route checks this to decide inline vs deferred routing.
         settings=SimpleNamespace(defer_memory_routing=False),
     )

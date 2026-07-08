@@ -18,6 +18,7 @@ default until this is verified end-to-end in the browser.
 from typing import Any
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.pipeline.pipeline import Pipeline
 from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
@@ -26,6 +27,7 @@ from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
 )
+from pipecat.turns.user_turn_processor import UserTurnProcessor
 
 from core.reasoning.prompt_assembly import AssembledPrompt
 from core.tools.registry import ToolContext
@@ -68,10 +70,19 @@ def build_pipeline(
         make_context=lambda p: _context(user_id, session_id, p),
     )
     tts = CompanionTTSService(pipeline.tts, user_id=user_id, session_id=session_id, voice=voice)
+    # Pipecat 1.5 VAD/turn model (spec §19/§21/§24): the VADProcessor emits
+    # VADUser{Started,Stopped}SpeakingFrame from Silero; the UserTurnProcessor turns
+    # those into UserStarted/StoppedSpeakingFrame + an InterruptionFrame when the user
+    # speaks over the reply — which is what actually drives barge-in (§24) and what
+    # CompanionProcessor cancels the in-flight reply on. Without the turn processor,
+    # VAD fires but nothing interrupts. stop_secs=0.2 is the framework-recommended
+    # default the built-in STT latency values assume.
+    vad = SileroVADAnalyzer(sample_rate=STT_SAMPLE_RATE, params=VADParams(stop_secs=0.2))
     return Pipeline(
         [
             transport.input(),
-            VADProcessor(vad_analyzer=SileroVADAnalyzer(sample_rate=STT_SAMPLE_RATE)),
+            VADProcessor(vad_analyzer=vad),
+            UserTurnProcessor(),
             stt,
             companion,
             tts,
@@ -83,13 +94,14 @@ def build_pipeline(
 async def run_pipeline(pipeline: Pipeline) -> None:
     """Run the assembled pipeline; interruptions/barge-in are framework-driven.
 
-    ``allow_interruptions=True`` is what actually turns barge-in on: without it
-    Pipecat keeps speaking over the user (its default is False), so the user
-    talking mid-reply is ignored until the bot finishes (spec §24). With it on,
-    the VAD hearing the user during playback emits an InterruptionFrame that
-    stops TTS and — via CompanionProcessor — cancels the in-flight reply.
+    Barge-in is on by default in Pipecat 1.5 — the UserTurnProcessor (see
+    build_pipeline) broadcasts an InterruptionFrame when the user speaks over the
+    reply, stopping TTS and — via CompanionProcessor — cancelling the in-flight
+    reply (spec §24). The old ``PipelineParams(allow_interruptions=True)`` flag was
+    removed in 1.5: passing it did nothing (pydantic silently dropped the unknown
+    field), so it must not be relied on.
     """
-    task = PipelineTask(pipeline, params=PipelineParams(allow_interruptions=True))
+    task = PipelineTask(pipeline, params=PipelineParams())
     # handle_sigint=False is REQUIRED here: PipelineRunner installs SIGINT/SIGTERM
     # handlers by default, but a WebSocket handler runs inside a uvicorn worker —
     # not the main thread — where asyncio.add_signal_handler raises. Left on, the

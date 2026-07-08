@@ -164,6 +164,16 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
         task = asyncio.create_task(pipeline.compactor.maybe_compact(body.session_id, user.user_id))
         task.add_done_callback(lambda t: t.exception())
 
+    # §6/§7: score this turn with the companion-voice LLM-as-judge, OFF the reply
+    # path, onto the SAME (session, turn) Langfuse trace — no-op unless enabled.
+    if pipeline.evaluator is not None:
+        pipeline.evaluator.schedule(
+            session_id=body.session_id,
+            turn=turn_no,
+            user_msg=body.text,
+            reply=result.final_text,
+        )
+
     # Any background result that landed during this turn is prepended to the reply.
     reply = " ".join([*(d.line for d in deliveries), result.final_text]).strip()
 

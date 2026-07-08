@@ -12,7 +12,25 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
 **Last updated:** 2026-07-08
-**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅ + follow-up fixes F1–F16 ✅)_
+**Current module:** _(All 26 modules ✅ + application assembly ✅ + demo UI ✅ + follow-up fixes F1–F16 ✅ + prod fix pass F17–F21 ✅)_
+
+> **Prod fix pass (2026-07-08):** reported prod issues, root-caused against the live
+> stack. **F17 Pipecat prod voice:** `CompanionSTTService` extended the base `STTService`,
+> which runs `run_stt` per ~20 ms audio frame — faster-whisper transcribed fragments, so the
+> companion never got a real utterance and appeared dead. Fixed to `SegmentedSTTService`
+> (VAD-bounded, one `run_stt` per utterance, raw-PCM `wants_wav_segments=False`) + added the
+> `UserTurnProcessor` (Pipecat 1.5's turn model) so barge-in interruptions actually fire, and
+> dropped the no-op `PipelineParams(allow_interruptions=…)` (removed field in 1.5). Regression
+> test drives a real pipeline via `run_test`. **F18 Langfuse prompts visible:** the `llm.call`
+> trace record now carries the real messages (incl. the assembled system prompt) + reply →
+> promoted to the generation's `input`/`output` (were empty). **F19 Langfuse user tracking:**
+> the sink stamps `user_id`/`session_id` on the trace via `propagate_attributes` (per-user
+> filtering/cost now works — §3 invariant 1). **F20 trace deep-link:** built from the SDK's
+> `get_trace_url` (real project *id* + browser host, cached) instead of the `LANGFUSE_PROJECT`
+> *name* that resolved to the wrong place. **F21 live evaluator:** companion-voice LLM-as-judge
+> (shared `core/eval/judge.py`) runs per turn OFF the reply path and posts `companion_voice` +
+> `chatbot_like` scores to the turn's Langfuse trace, gated by `langfuse_eval_enabled` (default
+> off — extra judge call per turn). Unit-tested; FULL non-real-call suite green.
 
 > **Follow-up fix pass (2026-07-08):** completed F1–F16 (voice barge-in AEC-attenuation fix +
 > Pipecat prod startup; dual-model Whisper STT; conversation-context + past-conversation recall

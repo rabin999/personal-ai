@@ -79,15 +79,21 @@ async def get_session_trace(session_id: str, user: CurrentUser, request: Request
     events = await _trace_store(request).traces_for(user.user_id, session_id)
     turns = _turn_totals(events)
     # A9: deep-link each turn to its full Langfuse trace (the hierarchical detail
-    # view). Langfuse's create_trace_id(seed) is sha256(seed)[:32].
-    settings = _pipeline(request).settings
+    # view). Prefer the SDK-built URL (real project id + browser host) via the live
+    # sink; fall back to the config-built URL only if the sink can't resolve it. The
+    # old path hard-built the URL with `langfuse_project` — a project *name*, not the
+    # id the URL needs — so links resolved to the wrong place.
+    pipeline = _pipeline(request)
+    settings = pipeline.settings
     if settings.langfuse_enabled:
+        sink = pipeline.langfuse
         for t in turns:
-            seed = f"{session_id}:{t['turn']}"
-            tid = hashlib.sha256(seed.encode()).hexdigest()[:32]
-            t["langfuse_url"] = (
-                f"{settings.langfuse_host}/project/{settings.langfuse_project}/traces/{tid}"
-            )
+            url = sink.trace_url(session_id, int(t["turn"])) if sink is not None else None
+            if url is None:
+                seed = f"{session_id}:{t['turn']}"
+                tid = hashlib.sha256(seed.encode()).hexdigest()[:32]
+                url = f"{settings.langfuse_host}/project/{settings.langfuse_project}/traces/{tid}"
+            t["langfuse_url"] = url
     return {
         "user_id": user.user_id,
         "session_id": session_id,

@@ -122,6 +122,62 @@ async def test_stt_service_wraps_whisper_into_transcription_frame() -> None:
     assert any(isinstance(f, TF) and f.text == "hello there" for f in frames)
 
 
+class _CountingSTT:
+    """Records how many times (and with how many bytes) run_stt is invoked."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.calls: list[int] = []
+
+    async def transcribe_stream(self, frames, vocab=None, *, user_id, session_id=None):  # type: ignore[no-untyped-def]
+        from ports.stt import TranscriptPiece, WordConfidence
+
+        total = b""
+        async for chunk in frames:
+            total += chunk
+        self.calls.append(len(total))
+        yield TranscriptPiece(
+            text=self.text, words=[WordConfidence(word="x", confidence=0.9)], is_final=True
+        )
+
+
+async def test_stt_segments_one_transcription_per_utterance() -> None:
+    """Regression (CLAUDE.md §5): the STT service must transcribe ONE whole
+    VAD-bounded utterance, not every ~20ms audio frame. The old base ``STTService``
+    called run_stt per frame — faster-whisper on fragments, no coherent transcript,
+    the reported prod symptom. As a ``SegmentedSTTService`` it buffers between the
+    VADProcessor's start/stop frames and calls run_stt exactly once with the full
+    audio. Driven through a real Pipecat pipeline via run_test — no mic."""
+    from pipecat.frames.frames import (
+        InputAudioRawFrame,
+        TranscriptionFrame,
+        VADUserStartedSpeakingFrame,
+        VADUserStoppedSpeakingFrame,
+    )
+    from pipecat.tests.utils import run_test
+
+    from voice.pipecat.services import CompanionSTTService
+
+    stt = _CountingSTT("hey there")
+    svc = CompanionSTTService(stt, user_id="u", session_id="s")
+    pcm = b"\x01\x00" * 8000  # 0.5s @16k
+    received, _ = await run_test(
+        svc,
+        frames_to_send=[
+            VADUserStartedSpeakingFrame(),
+            InputAudioRawFrame(audio=pcm, sample_rate=16_000, num_channels=1),
+            InputAudioRawFrame(audio=pcm, sample_rate=16_000, num_channels=1),
+            VADUserStoppedSpeakingFrame(),
+        ],
+        expected_down_frames=None,  # inspect frames ourselves (passthrough varies)
+    )
+    transcripts = [f for f in received if isinstance(f, TranscriptionFrame)]
+    # Exactly one run_stt call, fed the WHOLE utterance (both frames concatenated),
+    # yielding exactly one transcript — not one per audio frame.
+    assert stt.calls == [len(pcm) * 2], stt.calls
+    assert [f.text for f in transcripts] == ["hey there"]
+
+
 async def test_tts_service_wraps_grok_into_audio_frames() -> None:
     from pipecat.frames.frames import TTSAudioRawFrame
 
