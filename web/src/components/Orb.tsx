@@ -57,12 +57,32 @@ export function Orb({ state, level }: { state: TurnState; level: number }) {
       >
         {/* Soft outer glow, tinted by the state accent */}
         <div
-          className="absolute -inset-5 rounded-[3rem] blur-3xl transition-opacity duration-700"
-          style={{ background: accent, opacity: (idle ? 0.18 : 0.32) + amp * 0.3 }}
+          className="absolute -inset-8 blur-3xl transition-opacity duration-700"
+          style={{
+            background: `radial-gradient(circle at center, ${accent} 0%, ${accent}00 62%)`,
+            opacity: (idle ? 0.16 : 0.3) + amp * 0.3,
+          }}
         />
 
-        {/* The plasma panel — dark so the screen-blended colours glow in any theme */}
-        <div className="relative h-full w-full overflow-hidden rounded-[2.75rem] bg-slate-950 shadow-2xl ring-1 ring-white/10">
+        {/* FREE-FLOATING plasma — no panel, no border, no hard box. A soft dark
+            core base gives the screen-blended colours something to glow against,
+            and the whole field is radially MASKED so it dissolves into the page at
+            the edges (never looks capped/boxed). */}
+        <div
+          className="absolute inset-0"
+          style={{
+            WebkitMaskImage: "radial-gradient(circle at 50% 50%, #000 46%, transparent 72%)",
+            maskImage: "radial-gradient(circle at 50% 50%, #000 46%, transparent 72%)",
+          }}
+        >
+          {/* dark base for the screen blend, itself fading out */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(circle at 50% 50%, rgba(2,6,23,0.92) 0%, rgba(2,6,23,0.55) 42%, transparent 70%)",
+            }}
+          />
           {/* Drifting, blending colour blobs → the fusion. The whole field also
               cycles HUE continuously (slow at idle, faster when busy) so the colours
               are always shifting — never the same blend twice. */}
