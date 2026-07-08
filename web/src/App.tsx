@@ -3,8 +3,10 @@ import { BrowserRouter, Navigate, NavLink, Route, Routes } from "react-router-do
 import CompanionPage from "./pages/CompanionPage";
 import LoginPage from "./pages/LoginPage";
 import ConversationsPage from "./pages/ConversationsPage";
+import ConversationDetailPage from "./pages/ConversationDetailPage";
 import MemoriesPage from "./pages/MemoriesPage";
 import TracesPage from "./pages/TracesPage";
+import TraceDetailPage from "./pages/TraceDetailPage";
 import { fetchMe } from "./lib/session";
 
 // App router. BrowserRouter with REAL named paths (not a hash router): the FastAPI
@@ -26,12 +28,20 @@ export default function App() {
           element={<RequireAuth><Shell><ConversationsPage /></Shell></RequireAuth>}
         />
         <Route
+          path="/conversations/:sessionId"
+          element={<RequireAuth><Shell><ConversationDetailPage /></Shell></RequireAuth>}
+        />
+        <Route
           path="/memories"
           element={<RequireAuth><Shell><MemoriesPage /></Shell></RequireAuth>}
         />
         <Route
           path="/traces"
           element={<RequireAuth><Shell><TracesPage /></Shell></RequireAuth>}
+        />
+        <Route
+          path="/traces/:sessionId"
+          element={<RequireAuth><Shell><TraceDetailPage /></Shell></RequireAuth>}
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

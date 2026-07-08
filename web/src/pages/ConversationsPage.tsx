@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { format } from "date-fns";
 import {
-  getConversation,
   listConversations,
   type ConversationHeader,
-  type ConversationTurn,
 } from "../lib/api";
 
 const PAGE = 10;
@@ -19,7 +18,6 @@ export default function ConversationsPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
@@ -77,41 +75,20 @@ export default function ConversationsPage() {
 
       <ul className="space-y-2">
         {items.map((c) => (
-          <li key={c.session_id} className="rounded-lg border border-neutral-200 dark:border-neutral-800">
-            <button
-              onClick={() => setOpen(open === c.session_id ? null : c.session_id)}
-              className="flex w-full items-center justify-between px-4 py-3 text-left"
+          <li key={c.session_id}>
+            <Link
+              to={`/conversations/${encodeURIComponent(c.session_id)}`}
+              className="flex items-center justify-between rounded-lg border border-neutral-200 px-4 py-3 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
             >
               <span className="font-medium">{fmt(c.last_at_iso || c.started_at_iso)}</span>
-              <span className="text-sm text-neutral-500">{c.turn_count} turns</span>
-            </button>
-            {open === c.session_id && <ConversationDetail sessionId={c.session_id} />}
+              <span className="text-sm text-neutral-500">{c.turn_count} turns →</span>
+            </Link>
           </li>
         ))}
       </ul>
 
       <Pager offset={offset} total={total} page={PAGE} onChange={setOffset} />
     </section>
-  );
-}
-
-function ConversationDetail({ sessionId }: { sessionId: string }) {
-  const [turns, setTurns] = useState<ConversationTurn[] | null>(null);
-  useEffect(() => {
-    void getConversation(sessionId).then((r) => setTurns(r.turns)).catch(() => setTurns([]));
-  }, [sessionId]);
-  if (turns === null) return <p className="px-4 pb-3 text-sm text-neutral-500">Loading…</p>;
-  return (
-    <div className="space-y-3 border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
-      {turns.map((t) => (
-        <div key={t.turn_index} className="space-y-1 text-sm">
-          <p><span className="font-semibold">You:</span> {t.user_text}</p>
-          <p className="text-neutral-600 dark:text-neutral-300">
-            <span className="font-semibold">Companion:</span> {t.assistant_text}
-          </p>
-        </div>
-      ))}
-    </div>
   );
 }
 

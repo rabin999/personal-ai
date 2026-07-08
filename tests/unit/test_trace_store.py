@@ -49,7 +49,8 @@ async def test_recent_sessions_lists_only_this_users_sessions() -> None:
     await store.record(USER_A, _event("s_new", 1, 99.0, "stt"))
     await store.record(USER_B, _event("s_other", 1, 50.0, "stt"))
 
-    sessions = await store.recent_sessions(USER_A)
+    total, sessions = await store.recent_sessions(USER_A)
     ids = [s["session_id"] for s in sessions]
+    assert total == 2
     assert ids == ["s_new", "s_old"]  # most-recent first
     assert "s_other" not in ids

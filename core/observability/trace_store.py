@@ -60,15 +60,41 @@ class TraceStore:
         docs.sort(key=lambda d: (d.get("turn", 0), d.get("ts", 0.0)))
         return [_jsonable(d) for d in docs]
 
-    async def recent_sessions(self, user_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
-        """Most-recent session ids for this user (for a trace-browser index)."""
-        docs = await self._docs.find(TURN_TRACES_COLLECTION, {"user_id": user_id}, limit=10000)
+    async def recent_sessions(
+        self,
+        user_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 20,
+        since: float | None = None,
+        until: float | None = None,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """This user's traced sessions, most-recent first, paginated + optionally
+        filtered to a ``[since, until]`` epoch-seconds window. Returns
+        ``(total_sessions_in_window, page)`` so the UI can page like the
+        conversation list. Each session also carries its turn count."""
+        docs = await self._docs.find(TURN_TRACES_COLLECTION, {"user_id": user_id}, limit=100000)
         latest: dict[str, float] = {}
+        turns: dict[str, set[int]] = {}
         for d in docs:
             sid = d.get("session_id", "")
-            latest[sid] = max(latest.get(sid, 0.0), float(d.get("ts", 0.0)))
-        ordered = sorted(latest.items(), key=lambda kv: kv[1], reverse=True)
-        return [{"session_id": sid, "last_ts": ts} for sid, ts in ordered[:limit]]
+            ts = float(d.get("ts", 0.0))
+            latest[sid] = max(latest.get(sid, 0.0), ts)
+            turn = int(d.get("turn", 0))
+            if turn > 0:
+                turns.setdefault(sid, set()).add(turn)
+        ordered = [
+            (sid, ts)
+            for sid, ts in latest.items()
+            if (since is None or ts >= since) and (until is None or ts <= until)
+        ]
+        ordered.sort(key=lambda kv: kv[1], reverse=True)
+        total = len(ordered)
+        page = ordered[offset : offset + limit]
+        return total, [
+            {"session_id": sid, "last_ts": ts, "turn_count": len(turns.get(sid, set()))}
+            for sid, ts in page
+        ]
 
 
 def _jsonable(doc: dict[str, Any]) -> dict[str, Any]:

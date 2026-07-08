@@ -6,9 +6,10 @@ Mongo collection written during each voice conversation (``core/observability``)
 """
 
 import hashlib
+from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from api.deps import CurrentUser
 from core.observability.attribution import (
@@ -33,10 +34,41 @@ def _trace_store(request: Request) -> Any:
 
 
 @router.get("/traces")
-async def list_trace_sessions(user: CurrentUser, request: Request) -> dict[str, Any]:
-    """This user's recent traced sessions (most recent first)."""
-    sessions = await _trace_store(request).recent_sessions(user.user_id)
-    return {"user_id": user.user_id, "sessions": sessions}
+async def list_trace_sessions(
+    user: CurrentUser,
+    request: Request,
+    offset: int = 0,
+    limit: int = 20,
+    from_: str | None = Query(default=None, alias="from"),
+    to: str | None = None,
+) -> dict[str, Any]:
+    """This user's traced sessions (most recent first), paginated + optionally
+    filtered to a datetime range — same shape as the conversation list so the
+    Traces browser can page and date-filter instead of using a dropdown."""
+    total, sessions = await _trace_store(request).recent_sessions(
+        user.user_id,
+        offset=max(0, offset),
+        limit=max(1, min(limit, 100)),
+        since=_epoch(from_),
+        until=_epoch(to),
+    )
+    return {
+        "user_id": user.user_id,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "sessions": sessions,
+    }
+
+
+def _epoch(iso: str | None) -> float | None:
+    """Parse an ISO datetime (from the range filter) to epoch seconds."""
+    if not iso:
+        return None
+    try:
+        return datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
 
 
 @router.get("/traces/{session_id}")

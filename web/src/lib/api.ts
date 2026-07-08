@@ -93,8 +93,16 @@ export interface TurnTotals {
   llm_calls: number; tool_calls: number; failures: number; total_ms: number;
   reflected: boolean; langfuse_url?: string;
 }
-export function listTraceSessions(): Promise<{ sessions: { session_id: string; last_ts: number }[] }> {
-  return authed("/debug/traces");
+export interface TraceSession { session_id: string; last_ts: number; turn_count: number }
+export function listTraceSessions(params: {
+  offset?: number; limit?: number; from?: string; to?: string;
+} = {}): Promise<{ total: number; offset: number; limit: number; sessions: TraceSession[] }> {
+  const q = new URLSearchParams();
+  if (params.offset) q.set("offset", String(params.offset));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.from) q.set("from", params.from);
+  if (params.to) q.set("to", params.to);
+  return authed(`/debug/traces?${q.toString()}`);
 }
 export function getSessionTrace(
   sessionId: string,
