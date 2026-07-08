@@ -109,20 +109,28 @@ class LangGraphOrchestrator:
         context: ToolContext | None,
         speak: Callable[[str], Awaitable[None]],
     ) -> GenerationResult:
-        # Voice turn: run the graph (context-resolution included), then speak the
-        # reply. The proven streaming path is available via the native engine; the
-        # graph keeps the same reasoning and adds the context step.
-        result = await self.generate(prompt, dispatcher, context)
-        await speak(result.voice_text or result.final_text)
+        """Voice turn: run the context-resolution step, then delegate to the proven
+        STREAMING generator so TTS starts on the first sentence (low TTFT) — the
+        graph adds context-connection without losing streaming latency."""
+        if isinstance(prompt, DisambiguationRequest):
+            return await self._generator.generate_spoken(prompt, dispatcher, context, speak)
+        self._perceive_span(prompt)
+        note, suppress = await self._resolve_note(prompt)
+        turn_prompt = _augment(prompt, note, suppress) if note else prompt
+        self._span("reasoning", node="respond", streaming=True, context_used=bool(note))
+        result = await self._generator.generate_spoken(turn_prompt, dispatcher, context, speak)
+        self._reflect_span(prompt, result, dispatcher, context)
         return result
 
     # ── nodes ─────────────────────────────────────────────────────────────
 
     async def _perceive(self, state: _TurnState) -> _TurnState:
-        prompt = state["prompt"]
+        self._perceive_span(state["prompt"])
+        return {}
+
+    def _perceive_span(self, prompt: AssembledPrompt) -> None:
         # A5: log the persona/profile read the agent has for this user this turn —
-        # the emotional read + which soft-signal/preference context is in play — so
-        # the trace shows what shaped the response, not just the words.
+        # the emotional read + which soft-signal/preference context is in play.
         sections = prompt.sections
         persona_active = [
             k
@@ -134,19 +142,24 @@ class LangGraphOrchestrator:
             node="perceive",
             utterance=prompt.utterance,
             prompt_version=prompt.prompt_version,
-            emotion=prompt.emotion,  # acoustic/emotional read of the user (A5 persona)
+            emotion=prompt.emotion,
             persona_context=persona_active,
             recent_turns=[m.get("content", "")[:120] for m in prompt.messages[1:-1]][-4:],
         )
-        return {}
 
     async def _resolve_context(self, state: _TurnState) -> _TurnState:
+        note, suppress = await self._resolve_note(state["prompt"])
+        return {"context_note": note, "suppress_search": suppress}
+
+    async def _resolve_note(self, prompt: AssembledPrompt) -> tuple[str, bool]:
         """A3: reason about how this utterance connects to the conversation and
-        resolve references, so a follow-up like 'that temperature' is understood."""
-        prompt = state["prompt"]
+        resolve references, so a follow-up like 'that temperature' is understood.
+        Shared by the text graph and the streaming voice path. Returns (note,
+        suppress_live_search)."""
         history = list(prompt.messages[1:-1])  # drop system + current utterance
         note = ""
         relation = "new_topic"
+        refers_to = ""
         if history:  # only worth resolving when there IS prior context
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in history[-6:])
             user_msg = f"Recent conversation:\n{convo}\n\nNew message: {prompt.utterance}"
@@ -168,13 +181,9 @@ class LangGraphOrchestrator:
                 refers_to = str(parsed.get("refers_to") or "").strip()
             except (LLMUnavailable, json.JSONDecodeError, ValueError, KeyError):
                 refers_to = ""
-        else:
-            refers_to = ""
-        # A3: if this is a follow-up/continuation whose answer is carried in the
-        # conversation (we have a resolution note), suppress the live-info search
-        # backstop so a fresh, irrelevant search doesn't override the carried info.
+        # A3: a follow-up/continuation/correction whose answer is carried → suppress
+        # the live-info search backstop so a fresh, irrelevant search can't override.
         carried = relation in ("follow_up", "continuation", "correction") and bool(note)
-        # A5: log what it connected to and WHY (and that there was nothing to when new).
         self._span(
             "reasoning",
             node="resolve_context",
@@ -184,7 +193,7 @@ class LangGraphOrchestrator:
             or ("no prior context to connect to" if not history else "no clear reference"),
             suppress_live_search=carried,
         )
-        return {"context_note": note, "suppress_search": carried}
+        return note, carried
 
     async def _respond(self, state: _TurnState) -> _TurnState:
         """Run the proven reasoning core (judgment → tools → gates → reflection),
@@ -206,22 +215,26 @@ class LangGraphOrchestrator:
         return {"result": result}
 
     async def _reflect_log(self, state: _TurnState) -> _TurnState:
+        self._reflect_span(
+            state["prompt"], state["result"], state.get("dispatcher"), state.get("context")
+        )
+        return {}
+
+    def _reflect_span(
+        self,
+        prompt: AssembledPrompt,
+        result: GenerationResult,
+        dispatcher: ToolDispatch | None,
+        context: ToolContext | None,
+    ) -> None:
         """A5: surface the outcome — action, style flags, and an explicit tool
         'why-not' for every available tool that did NOT run this turn."""
-        result = state["result"]
-        prompt = state["prompt"]
-        dispatcher = state.get("dispatcher")
-        context = state.get("context")
         tools: list[str] = []
         if dispatcher is not None and context is not None:
             try:
                 tools = [t.id for t in dispatcher.tools_for(context)]
             except Exception:
                 tools = []
-        # A5: a not-called tool must be EXPLAINED, not silent. Whether a tool ran is
-        # on the tool.call spans; here we record, per available tool, the reason it
-        # was skipped when it wasn't used (answered from context/memory; no live
-        # info needed; the model judged it unnecessary).
         why_not = {}
         if result.action == "respond":
             for tid in tools:
@@ -241,7 +254,6 @@ class LangGraphOrchestrator:
             available_tools=tools,
             tool_why_not=why_not,  # A5: explained negatives
         )
-        return {}
 
     # ── helpers ───────────────────────────────────────────────────────────
 
