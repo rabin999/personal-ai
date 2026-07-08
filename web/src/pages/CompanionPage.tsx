@@ -53,6 +53,7 @@ export default function CompanionPage() {
   const [companion, setCompanion] = useState("Companion");
   const [profileOpen, setProfileOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
+  const [showSetup, setShowSetup] = useState(false); // mobile: collapse config so the orb + Start are the hero
   const { pref: themePref, setPref: setThemePref } = useTheme();
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -339,8 +340,32 @@ export default function CompanionPage() {
 
         {/* Bottom action bar */}
         <div className="border-t border-slate-200 bg-white/80 px-4 py-4 backdrop-blur sm:px-6 dark:border-slate-800 dark:bg-slate-900/50">
+          {/* Mobile: collapse the config behind a Setup toggle so the orb + Start
+              are the hero. Desktop always shows it inline. */}
+          {!active && (
+            <button
+              onClick={() => setShowSetup((v) => !v)}
+              className="mb-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-600 lg:hidden dark:border-slate-800 dark:text-slate-300"
+            >
+              <span>
+                Setup · <span className="font-medium capitalize">{voice}</span> ·{" "}
+                {runtime === "pipecat" ? "Pipecat" : "Native"}
+              </span>
+              <svg
+                viewBox="0 0 24 24"
+                className={`h-4 w-4 transition-transform ${showSetup ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          )}
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
-            <div className="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
+            <div
+              className={`flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid ${showSetup && !active ? "grid" : "hidden lg:grid"}`}
+            >
               <MicPicker devices={devices} value={micId} onChange={setMicId} disabled={active} />
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Voice</span>
