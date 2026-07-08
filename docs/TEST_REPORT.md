@@ -1142,3 +1142,51 @@ COMPANION> Oh that sounds really tough. What's been going on there that's making
 Tests assert: intent + emotional_read logged; Nepal → needs_live_info=True AND web_search fired;
 office → needs_live_info=False AND no search; both replies pass the companion-voice judge and avoid
 "what do you mean". ruff + mypy clean.
+
+---
+
+## F6 — Traits actually shape responses + are visible in the trace
+
+**App-goal verified:** the behavioral traits genuinely influence the reply (not decorative), and
+each turn's trace shows WHICH traits were active + the exact text they injected.
+
+**Root cause (found by a real A/B, not assumed):** an initial traits-ON vs traits-OFF A/B on
+"my code compiled after 3 hours" produced a **byte-for-byte identical reply**. Investigation showed
+why: the anti-chatbot voice guidance (`_VOICE_TICS`) and intent-first curiosity (`_INTENT`) were
+**hard-coded in the prompt template AND duplicated in the `response_voice` / `curiosity_policy`
+traits** — so disabling the traits changed nothing (the template still enforced the same behavior).
+The traits were decorative *because of the duplication* — and this also violated invariant §6
+(config over code: behavior params belong in config/traits, not hard-coded).
+
+**Fix:**
+- Moved the toggleable STYLE out of the hard-coded template into the traits (prompt template
+  **v2→v3**): `_INTENT` → `curiosity_policy`, `_VOICE_TICS` → `response_voice` (bumped v1→v2, folding
+  in the specific tics). The template now keeps only true identity + **safety** (self-model /
+  disclosure honesty) + **capability** (tool-awareness) — none of which are user-toggleable traits.
+  So a trait toggle now genuinely changes the reply. **Intent-first behavior is preserved** (it's in
+  `curiosity_policy` when on, and F5's `resolve_context` node infers/logs intent every turn regardless).
+- Trace visibility: `AssembledPrompt.active_traits` (id + version) + the injected `trait_text` are now
+  emitted on the assembly span (chat route + harness).
+
+**Proof — real model + stores (`tests/real_call/test_traits_impact.py`, green):** the SAME
+lecture-prone message ("tell me everything you know about black holes") with traits OFF vs ON:
+- trace(OFF).active_traits == [] ; trace(ON).active_traits lists all four traits + their injected
+  text ("friend, not a customer-service assistant" present).
+- replies differ; the ON reply is **materially shorter** than the OFF lecture (the response_voice
+  brevity trait's deterministic, attributable effect); the ON reply passes the calibrated
+  companion-voice judge.
+
+**Captured A/B (real model, verbatim):**
+```
+INPUT> can you help me plan my week to be more productive?
+OFF (traits disabled)> I'd love to help you with that! Let's start with what you've got going on…   [service-desk opener; 299 chars]
+ON  (traits enabled) > Absolutely! Let's map it out. What are the main things you need to get done this week?…   [tighter, no service-speak; 262 chars]
+
+INPUT> tell me about black holes
+OFF> …[623-char lecture ending in a tidy checklist question]
+ON > …[491-char concise version, references earlier talk]   ← response_voice brevity
+```
+The OFF variant reintroduces the exact assistant-speak ("I'd love to help you with that!") and the
+long lecture that the `response_voice` trait exists to prevent — direct evidence the trait is
+operative. ruff + mypy clean; prompt/golden/response-gen unit + golden suites still green (no
+regression from the v3 template change).

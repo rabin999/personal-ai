@@ -38,7 +38,12 @@ from ports.preference_memory import PreferenceMemory
 #   v1 — original identity/capabilities.
 #   v2 — Item 2 rework: _SELF (no volunteered AI-disclaimers, engage big questions),
 #        _VOICE_TICS (anti-chatbot phrasings), warm pull-based disclosure exemplar.
-PROMPT_TEMPLATE_VERSION = 2
+#   v3 — F6: moved the toggleable STYLE guidance OUT of the hard-coded template and
+#        into the traits so they're the operative source (config over code, §6) —
+#        _INTENT → curiosity_policy, _VOICE_TICS → response_voice. The template now
+#        keeps only true identity + safety (self-model/disclosure) + capability
+#        (tool-awareness), which are not user-toggleable traits.
+PROMPT_TEMPLATE_VERSION = 3
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +109,10 @@ class AssembledPrompt(BaseModel):
     # backstop does NOT fire a fresh (irrelevant) search over the carried context.
     suppress_live_search: bool = False
     resolved_entities: list[EntityCandidate] = Field(default_factory=list)
+    # F6: the behavioral traits actually composed into THIS prompt (id + version) —
+    # recorded in the trace so a turn shows which traits shaped it; the injected
+    # trait text itself is in ``sections["traits"]``.
+    active_traits: list[dict[str, Any]] = Field(default_factory=list)
     # F3/F4: which conversation source (if any) this turn's recall was routed to —
     # "current" (this session's transcript), "past" (the conversation store), or
     # "none". Recorded in the trace so recall routing is inspectable.
@@ -266,6 +275,7 @@ class PromptAssembler:
             emotion=dict(emotion) if emotion else None,
             cold_start=cold_start,
             resolved_entities=candidates,
+            active_traits=[{"id": t.id, "version": t.version} for t in traits],
             recall_source=recall_source,
             sections=sections,
         )
@@ -386,13 +396,15 @@ def _now_section() -> str:
 
 def _identity_section(companion_name: str | None) -> str:
     name = companion_name or "Companion"
+    # Only identity + safety (self-model/disclosure) + capability (tool-awareness)
+    # are hard-coded here. The toggleable STYLE — voice/anti-chatbot tics and
+    # intent-first curiosity — lives in the response_voice + curiosity_policy TRAITS
+    # (config over code, §6), so enabling/disabling a trait genuinely changes the
+    # reply. See PROMPT_TEMPLATE_VERSION v3.
     return (
-        f"You are {name}, a voice-first personal companion. Warm, natural, "
-        "concise — you talk like a person, not an assistant. You remember "
-        "past conversations and use them.\n\n"
+        f"You are {name}, a voice-first personal companion. You remember past "
+        "conversations and use them.\n\n"
         f"{_SELF}\n\n"
-        f"{_VOICE_TICS}\n\n"
-        f"{_INTENT}\n\n"
         f"{_CAPABILITIES}"
     )
 
@@ -427,42 +439,10 @@ _SELF = (
 )
 
 
-# Concrete assistant-speak tics to avoid — these are the subtle ones that make a
-# reply read like a helpdesk even without an obvious "How can I help you?". Naming
-# them specifically (with the friend-alternative) moves the needle more than a
-# general "be warm" instruction.
-_VOICE_TICS = (
-    "## Small things that make you sound like a chatbot — avoid them\n"
-    "- Don't offer service: no 'I can help with that', 'I can definitely help', "
-    "'happy to help'. A friend just dives in — react, or ask the real question.\n"
-    "- Don't advertise availability: no 'I'm always here to listen', 'I'm here for "
-    "you if you want to talk', 'feel free to reach out'. Be present in THIS moment "
-    "instead — respond to what they actually said.\n"
-    "- Don't open with formulaic sympathy ('I'm sorry to hear that', 'that sounds "
-    "really hard') and then a generic 'what happened?'. React like you mean it and "
-    "to the SPECIFIC thing they said.\n"
-    "- Don't narrate yourself or your feelings unprompted ('for me, it's about "
-    "learning and connecting'). Keep the focus on them unless they ask about you.\n"
-    "- Don't end every turn with a tidy question. Sometimes just be with them."
-)
-
-
-# Intent-first behavior (highest priority): infer what the user actually wants and
-# respond to THAT, rather than stalling with "what do you mean?" clarifications.
-_INTENT = (
-    "## Understand what they mean, then respond\n"
-    "Your first job every turn is to work out what the user is really trying to "
-    "get from you — using their words, the conversation so far, their memory, and "
-    "the emotional tone — and then respond to THAT. Infer intent; don't make them "
-    "spell everything out. Make a sensible, best-effort assumption and go with it. "
-    "Do NOT reply with generic clarifiers like 'what do you mean?', 'what are you "
-    "talking about?', 'can you be more specific?', or 'what exactly do you want?' — "
-    "that frustrates people and is almost never necessary. Ask a short clarifying "
-    "question ONLY when the request is genuinely ambiguous AND guessing wrong would "
-    "actually matter (e.g. an irreversible action, or two very different real "
-    "meanings) — and even then, lead with your best guess ('sounds like you mean "
-    "X — …') instead of an empty question. When in doubt, help."
-)
+# NOTE: the anti-chatbot voice tics (_VOICE_TICS) and intent-first curiosity
+# (_INTENT) that used to live here as hard-coded blocks were moved into the
+# response_voice + curiosity_policy TRAITS in v3 (F6) so they're the operative,
+# user-toggleable source of style (config over code, §6). Don't re-add them here.
 
 
 # Capability awareness (brief §8.8): the companion must KNOW, every turn, that it

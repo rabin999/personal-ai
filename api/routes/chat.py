@@ -107,6 +107,10 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
             prompt_version=prompt.prompt_version,  # Item 7: attributable per version
             prompt_chars=len(prompt.system_prompt),
             sections=[k for k, v in sections.items() if v.strip()],
+            # F6: which behavioral traits were active + the exact text they injected,
+            # so a turn's trace shows the traits' influence, not just their names.
+            active_traits=[f"{t['id']}:v{t['version']}" for t in prompt.active_traits],
+            trait_text=sections.get("traits", ""),
             system_prompt=prompt.system_prompt[:4000],
         )
         trace.emit(

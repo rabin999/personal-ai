@@ -89,6 +89,8 @@ class RealTurns:
             complexity=prompt.complexity_hint,
             prompt_version=prompt.prompt_version,
             prompt_chars=len(prompt.system_prompt),
+            active_traits=[f"{t['id']}:v{t['version']}" for t in prompt.active_traits],
+            trait_text=sections.get("traits", ""),
         )
         trace.emit(
             "router", f"routing to {prompt.complexity_hint} tier", tier=prompt.complexity_hint
@@ -125,6 +127,10 @@ class RealTurns:
     @property
     def assembler(self):
         return self._p.assembler
+
+    @property
+    def profiles(self):
+        return self._p.profiles
 
     @property
     def working(self):
