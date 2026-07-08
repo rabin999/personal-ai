@@ -11,10 +11,11 @@ class AudioPrefs(BaseModel):
     vad_threshold: float = 0.6
     vad_min: float = 0.4
     vad_max: float = 0.8
-    # §21/brief §2.3: tightened from 700ms — start generating ~100ms sooner after
-    # a complete thought without cutting mid-sentence (the long pause still guards
-    # trailing "and…"/filler). Per-user tunable and learnable later (§18).
-    endpoint_short_pause_ms: int = 600
+    # §21: silence after a COMPLETE-sounding thought before we take our turn. Raised
+    # to 900ms — 600ms cut people off when they paused mid-thought (a beat to think);
+    # 900ms gives natural pauses room while the long pause still guards trailing
+    # "and…"/filler for clearly-incomplete thoughts. Per-user tunable (§18).
+    endpoint_short_pause_ms: int = 900
     endpoint_long_pause_ms: int = 2500
     aec: bool = True
     noise_suppress: bool = True

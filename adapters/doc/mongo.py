@@ -32,6 +32,10 @@ class MongoDocStore:
         result = await self._db.mongo(collection).insert_one(dict(doc))
         return str(result.inserted_id)
 
+    async def delete_many(self, collection: str, query: Mapping[str, Any]) -> int:
+        result = await self._db.mongo(collection).delete_many(dict(query))
+        return int(getattr(result, "deleted_count", 0) or 0)
+
     async def aggregate(
         self, collection: str, pipeline: Sequence[Mapping[str, Any]]
     ) -> list[dict[str, Any]]:

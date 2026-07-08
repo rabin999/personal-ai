@@ -152,6 +152,8 @@ def _start(
         extractor=pipeline.extractor,
         defer_routing=pipeline.settings.defer_memory_routing,
         compactor=pipeline.compactor,  # F14: rolling-summary compaction
+        logs=pipeline.logs,  # C1: bind per-turn so deep LLM-call spans persist
+        evaluator=pipeline.evaluator,  # §6/§7: judge voice turns too (Langfuse eval)
     )
 
     async def persist(event: dict[str, object]) -> None:

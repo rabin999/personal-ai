@@ -282,12 +282,10 @@ export default function CompanionPage() {
           : "bg-slate-400 dark:bg-slate-600";
 
   return (
-    <div className="flex h-full bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <main className="flex min-w-0 flex-1 flex-col">
-        {/* The single app header (F10) — same brand/nav/tools/theme as every page.
-            The companion-specific controls (connection status, mobile trace drawer,
-            profile avatar) ride in the header's right slot. */}
-        <AppHeader
+    <div className="flex h-full flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* Full-width app header (F10), then the body row: orb + trace sidebar under it,
+          so the trace lives INSIDE the page body on the right, not as a detached column. */}
+      <AppHeader
           right={
             <div className="flex items-center gap-2">
               <div className="hidden items-center gap-2 rounded-full border border-neutral-200 bg-white px-2.5 py-1 text-xs sm:flex dark:border-neutral-700 dark:bg-neutral-800/70">
@@ -330,6 +328,8 @@ export default function CompanionPage() {
           }
         />
 
+      <div className="flex min-h-0 flex-1">
+        <main className="flex min-w-0 flex-1 flex-col">
         <div className="relative flex flex-1 flex-col items-center justify-center gap-10 overflow-hidden px-4 py-8 sm:px-6">
           {/* Soft backdrop wash */}
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_40%,rgba(14,165,233,0.08),transparent_70%)]" />
@@ -492,6 +492,7 @@ export default function CompanionPage() {
         mobileOpen={traceOpen}
         onCloseMobile={() => setTraceOpen(false)}
       />
+      </div>
 
       <ProfilePanel
         open={profileOpen}

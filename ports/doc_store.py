@@ -33,6 +33,11 @@ class DocStore(Protocol):
         """Append ``doc`` with a generated ``_id``; return that id."""
         ...
 
+    async def delete_many(self, collection: str, query: Mapping[str, Any]) -> int:
+        """Delete every document matching ``query``; return how many were removed.
+        Used by account deletion (GDPR-style wipe of all of a user's data)."""
+        ...
+
     async def aggregate(
         self, collection: str, pipeline: Sequence[Mapping[str, Any]]
     ) -> list[dict[str, Any]]:

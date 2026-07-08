@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { fetchProfile, updatePrefs, type LocaleProfile, type UserProfile } from "../lib/profile";
+import { deleteAccount } from "../lib/session";
 
 interface Props {
   open: boolean;
@@ -117,7 +118,7 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
           {status === "idle" && profile && <ProfileBody p={profile} />}
         </div>
 
-        <footer className="border-t border-slate-200 px-5 py-4 dark:border-slate-800">
+        <footer className="space-y-2 border-t border-slate-200 px-5 py-4 dark:border-slate-800">
           <button
             onClick={onSignOut}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
@@ -127,10 +128,52 @@ export function ProfilePanel({ open, onClose, onSignOut }: Props) {
             </svg>
             Sign out
           </button>
+          <DeleteAccount />
         </footer>
       </aside>
     </div>,
     document.body,
+  );
+}
+
+// Danger action: permanently delete the account + ALL data. Two-step so it can't
+// be triggered by accident; on confirm it wipes everything and returns to login.
+function DeleteAccount() {
+  const [arming, setArming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  if (!arming) {
+    return (
+      <button
+        onClick={() => setArming(true)}
+        className="w-full rounded-lg px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+      >
+        Delete my profile
+      </button>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm dark:border-rose-900/50 dark:bg-rose-950/30">
+      <p className="text-rose-700 dark:text-rose-300">
+        Delete your profile and <b>all</b> your data (conversations, memories, traces)?
+        This can’t be undone.
+      </p>
+      <div className="mt-2.5 flex gap-2">
+        <button
+          disabled={busy}
+          onClick={() => { setBusy(true); void deleteAccount(); }}
+          className="flex-1 rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-60"
+        >
+          {busy ? "Deleting…" : "Yes, delete everything"}
+        </button>
+        <button
+          disabled={busy}
+          onClick={() => setArming(false)}
+          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-white dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }
 

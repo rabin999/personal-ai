@@ -25,6 +25,7 @@ from core.memory.episodic import EpisodicMemory
 from core.memory.extraction import MemoryExtractor
 from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
+from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
 from core.reasoning.response_gen import GenerationResult, ResponseGenerator, ToolDispatch
 from core.tools.registry import ToolContext
@@ -94,8 +95,19 @@ class VoiceSession:
         defer_routing: bool = True,
         engine: str = "native",
         compactor: "SessionCompactor | None" = None,
+        logs: StructuredLogger | None = None,
+        evaluator: Any = None,
     ) -> None:
         self._user_id = user_id
+        # §6/§7: per-turn LLM-as-judge (off the reply path) → scores on the same
+        # (session, turn) Langfuse trace. Voice turns went unscored before (only the
+        # text path scheduled it), so Langfuse showed no evaluator for voice.
+        self._evaluator = evaluator
+        # Bind correlation ids around each turn so the per-LLM-call spans (purpose,
+        # prompt, params, tokens, cost) the LLM adapter logs persist to THIS turn's
+        # trace — without it, voice traces showed only surface stage spans (C1 was
+        # only wired on the text path). Stored below.
+        self._logs = logs
         self._session_id = session_id
         self._pipeline = AudioInputPipeline(config, vad)
         # Barge-in detects speech during playback at a lower bar than turn-start
@@ -346,6 +358,23 @@ class VoiceSession:
     async def _run_turn(
         self, transcript: str, utterance: bytes, out: asyncio.Queue[bytes | None]
     ) -> None:
+        """Bind this turn's correlation ids (session, turn, user) so EVERY paid
+        LLM call the adapter makes during generation logs a per-call span into THIS
+        turn's trace (purpose, prompt, params, tokens, cost) — the deep trace, not
+        just surface stage spans. Then run the turn."""
+        if self._logs is None:
+            await self._run_turn_inner(transcript, utterance, out)
+            return
+        with self._logs.bind(
+            trace_id=self._session_id,
+            turn_id=self._trace.current_turn,
+            user_id=self._user_id,
+        ):
+            await self._run_turn_inner(transcript, utterance, out)
+
+    async def _run_turn_inner(
+        self, transcript: str, utterance: bytes, out: asyncio.Queue[bytes | None]
+    ) -> None:
         try:
             self._trace.emit(
                 "stt",
@@ -421,6 +450,15 @@ class VoiceSession:
             self._remember(transcript, result.final_text)
             self._log_conversation(transcript, result.final_text, emotion)
             self._compact_if_needed()  # F14: bound the buffer over a long session
+            # §6/§7: score this turn with the companion-voice judge, off the reply
+            # path, onto the SAME (session, turn) Langfuse trace (no-op unless enabled).
+            if self._evaluator is not None:
+                self._evaluator.schedule(
+                    session_id=self._session_id,
+                    turn=self._trace.current_turn,
+                    user_msg=transcript,
+                    reply=result.final_text,
+                )
             self._trace.emit("tts", "reply audio complete")
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled", phase="cancelled")

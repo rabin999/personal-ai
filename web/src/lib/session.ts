@@ -35,3 +35,13 @@ export async function logout(): Promise<void> {
   }
   window.location.href = "/login";
 }
+
+/** Permanently delete the account + ALL data, then return to login. */
+export async function deleteAccount(): Promise<void> {
+  try {
+    await fetch("/auth/account", { method: "DELETE", credentials: "include" });
+  } catch {
+    /* best-effort — navigate away regardless */
+  }
+  window.location.href = "/login";
+}

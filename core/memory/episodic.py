@@ -103,6 +103,10 @@ class EpisodicMemory:
         items.sort(key=lambda e: e.timestamp or "", reverse=True)
         return items
 
+    async def delete_all(self, user_id: str) -> None:
+        """Delete ALL of this user's episodic memories (account deletion)."""
+        await self._vectors.delete_all_for_user(EPISODIC_COLLECTION, user_id=user_id)
+
     async def delete(self, user_id: str, memory_id: str) -> bool:
         """Delete one of this user's episodic memories (the 'forget this' right)."""
         return await self._vectors.delete(EPISODIC_COLLECTION, memory_id, user_id=user_id)

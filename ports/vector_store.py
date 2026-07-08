@@ -42,3 +42,7 @@ class VectorStore(Protocol):
     async def delete(self, collection: str, doc_id: str, *, user_id: str) -> bool:
         """Delete one of THIS user's docs by id (user-scoped). Returns True if removed."""
         ...
+
+    async def delete_all_for_user(self, collection: str, *, user_id: str) -> None:
+        """Delete EVERY doc belonging to this user (account deletion, user-scoped)."""
+        ...

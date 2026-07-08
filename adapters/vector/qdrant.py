@@ -125,6 +125,18 @@ class QdrantVectorStore:
         )
         return True
 
+    async def delete_all_for_user(self, collection: str, *, user_id: str) -> None:
+        """Delete EVERY point belonging to this user (account deletion). User-scoped
+        so it can never touch another user's vectors (§0.5)."""
+        user_filter = models.Filter(
+            must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchValue(value=user_id))]
+        )
+        await self._db.qdrant().delete(
+            collection_name=collection,
+            points_selector=models.FilterSelector(filter=user_filter),
+            wait=True,
+        )
+
     def _embed_documents(self, texts: list[str]) -> tuple[list[list[float]], list[SparseEmbedding]]:
         dense = [vector.tolist() for vector in self._dense.embed(texts)]
         sparse = list(self._sparse.embed(texts))

@@ -38,6 +38,13 @@ class FakeDocStore:
         await self.put(collection, doc_id, doc)
         return doc_id
 
+    async def delete_many(self, collection: str, query: Mapping[str, Any]) -> int:
+        col = self.collections.get(collection, {})
+        gone = [k for k, d in col.items() if _matches(d, query)]
+        for k in gone:
+            del col[k]
+        return len(gone)
+
     async def aggregate(
         self, collection: str, pipeline: Sequence[Mapping[str, Any]]
     ) -> list[dict[str, Any]]:
@@ -145,6 +152,15 @@ class FakeVectorStore:
             return False
         del self.docs[key]
         return True
+
+    async def delete_all_for_user(self, collection: str, *, user_id: str) -> None:
+        gone = [
+            k
+            for k, d in self.docs.items()
+            if k.startswith(f"{collection}:") and d["payload"].get("user_id") == user_id
+        ]
+        for k in gone:
+            del self.docs[k]
 
 
 def _tokens(text: str) -> set[str]:

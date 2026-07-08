@@ -104,3 +104,57 @@ async def logout(request: Request) -> JSONResponse:
     """Clear the session (revoke)."""
     request.session.clear()
     return JSONResponse({"ok": True})
+
+
+# Every Mongo collection that stores data keyed by ``user_id`` — the full set wiped
+# on account deletion (GDPR-style). Global/shared collections (provider_config,
+# trait_defs, project_types, prompts) are intentionally excluded.
+_USER_COLLECTIONS = [
+    "user_profile",
+    "conversations",
+    "conversation_turns",
+    "turn_traces",
+    "response_feedback",
+    "procedural",
+    "self_statements",
+    "self_model_log",
+    "psych_model",
+    "psych_correlations",
+    "projects",
+    "pending_insights",
+    "entities",
+    "tool_results",
+    "cost_ledger",
+    "ledger_entries",
+    "search_cache",
+]
+
+
+@router.delete("/account")
+async def delete_account(request: Request) -> JSONResponse:
+    """Delete the signed-in user's account and ALL their data, then end the session.
+    Wipes every user-scoped Mongo collection + episodic vectors (Qdrant); best-effort
+    so one failing store never blocks the rest. The user is fully logged out after."""
+    dev_user = get_settings().dev_auth_user
+    user_id = dev_user or request.session.get(SESSION_USER_KEY)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="not authenticated")
+    pipeline = request.app.state.pipeline
+    removed = 0
+    for col in _USER_COLLECTIONS:
+        try:
+            removed += await pipeline.docs.delete_many(col, {"user_id": user_id})
+        except Exception:
+            logger.warning("delete_account: failed on collection %s", col, exc_info=True)
+    try:
+        await pipeline.episodic.delete_all(user_id)
+    except Exception:
+        logger.warning("delete_account: episodic wipe failed", exc_info=True)
+    try:  # the account record itself lives in the accounts store (Mongo)
+        await pipeline.docs.delete_many("accounts", {"user_id": user_id})
+        await pipeline.docs.delete_many("accounts", {"_id": user_id})
+    except Exception:
+        logger.warning("delete_account: account delete failed", exc_info=True)
+    request.session.clear()
+    logger.info("account deleted: user_id=%s (%d docs)", user_id, removed)
+    return JSONResponse({"ok": True, "deleted_docs": removed})
