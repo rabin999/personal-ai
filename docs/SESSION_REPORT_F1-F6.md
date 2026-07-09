@@ -156,13 +156,34 @@ Captured as item 0 in `docs/NEXT_CORRECTNESS_TASK.md`.
 6 acceptance tests fail with `ProfileNotFound` (a missing seeded profile). **Identical at
 `c3dfd1d`** — pre-existing, not an isolation leak, not caused by this work.
 
-## Deploy — the one human step
+## Deploy — done ✅
 
-`deploy/update.sh` runs **on the server**, as root. This workstation has no `/opt/companion`, no
-`companion-api` unit, and no SSH host configured, so it cannot be run from here.
+Deployed to `root@202.58.120.93` via `sudo bash /opt/companion/deploy/update.sh`.
+The server had been sitting on **`c3dfd1d` — the broken commit** — so live voice was dead in
+production until now.
+
+- commit on server: **`7e779c7`** · `companion-api` + `companion-worker` **active** · `/health` → `{"status":"ok"}`
+- `Application startup complete` ⇒ `build_pipeline()` ran ⇒ **`assert_orchestrator_contract()`
+  passed on production.**
+
+### One more bug, found in the production startup log immediately after deploying
 
 ```
-sudo bash /opt/companion/deploy/update.sh
+companion-api: AttributeError: 'GrokSTT' object has no attribute 'preload'
+companion-api: INFO:     Application startup complete.
 ```
 
-Worth doing promptly: this ships a fix for a total voice outage.
+Same disease as F3, one layer earlier. `api/app.py::_warm` chained two warmups inside one
+best-effort `except Exception`. `preload()` was never declared on the STT **port** and only
+`FasterWhisperSTT` implemented it, so once `stt_engine` defaulted to `"grok"` the first line raised
+on **every startup**, the `except` swallowed it, and **`llm.preload()` — the local fastembed
+embedder — never ran.** Every first turn paid the embedder cold load. That is very likely the
+1331 ms first-turn `prompt_assembly` spike recorded in `LATENCY_ANALYSIS` §6 as "cold start".
+
+Fixed in `7e779c7`: `preload()` is part of `ports/stt.py`; `GrokSTT.preload()` is an explicit
+no-op; the two warms are independent. Guarded by `tests/unit/test_stt_port_contract.py` (proven by
+deleting the method again → 2 tests fail). Pre-existing since `314ff6d`; not introduced here.
+
+Verified on the redeploy: no `warmup failed` warning on the current process. (The app's `INFO` logs
+don't reach the journal — only `WARNING`+ do, which is precisely why the `AttributeError` was
+visible. Its absence is the positive signal.)
