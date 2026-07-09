@@ -75,6 +75,9 @@ ENGINE_TESTS = [
     "tests/golden/test_style_judge_agreement.py",
     "tests/engine/test_e1_steps.py",
     "tests/engine/test_e2_volatility_classifier.py",
+    "tests/engine/test_e2_detector_agreement.py",
+    "tests/engine/test_e1_enforcement.py",
+    "tests/engine/test_e3_prosody_read.py",
 ]
 
 
@@ -112,6 +115,20 @@ MUTATIONS: list[Mutation] = [
         old="def find_forbidden(",
         new="def find_forbidden(*_a, **_k):\n    return []\n\n\ndef _dead_find_forbidden(",
         breaks="the style detector flags nothing — self-reflection never triggers",
+    ),
+    Mutation(
+        name="detector_ignores_register",
+        file="core/reasoning/style.py",
+        old="    (re.compile(p, re.IGNORECASE), label) for p, label in (*FORBIDDEN_PATTERNS, *REGISTER_PATTERNS)",
+        new="    (re.compile(p, re.IGNORECASE), label) for p, label in FORBIDDEN_PATTERNS",
+        breaks="D-12: the detector reverts to a closed list of remembered phrasings; held-out recall collapses",
+    ),
+    Mutation(
+        name="detector_ignores_the_lead_sentence",
+        file="core/reasoning/style.py",
+        old="    labels += [label for pattern, label in _COMPILED_LEAD if pattern.search(lead)]",
+        new="    labels += []",
+        breaks="D-12: an opening service-desk apology ('I'm sorry, I couldn't find that') is not flagged",
     ),
     Mutation(
         name="reflection_never_runs",

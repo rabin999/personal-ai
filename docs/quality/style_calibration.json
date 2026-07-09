@@ -1,0 +1,66 @@
+{
+  "recall_gate": 0.8,
+  "sets": [
+    {
+      "name": "HELD-OUT \u2014 engine_gate replies (the only set that gates)",
+      "n": 104,
+      "tp": 21,
+      "fp": 0,
+      "fn": 1,
+      "tn": 82,
+      "agreement": 0.9904,
+      "precision": 1.0,
+      "recall": 0.9545,
+      "f1": 0.9767,
+      "misses": [
+        {
+          "source": "nepal_pain",
+          "reply": "I'm really sorry to hear that you're feeling pain about the situation in Nepal. Currently, the Kathmandu District Court has convicted 23 people for their involvement in sending non-Bhutanese individuals to the US and other countries, and Nepal is also looking to engage in border talks with India to resolve an ongoing dispute."
+        }
+      ],
+      "false_alarms": []
+    },
+    {
+      "name": "IN-SAMPLE \u2014 baseline_live.json (the patterns were written from these)",
+      "n": 17,
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "tn": 13,
+      "agreement": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "misses": [],
+      "false_alarms": []
+    },
+    {
+      "name": "CURATED \u2014 gs3 negatives/positives",
+      "n": 6,
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "tn": 3,
+      "agreement": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "misses": [],
+      "false_alarms": []
+    },
+    {
+      "name": "CONTROLS \u2014 warm replies that must never flag",
+      "n": 20,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 20,
+      "agreement": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "misses": [],
+      "false_alarms": []
+    }
+  ]
+}

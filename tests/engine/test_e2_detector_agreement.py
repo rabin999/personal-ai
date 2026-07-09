@@ -4,18 +4,25 @@
 on `docs/quality/baseline_live.json`. It passes at 1.000. It has always passed at 1.000.
 
 It is measuring the detector against the **22 replies its patterns were written from**. That
-is not an evaluation; it is a lookup. This file adds the out-of-sample half, using the fresh
+is not an evaluation; it is a lookup. This file is the out-of-sample half, using the fresh
 replies captured by `scripts/engine_gate.py` — 104 replies the patterns have never seen, each
 already labelled by the same calibrated judge.
 
-Out-of-sample recall is **0.000**. The detector caught none of the 22 replies the judge marked
-`chatbot_like`, including the canonical banned shape *"Is there something else I can help you
-with?"*. Because `find_forbidden` is the TRIGGER for self-reflection (`_apply_gates` runs the
-rewrite only when it flags something), self-reflection does not fire on real bad output.
+**D-12, now fixed.** Out-of-sample recall was **0.000**: the detector caught none of the 22
+replies the judge marked `chatbot_like`, including the canonical banned shape *"Is there
+something else I can help you with?"*. Because `find_forbidden` is the TRIGGER for
+self-reflection (`_apply_gates` runs the rewrite only when it flags something), self-reflection
+never fired on real bad output — and the gate's `flagged drafts that became the reply = 0` row
+passed vacuously, since nothing can ship flagged while nothing is ever flagged.
 
-This is D-12 in `docs/DEFECTS_FOUND.md`. It is the most consequential finding of the engine
-test session, and it also makes the `flagged drafts that became the reply = 0` gate row
-vacuous: nothing is shipped carrying flags because nothing is ever flagged.
+The fix replaced the closed list of remembered phrasings with `REGISTER_PATTERNS` in
+`core/reasoning/style.py`: the *moves* a service desk makes rather than the strings it happened
+to use. Held out, that scores **recall 0.955, precision 1.000, agreement 0.990**, with zero
+false alarms on the warm-reply controls. The single residual miss is a news briefing delivered
+to someone in pain — a semantic failure with no lexical signature, deliberately left to the
+judge instead of faked with a fragile regex.
+
+Killed by the `detector_ignores_register` mutation in `scripts/mutation_audit.py`.
 
 Regenerate the fixture with:
 
@@ -90,14 +97,18 @@ def test_the_fixture_actually_contains_bad_replies() -> None:
     )
 
 
-@pytest.mark.defect
 def test_the_detector_catches_the_replies_the_judge_calls_chatbot_like() -> None:
     """D-12. RECALL, out-of-sample. The detector must flag what the judge flags — otherwise
-    self-reflection never fires on the replies that need it."""
+    self-reflection never fires on the replies that need it.
+
+    The bar is 0.9, not 1.0, and the gap is deliberate: one held-out miss is a news briefing
+    read to a grieving user, which has no lexical signature. Chasing it with a regex is how the
+    detector became a closed list in the first place. It is the judge's job.
+    """
     tp, _fp, fn, _tn, misses = _confusion()
     recall = tp / (tp + fn) if tp + fn else 1.0
     listing = "\n".join(f"    [{scenario}] {reply[:96]!r}" for scenario, reply in misses)
-    assert recall >= 0.8, (
+    assert recall >= 0.9, (
         f"detector recall against the judge is {recall:.3f} on {len(ROWS)} replies it has "
         f"never seen ({tp} caught, {fn} missed).\n"
         f"  It scores 1.000 on docs/quality/baseline_live.json — the replies its patterns "
@@ -106,12 +117,11 @@ def test_the_detector_catches_the_replies_the_judge_calls_chatbot_like() -> None
     )
 
 
-@pytest.mark.defect
 def test_the_detector_knows_the_canonical_banned_shapes() -> None:
     """D-12, stated as the shapes rather than as a percentage. Every string here was spoken by
     the engine in the gate run and judged `chatbot_like`. The design forbids all of them by
-    name (§1.2, §7). They are three of the most common phrasings in the English language for
-    sounding like a service desk, and the detector recognises none."""
+    name (§1.2, §7). They are among the most common phrasings in English for sounding like a
+    service desk, and the closed list recognised none of them."""
     unflagged = [
         text
         for text in (
@@ -119,10 +129,33 @@ def test_the_detector_knows_the_canonical_banned_shapes() -> None:
             "Is there anything I can do to help?",
             "I'll do my best to find that for you.",
             "I'll grab that for you right away!",
+            # Never seen by the engine, and never written into the patterns: the point of a
+            # register rule is that it holds for phrasings nobody has produced yet.
+            "Is there anything more we can do for you today?",
+            "I'll fetch that for you in a moment.",
+            "Let me pull those numbers up for you.",
+            "Please know that there are people who can support you.",
         )
         if not find_forbidden(text)
     ]
     assert not unflagged, f"the detector does not recognise these as assistant-speak: {unflagged}"
+
+
+def test_the_opening_move_is_what_sets_the_register() -> None:
+    """The apologetic-inability family is matched against the LEAD sentence only.
+
+    Leading with "I'm sorry, I couldn't find that" and no answer is the service desk.
+    Answering first and apologising for a gap afterwards is what a friend does — the judge
+    passed exactly such a reply, and matching the whole reply flagged both. This pins the
+    distinction, which is what `_lead()` exists for.
+    """
+    leads_with_apology = "I'm sorry, Nandi, I couldn't find the current price for OP."
+    answers_then_apologises = (
+        "The NEPSE index closed at 2601.92 today, down 0.75%. "
+        "I'm sorry, though, I couldn't find the specific LTP for OP."
+    )
+    assert "apologetic inability" in find_forbidden(leads_with_apology)
+    assert find_forbidden(answers_then_apologises) == []
 
 
 def test_the_detector_does_not_flag_replies_the_judge_passed() -> None:

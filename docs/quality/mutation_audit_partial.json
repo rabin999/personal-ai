@@ -1,0 +1,26 @@
+{
+  "baseline_failures": [
+    "tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply",
+    "tests/engine/test_e1_enforcement.py::test_any_reply_path_exception_yields_a_reply_never_a_raise",
+    "tests/engine/test_e1_enforcement.py::test_self_reflection_runs_even_when_the_judgment_json_is_invalid",
+    "tests/engine/test_e1_enforcement.py::test_the_overclaim_guard_runs_even_on_a_fallback_reply",
+    "tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply",
+    "tests/engine/test_e1_steps.py::test_strip_query_echo_does_not_eat_the_answer_it_is_cleaning",
+    "tests/engine/test_e3_prosody_read.py::test_a_neutral_turn_is_never_delivered_in_a_down_register",
+    "tests/engine/test_e3_prosody_read.py::test_no_neutral_sentinel_is_also_an_emotion_word",
+    "tests/engine/test_e3_prosody_read.py::test_the_emotional_reads_the_design_doc_itself_produces_are_understood",
+    "tests/engine/test_e3_prosody_read.py::test_the_literal_word_empty_is_not_an_emotion"
+  ],
+  "mutations": [
+    {
+      "name": "detector_ignores_the_lead_sentence",
+      "file": "core/reasoning/style.py",
+      "breaks": "D-12: an opening service-desk apology ('I'm sorry, I couldn't find that') is not flagged",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register"
+      ],
+      "killed_count": 1
+    }
+  ]
+}
