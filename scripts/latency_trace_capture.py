@@ -112,7 +112,9 @@ async def main() -> None:
     records = []
     for i, (shape, text) in enumerate(TURNS, start=1):
         print(f"--- turn {i}: {shape} :: {text!r}")
-        cap = await drive_turn(pipeline, USER, text)
+        # realtime=True: pace frames like a browser mic, so the endpointer's 700 ms
+        # pause is real wall time and the reported first-audio is honest.
+        cap = await drive_turn(pipeline, USER, text, realtime=True)
         rec = _record(shape, i, cap)
         records.append(rec)
         t = rec["totals"]

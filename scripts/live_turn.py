@@ -215,11 +215,19 @@ async def drive_turn(
     history: list[tuple[str, str]] | None = None,
     session_id: str | None = None,
     timeout_s: float = 180.0,
+    realtime: bool = False,
 ) -> TurnCapture:
     """Speak ``utterance`` at the companion through the real live path; capture everything.
 
     The clock starts when the last speech frame is fed — i.e. the instant the user stops
     talking — so `first_audio_ms` is the true perceived wait, VAD + endpointing included.
+
+    ``realtime`` paces the frame feed at wall-clock speed (32 ms per 512-sample frame), the
+    way a browser streams microphone audio. This MATTERS: the endpointer accumulates
+    ``silence_ms`` from FRAME durations, so feeding silence as fast as possible collapses its
+    700 ms pause to ~0 wall time and understates the real perceived latency. Use realtime for
+    any number that gets reported as latency; leave it off for functional/quality runs where
+    the pause is dead time that only slows the suite down.
     """
     from core.memory.working import Turn
 
@@ -237,19 +245,22 @@ async def drive_turn(
         speech_end = asyncio.get_running_loop().create_future()
         wall_end: list[float] = []
 
+        # One 512-sample frame is 32 ms of audio at 16 kHz.
+        tick = (VAD_FRAME_BYTES / 2) / STT_SAMPLE_RATE if realtime else 0
+
         async def frames() -> AsyncIterator[bytes]:
             for _ in range(5):  # lead-in silence so the VAD gate sees an onset
                 yield SILENCE_FRAME
-                await asyncio.sleep(0)
+                await asyncio.sleep(tick)
             for i in range(0, len(speech) - VAD_FRAME_BYTES, VAD_FRAME_BYTES):
                 yield speech[i : i + VAD_FRAME_BYTES]
-                await asyncio.sleep(0)
+                await asyncio.sleep(tick)
             if not speech_end.done():  # the user has now stopped talking → t0
                 wall_end.append(time.time())
                 speech_end.set_result(time.perf_counter())
             for _ in range(DEFAULT_TRAILING_SILENCE_FRAMES):
                 yield SILENCE_FRAME
-                await asyncio.sleep(0)
+                await asyncio.sleep(tick)
 
         result = TurnCapture(utterance=utterance, session_id=sid)
 

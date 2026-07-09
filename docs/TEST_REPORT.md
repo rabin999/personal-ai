@@ -2046,3 +2046,125 @@ to the user; the companion conveys what failed.
 **Verified:** unit (`test_web_search.py`, 10) — recency: breaking→week, 1503→none;
 both-providers-down → graceful summary (no raise). Real search "latest top news today"
 → fresh dated results ("As of today, July 8 …").
+
+---
+
+## F1–F6 — The live voice path was dead, and the test estate could not see it
+
+**Run: 2026-07-09.** Real Mongo/Qdrant/Neo4j/Redis + real OpenRouter/Serper/X-AI keys.
+
+### F1 — Reproduced through the real entrypoint
+
+Driving `VoiceSession.converse` (real Silero VAD → real endpointing → real Grok STT → the wired
+engine → real Grok TTS) via the new `scripts/voice_live_probe.py`:
+
+```
+AUDIO OUT: 0 chunk(s), 0 bytes
+TRACE: [session][vad][stt][endpoint][stt final:'Hi!'][assembly][router][tts][error]
+
+logger=voice.session  swallowed-as='voice turn failed'
+Traceback (most recent call last):
+  File "voice/session.py", line 539, in _run_turn_inner
+    result = await self._speak_turn(prompt, context, out)
+  File "voice/session.py", line 667, in _speak_turn
+    result = await self._generator.generate_spoken(
+TypeError: LangGraphOrchestrator.generate_spoken() got an unexpected keyword argument 'temperature'
+```
+
+**What the live app actually did:** VAD, endpointing, STT, assembly and routing all worked — the
+transcript `'Hi!'` was produced and stored. Generation then raised `TypeError`, the broad
+`except Exception` in `_run_turn_inner` absorbed it, an `[error]` trace event was emitted, and the
+turn ended. **No audio, no reply, no assistant turn in memory. There is no fallback path.** The
+user's utterance was recorded; the companion answered with silence, every turn, forever. The
+open-greeting failed identically (`swallowed-as='open greeting failed'`).
+
+**Attribution.** Not the LangGraph migration alone:
+- `447016f` (LangGraph migration, Jul 7) wired `generator=pipeline.orchestrator` while the
+  `VoiceSession` param stayed typed as the concrete `ResponseGenerator`. The call was 4 positional
+  args, so it worked. This created the **latent hazard**.
+- `3182dd6` (open-greeting variety, Jul 9 — the most recent voice commit) added
+  `temperature=temperature` to that call. **This is the commit that broke it.**
+
+The break was hours old, not months. The *hazard* (mis-typed param) and the *silence* (broad
+`except`) are the real defects.
+
+### F2 — Fixed at the contract, not the call site
+
+`temperature` is now part of the `Orchestrator` **port**; both engines honour it; `VoiceSession`
+depends on the port rather than one concrete engine. mypy 205 → 204 errors (it had been reporting
+this exact bug at `api/routes/voice.py:147`, buried in the noise).
+
+Proof, same probe, after: **8 chunks / 139,976 bytes of audio, 0 exceptions**, graph nodes
+`perceive → resolve_context → respond → reflect_log`, and `"when do I take my meds?"` →
+*"You take your blood pressure medication every day around 8 PM."*
+
+### F3 — Programming errors now fail loudly; only dependencies degrade
+
+`core/errors.py` splits the two classes. Three further instances of the same disease were found
+while writing the tests, all fixed:
+- `converse()` discarded the consumer task's exception via `gather(return_exceptions=True)`
+- `_consume()`'s `finally` did the same to the in-flight turn task
+- STT is called from `_consume`, **outside** `_run_turn_inner`'s guard, so an STT outage killed the
+  conversation stream silently
+
+Proven on the real path: an injected `TypeError` propagates out of `converse()`, is logged with a
+full traceback, and appears in the trace with `programming_error=True` (0 audio chunks — loud, not
+silent). A simulated total LLM outage degrades: **8 chunks / 128,736 bytes of real audio**, the
+conversation survives. `assert_orchestrator_contract()` runs in `build_pipeline` and rejects the
+exact shape that shipped.
+
+### F4 — Why "judge 1.0 PASS" coexisted with a dead app
+
+| Suite | What it actually drove |
+|---|---|
+| `tests/real_call/*` (16 files) | `orchestrator.generate(...)` — the **text** path |
+| `tests/golden/test_gs3_judge.py` | **canned reply strings** from `gs3_judge.json` — never engine output |
+| `tests/golden/test_gs3_behavioral.py` | real gates with **scripted LLM judgment blocks** |
+| `scripts/latency_trace_capture.py` | `orchestrator.generate_spoken(p, d, c, speak)` — a shape the voice edge never uses |
+| **anything** | **`VoiceSession` — nothing** |
+
+To be precise: the text-path tests are **not worthless**. `api/routes/chat.py` really does call
+`orchestrator.generate()`, so they test a genuine production path. The defect is that **the voice
+path had zero real-call coverage.**
+
+Fixed: `scripts/live_turn.py` (shared driver through `VoiceSession.converse`),
+`tests/real_call/test_live_voice_path.py` (5 real-call tests), `latency_trace_capture.py` and
+`quality_eval.py` rewritten onto it, and `tests/support/real_pipeline.py::say_voice()` so the rest
+can migrate. `tests/real_call/conftest.py` no longer converts a wiring bug into `pytest.skip`.
+
+**Regression guard proven** by reintroducing the bug (removing `temperature` from the adapter):
+unit `test_both_real_engines_satisfy_the_contract` **FAILED in 0.57 s**; all 5 real-call voice tests
+**ERRORED** (build_pipeline raised `OrchestratorContractError`). Restored → all green.
+
+### Claims that were verified ONLY via a non-live path — now UNVERIFIED
+
+These must be re-verified through `VoiceSession` before they can be trusted:
+
+| Claim | Where | Status |
+|---|---|---|
+| **L3 — "`context_intent` is SKIPPED on SIMPLE turns"** | TEST_REPORT L3+L5 | **FALSE on the voice path.** The gate lives only in `_resolve_context`, a graph node reachable from `generate()`. `generate_spoken()` calls `_resolve_note` directly. The real traces show `context_intent` firing on `"hi"` (1872 ms). True for text only. |
+| **L5 — reply-model right-sizing, "−58% / −69%"** | TEST_REPORT L3+L5 | Measured on the text path. Unverified for voice. |
+| **L0 — per-turn latency profile** | TEST_REPORT L0 | Superseded by `docs/LATENCY_BASELINE_REAL.md`. |
+| **U8 — "Dynamic prosody per emotional read ✅"** | TEST_REPORT U8 | Verified by `tests/unit/test_prosody.py` only. **In production `settings.ser_service_url` is empty → `prompt.emotion` is always `None` → `read_register()` always returns `"neutral"`.** The "falls back to text-sentiment" claim in `voice/emotion.py`, `adapters/ser/emotion2vec_client.py` and `core/reasoning/prosody.py` docstrings **has no implementation**. Prosody never varies on a live turn. |
+| **C6 — search-when-uncertain** | TEST_REPORT C6 | Text path. And see `docs/NEXT_CORRECTNESS_TASK.md`: `_is_live_info_query` misses "LTP"/"trading at", so the voice path silently skips the tool loop entirely. |
+| **C1 — deep per-turn traces** | TEST_REPORT C1 | Text path. Voice traces were missing STT duration (now added), and still lack TTS-first-chunk, VAD and endpointing spans. |
+| **C2 — real audio interruption** | TEST_REPORT C2 | `tests/e2e/test_barge_in_engine.py` drives `VoiceSession._consume` with controllable collaborators — this one **is** on the live state machine. Still worth re-running against the fixed path. |
+| **GS3 judge scores (incl. SRC1 "LLM-judge 1.0")** | GAP_ANALYSIS.md | The judge layer scores **canned strings**, not engine output. Any GS3 judge claim about real replies is unsupported. |
+| **Per-turn evaluator quality signal** | — | `settings.langfuse_eval_enabled = False`. **Nothing has been scoring production quality.** Every "judge passed" result to date came from test runs only. |
+
+### F5 — SRC1 re-diagnosed
+
+Three defects, not one; both standing hypotheses were half-right. Full evidence in
+`docs/NEXT_CORRECTNESS_TASK.md`. Summary: `_is_live_info_query("...LTP of OP?")` is `False`
+(routing gap, proven by an A/B on `SYPNL`, a ticker the user genuinely holds); the sample user has
+**no OP holding** (fixture gap); and `_capability_repair` sends the raw utterance as the search
+query, so even a correct fixture answers with the **crypto** token. The ambiguity guardrail never
+fired (`action="respond"`, not `"disambiguate"`).
+
+### F6 — True baseline
+
+`docs/LATENCY_BASELINE_REAL.md`. First audio is **7.3–11.1 s**, not the 4.6–5.4 s previously
+reported. Three costs were completely invisible: the **TTS websocket handshake (870–1014 ms, every
+turn, on the critical path)**, the **endpointing pause (~700 ms)**, and **`vocab.terms_for()`
+(426 ms of Graphiti/Neo4j, billed to the STT span)**. `context_intent` variance is 1872 ms → 6985 ms
+on the same call — any before/after claim from a single sample is measuring noise.
