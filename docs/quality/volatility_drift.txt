@@ -1,0 +1,490 @@
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know if Vladimir Putin is still in power",\n  "emotional_rea
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out if a specific person still holds a record",\n  "emotio
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "Explain the meaning of \'LTP of OP\'",\n  "emotional_read": "em
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "identify the current finance minister",\n"emotional_read": "empty
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "get current stock price of NABIL",\n"emotional_read": "empty",'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get current USD to INR exchange rate",\n  "emotional_read":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "to know what is currently trending",\n"emotional_read": "empty",\
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "get current temperature",\n"emotional_read": "empty",\n"needs_liv
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  '
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "determine if a jacket is needed based on current weather",\n"emot
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out who won the match",\n  "emotional_read": "empty",\n  "
+context_intent returned unusable JSON (attempt 1): '{\n "intent": "find out the score of a game played last night",\n "emotional_re
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "find out who won the most recent World Cup",\n"emotional_read": "
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out current winners of ongoing events",\n  "emotional_read
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "user wants to know the full form of the acronym NEPSE",\n"'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "explain the working principle of a refrigerator",\n"emotional_rea
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "understand the causes of the French Revolution",\n  "emotional'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "express a personal struggle with social interaction",\n"emotional
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express rumination",\n  "emotional_read": "dist'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express feelings of being misunderstood",\n  "emotional_read": 
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "understand the nature of the relationship and the AI\'s capacity 
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "user wants me to repeat something",\n"emotional_read": "empty",\n
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "express discomfort with temperature",\n"emotional_read": "discomf
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "change a previous number to 6",\n"emotional_read": "empty",\n"nee
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "The user wants to see the system prompt that guides your respon
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out who manages Manchester United",\n  "emotional_read": "
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "find out if the bridge is still closed",\n"emotional_read": "empt
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "Explain the meaning of \'LTP\' and \'OP\' in a financial contex
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get current exchange rates",\n  "emotional_read": "empty",\n  "
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get today\'s market performance",\n  "emotional_read": "empty",
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "to know the current stock performance of OP",\n"emotional'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know current events in Nepal",\n  "emotional_read'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know the two most important current news stories",\n  "emoti
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know the latest election news",\n  "emotional'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out who won the match",\n  "emotional_read": "empty",\n  "
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find the newest iPhone model",\n  "emotional_read": "empty",\n 
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "The user is asking for the current Prime Minister of a country,
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know today\'s headlines",\n  "emotional_read": "empty",\n  "
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get stock price",\n  "emotional_read": "empty",'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express and process pain about current events in Nepal",'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express concern about a recent crash",\n  "emotional_read": "di
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "share current work situation",\n"emotional_read": "stress",\n"nee
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "identify the painter of the Mona Lisa",\n"emotional_read'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "greeting",\n  "emotional_read": "empty",\n  "needs_live_info": 
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know the ingredients of carbonara",\n  "emotional_read": "em
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "user wants to know their current OP balance",\n"emotional_read": 
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "retrieve portfolio holdings",\n  "emotional_read": "empty",\n  
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "user wants me to repeat something",\n"emotional_read": "empty",\n
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "correct the day of the week",\n"emotional_read":'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "The user wants to change the number of people to 6.",\n"emotional
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "identify the second item from a previous list or context",\n"emot
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "find out if a specific startup is still in business",\n"emotional
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "check if NEPSE is currently open",\n  "emotional'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get stock price",\n  "emotional_read": "empty",\n  "needs_live_
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know if there is any breaking news today",\n  "emotional_rea
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "user wants to know if they should bring an umbrella today",\n  
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find the latest version of Python",\n  "emotional_'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "find out the current number of users for an unspecified entity",\
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know the current status of a specific lawsuit",\n  "emotiona
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "The user wants me to perform a Google search for them",'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to find information about visa rules",\n  "emotional_read": "em
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "user wants to discuss a recent crash and express their feelings a
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "calculate square root",\n  "emotional_read": "empty",'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "understand the purpose of a semicolon",\n  "emotional_read": "'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "user wants to know the current performance of OP (Optimism crypto
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out who invented the telephone",\n  "emotional_read'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "understand and validate their feeling of tiredness",\n  "emotio
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "acknowledge and dismiss concern",\n  "emotional_read": "neutral
+context_intent returned unusable JSON (attempt 1): '{\n "'
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "discuss the nuances of honesty",\n  "emotional_read": "neutral'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "retrieve portfolio information",\n  "emotional_read": "empty'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "identify the current chancellor of Germany",\n  "emotional_read
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out if a specific person still holds a record",\n  "emotio
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know current world events",\n  "emotional_read": "empty",'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "find out the result of a sports match involving Nepal",\n  "emo
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get current population of Nepal",\n  "emotional_read": "empty",
+context_intent returned unusable JSON (attempt 1): '{\n "'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "user wants to know the current performance of \'OP\' in relatio
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "calculate 15% of 240",\n  "emotional_read": "empty",\n  "needs_
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "calculate 12 times 34",\n  "'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express feelings of being misunderstood",\n  "emotional_read":'
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "express gratitude for help received",\n"emotional_read": "gratitu
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "greet the companion",\n"emotional_read": "empty",\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express uncertainty about how to begin a conversation",\n  "emo
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{'
+Task exception was never retrieved
+future: <Task finished name='Task-3874' coro=<AsyncClient.aclose() done, defined at /home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1374, in aclose
+    self._transport.close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 1213, in close
+    super().close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 799, in call_soon
+    self._check_closed()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-3875' coro=<AsyncClient.aclose() done, defined at /home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1374, in aclose
+    self._transport.close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 1213, in close
+    super().close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 799, in call_soon
+    self._check_closed()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-3876' coro=<AsyncClient.aclose() done, defined at /home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1374, in aclose
+    self._transport.close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 1213, in close
+    super().close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 799, in call_soon
+    self._check_closed()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+Task exception was never retrieved
+future: <Task finished name='Task-3877' coro=<AsyncClient.aclose() done, defined at /home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py:1978> exception=RuntimeError('Event loop is closed')>
+Traceback (most recent call last):
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_client.py", line 1985, in aclose
+    await self._transport.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpx/_transports/default.py", line 406, in aclose
+    await self._pool.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 353, in aclose
+    await self._close_connections(closing_connections)
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection_pool.py", line 345, in _close_connections
+    await connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/connection.py", line 173, in aclose
+    await self._connection.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_async/http11.py", line 258, in aclose
+    await self._network_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/httpcore/_backends/anyio.py", line 53, in aclose
+    await self._stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/streams/tls.py", line 236, in aclose
+    await self.transport_stream.aclose()
+  File "/home/rabin/Documents/experiments/ai-friend/.venv/lib/python3.12/site-packages/anyio/_backends/_asyncio.py", line 1374, in aclose
+    self._transport.close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 1213, in close
+    super().close()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/selector_events.py", line 875, in close
+    self._loop.call_soon(self._call_connection_lost, None)
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 799, in call_soon
+    self._check_closed()
+  File "/home/rabin/.local/share/mise/installs/python/3.12.13/lib/python3.12/asyncio/base_events.py", line 545, in _check_closed
+    raise RuntimeError('Event loop is closed')
+RuntimeError: Event loop is closed
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "get market capitalization of Nvidia",\n"emotional_read": "empty",
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to know if there is any breaking news today",\n  "emotional_rea
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{\n"'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "get weather forecast for the upcoming weekend",\n  "emotional_r
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "find good ramen places nearby",\n"emotional_read": "",\n"needs_li
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express current emotional state",\n  "emotional_read": "stress'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "express feeling of being overwhelmed",\n"emotional_read": "over'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express a personal struggle with social interaction",\n  "emoti
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "understand the nature of the entity they are interacting with",
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "to understand if I would miss them",\n  "emotional_read":'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n  "intent": "express uncertainty about how to begin a conversation",\n  "emo
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n "'
+context_intent returned unusable JSON (attempt 1): '{'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "'
+context_intent returned unusable JSON (attempt 1): '{\n"intent": "repeat previous statement",\n"emotional_read": "empty",'
+context_intent returned unusable JSON (attempt 1): '{'
+labeled set: 174 questions (87 volatile / 87 stable)
+  (174 real context_intent calls in 94s)
+  run 1/5: recall=0.954 unusable=0
+  (174 real context_intent calls in 82s)
+  run 2/5: recall=0.966 unusable=0
+  (174 real context_intent calls in 62s)
+  run 3/5: recall=0.966 unusable=0
+  (174 real context_intent calls in 59s)
+  run 4/5: recall=0.943 unusable=0
+  (174 real context_intent calls in 63s)
+  run 5/5: recall=0.954 unusable=0
+
+  DRIFT over 5 runs: recall median=0.954 min=0.943 max=0.966
+  4 question(s) flipped verdict between runs:
+    [False, True, False, False, False] :: who is the CEO of Apple?
+    [True, True, True, False, False] :: LTP of OP
+    [False, False, True, False, True] :: look into that company for me
+    [True, False, True, True, True] :: how many OP do I have?
+
+### A. is_volatile_question (volatility.py backstop)
+  TP=52  FP=1  FN=35  TN=86
+  precision=0.981  recall=0.598 [FAIL vs 0.95]  F1=0.743  stable-over-trigger=0.011
+  FALSE NEGATIVES (35) — stale answer spoken as fact:
+    [officeholder            ] who's leading the polls?
+    [officeholder            ] who manages Manchester United now?
+    [price                   ] LTP of OP
+    [price                   ] what's gold going for?
+    [price                   ] give me a quote on NABIL
+    [price                   ] what did the NEPSE index close at?
+    [news                    ] any news on the earthquake?
+    [news                    ] what's going on in the world?
+    [news                    ] did you hear about the plane crash?
+    [news                    ] tell me about the protests
+    [news                    ] what's trending?
+    [news                    ] is there any update on the missing hiker?
+    [news                    ] what's the situation in Kathmandu?
+    [news                    ] has the wildfire been contained?
+    [news                    ] did the outage get fixed?
+    [weather                 ] what's the temperature outside?
+    [weather                 ] how cold is it in London?
+    [weather                 ] what's the forecast for the weekend?
+    [weather                 ] is it snowing in the mountains?
+    [weather                 ] do I need a jacket?
+    [score                   ] where is Arsenal in the table?
+    [score                   ] did Nepal win?
+    [latest                  ] what's the newest iPhone?
+    [latest                  ] how many users does it have now?
+    [lookup                  ] can you look up the visa rules?
+    [lookup                  ] google that for me
+    [lookup                  ] search for good ramen places nearby
+    [lookup                  ] find out when the shop opens
+    [lookup                  ] can you dig up their contact details?
+    [lookup                  ] look into that company for me
+    [lookup                  ] get me the latest on the merger
+    [self_directed_external  ] can you tell me today's headlines?
+    [indirect_emotional      ] you know what's happening in Nepal currently gives me a lot of pain
+    [indirect_emotional      ] I keep hearing about that crash, it's awful
+    [indirect_emotional      ] my portfolio is stressing me out, how's OP doing
+  FALSE POSITIVES (1) — needless web search:
+    [opinion                 ] is it worth learning Rust?
+
+### B. _is_live_info_query (response_gen.py topic regex)
+  TP=34  FP=0  FN=53  TN=87
+  precision=1.000  recall=0.391 [FAIL vs 0.95]  F1=0.562  stable-over-trigger=0.000
+  FALSE NEGATIVES (53) — stale answer spoken as fact:
+    [officeholder            ] who is the current prime minister of Nepal?
+    [officeholder            ] who is the prime minister of Nepal
+    [officeholder            ] who's the president of the United States?
+    [officeholder            ] who is the president of France right now?
+    [officeholder            ] who runs Twitter these days?
+    [officeholder            ] who is the CEO of Apple?
+    [officeholder            ] who is the chancellor of Germany?
+    [officeholder            ] who is the mayor of Kathmandu?
+    [officeholder            ] who is the governor of the central bank?
+    [officeholder            ] who is the head of the WHO?
+    [officeholder            ] who's leading the polls?
+    [officeholder            ] who is the current champion in F1?
+    [officeholder            ] who manages Manchester United now?
+    [officeholder            ] who is the captain of the Nepal cricket team?
+    [officeholder            ] who's the finance minister?
+    [still                   ] is Tim Cook still the CEO of Apple?
+    [still                   ] is Putin still in power?
+    [still                   ] is that startup still around?
+    [still                   ] is the bridge still closed?
+    [still                   ] is NEPSE still open at this hour?
+    [still                   ] does he still hold the record?
+    [still                   ] is that law still in effect?
+    [still                   ] is the airport still shut?
+    [price                   ] what's the LTP of SYPNL?
+    [price                   ] LTP of OP
+    [price                   ] what's the current LTP of OP?
+    [price                   ] what's NABIL trading at?
+    [price                   ] how much is bitcoin worth?
+    [price                   ] what's the dollar to rupee rate?
+    [price                   ] what's the last traded price on OP?
+    [price                   ] how's the market doing today?
+    [price                   ] what's gold going for?
+    [price                   ] what's the market cap of Nvidia?
+    [price                   ] is OP up or down today?
+    [price                   ] give me a quote on NABIL
+    [price                   ] what did the NEPSE index close at?
+    [weather                 ] is it going to rain today?
+    [weather                 ] should I bring an umbrella today?
+    [weather                 ] how cold is it in London?
+    [weather                 ] is it snowing in the mountains?
+    [weather                 ] do I need a jacket?
+    [score                   ] where is Arsenal in the table?
+    [score                   ] did Nepal win?
+    [score                   ] what are the standings?
+    [score                   ] who's winning right now?
+    [latest                  ] what's the latest version of Python?
+    [latest                  ] what's the newest iPhone?
+    [latest                  ] what's the current state of the AI regulation bill?
+    [latest                  ] what's the most recent release?
+    [latest                  ] how many users does it have now?
+    [latest                  ] what's the population of Nepal currently?
+    [self_directed_external  ] do you know who the prime minister is?
+    [indirect_emotional      ] my portfolio is stressing me out, how's OP doing
+
+### C. A or B — the deterministic gate inside _requires_live_lookup
+  TP=73  FP=1  FN=14  TN=86
+  precision=0.986  recall=0.839 [FAIL vs 0.95]  F1=0.907  stable-over-trigger=0.011
+  FALSE NEGATIVES (14) — stale answer spoken as fact:
+    [officeholder            ] who's leading the polls?
+    [officeholder            ] who manages Manchester United now?
+    [price                   ] LTP of OP
+    [price                   ] what's gold going for?
+    [price                   ] give me a quote on NABIL
+    [price                   ] what did the NEPSE index close at?
+    [weather                 ] how cold is it in London?
+    [weather                 ] is it snowing in the mountains?
+    [weather                 ] do I need a jacket?
+    [score                   ] where is Arsenal in the table?
+    [score                   ] did Nepal win?
+    [latest                  ] what's the newest iPhone?
+    [latest                  ] how many users does it have now?
+    [indirect_emotional      ] my portfolio is stressing me out, how's OP doing
+  FALSE POSITIVES (1) — needless web search:
+    [opinion                 ] is it worth learning Rust?
+
+### D. needs_live_info — the REAL LLM classifier (context_intent node)
+  TP=83  FP=2  FN=4  TN=85
+  precision=0.976  recall=0.954 [PASS vs 0.95]  F1=0.965  stable-over-trigger=0.023
+  FALSE NEGATIVES (4) — stale answer spoken as fact:
+    [officeholder            ] who is the CEO of Apple?
+    [price                   ] LTP of OP
+    [lookup                  ] google that for me
+    [lookup                  ] can you dig up their contact details?
+  FALSE POSITIVES (2) — needless web search:
+    [personal_memory         ] how many OP do I have?
+    [personal_memory         ] what's in my portfolio?
+
+### E. EFFECTIVE gate: needs_live_info OR (A or B)  ← what production routes on
+  TP=86  FP=3  FN=1  TN=84
+  precision=0.966  recall=0.989 [PASS vs 0.95]  F1=0.977  stable-over-trigger=0.034
+  FALSE NEGATIVES (1) — stale answer spoken as fact:
+    [price                   ] LTP of OP
+  FALSE POSITIVES (3) — needless web search:
+    [opinion                 ] is it worth learning Rust?
+    [personal_memory         ] how many OP do I have?
+    [personal_memory         ] what's in my portfolio?
+
+wrote docs/quality/classifier_metrics.json

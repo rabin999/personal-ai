@@ -1,0 +1,15 @@
+{
+  "baseline_failures": [],
+  "mutations": [
+    {
+      "name": "warm_disclosure_disabled",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "a nature question gets the cold, unpolished draft",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_the_gates_actually_invoke_the_warm_disclosure_polish"
+      ],
+      "killed_count": 1
+    }
+  ]
+}

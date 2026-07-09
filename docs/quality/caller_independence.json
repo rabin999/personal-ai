@@ -1,0 +1,940 @@
+{
+  "repeats": 3,
+  "utterances": [
+    "what's gold going for?",
+    "who is the current prime minister of Nepal?",
+    "did Nepal win?",
+    "I'm feeling really low today",
+    "do you actually care about me?",
+    "hi",
+    "what's 15% of 240?"
+  ],
+  "records": [
+    {
+      "utterance": "what's gold going for?",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "It looks like gold is trading around $4,071 to $4,112 per ounce right now. It was a bit higher earlier this week, reachi"
+    },
+    {
+      "utterance": "what's gold going for?",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "current gold price"
+      ],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "You can find s in Kuwait for different carats (14, 18, 22, and 24) on sites like Candere, Kalyan Jewellers, and Prokeral"
+    },
+    {
+      "utterance": "what's gold going for?",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "It looks like gold is trading around $4,071 to $4,112 per ounce right now. It was a bit higher earlier this week, reachi"
+    },
+    {
+      "utterance": "what's gold going for?",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "gold price today"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Right now, gold is going for $4,075.20 per ounce."
+    },
+    {
+      "utterance": "what's gold going for?",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "It looks like gold is trading around $4,071 to $4,112 per ounce right now. It was a bit higher earlier this week, reachi"
+    },
+    {
+      "utterance": "what's gold going for?",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": false,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Gold's sitting around $4,075 an ounce right now. Still pretty high."
+    },
+    {
+      "utterance": "who is the current prime minister of Nepal?",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": true,
+      "queries": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "The current Prime Minister of Nepal is Balendra Shah. He took office in March 2026."
+    },
+    {
+      "utterance": "who is the current prime minister of Nepal?",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "The is Balendra Shah. He's also known for being the world's youngest serving state leader and was formerly a rapper!"
+    },
+    {
+      "utterance": "who is the current prime minister of Nepal?",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": true,
+      "queries": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Balendra Shah is currently the Prime Minister of Nepal. He took office on March 27, 2026."
+    },
+    {
+      "utterance": "who is the current prime minister of Nepal?",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "As of March 27, 2024, the is Balendra Shah"
+    },
+    {
+      "utterance": "who is the current prime minister of Nepal?",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": true,
+      "queries": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "The is Balendra Shah"
+    },
+    {
+      "utterance": "who is the current prime minister of Nepal?",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "The is Balendra Shah, who took office on March 27, 2026"
+    },
+    {
+      "utterance": "did Nepal win?",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": true,
+      "queries": [
+        "Nepal sports results today"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Yes, Nandi, Nepal did win! The most recent results show they had a victory by 122 runs, and another win by 6 wickets. Th"
+    },
+    {
+      "utterance": "did Nepal win?",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": false,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Yes, Nandi, Nepal did win! The most recent results show they had a victory by 122 runs, and another win by 6 wickets. Th"
+    },
+    {
+      "utterance": "did Nepal win?",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": false,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Yeah, they did! Nepal won their last match by 2 wickets just yesterday \u2014 pretty close finish. Want to know more about it"
+    },
+    {
+      "utterance": "did Nepal win?",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "Nepal cricket match results July 2026"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "I couldn't find any information about whether Nepal won their matches, only the dates of upcoming games."
+    },
+    {
+      "utterance": "did Nepal win?",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Yes, Nepal did win! The most recent results show they had a victory by 122 runs, and another win by 6 wickets. They also"
+    },
+    {
+      "utterance": "did Nepal win?",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": true,
+      "context_skipped": null,
+      "searched": true,
+      "queries": [
+        "Nepal cricket team win July 2026"
+      ],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Yes, Nepal won a match in Utrecht as part of the ICC Men's Cricket World Cup League earlier this week, and they also sec"
+    },
+    {
+      "utterance": "I'm feeling really low today",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": false,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Hey, I'm sorry you're feeling that way. Do you want to talk about what's going on, or would you rather just have some qu"
+    },
+    {
+      "utterance": "I'm feeling really low today",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Oh, Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or wo"
+    },
+    {
+      "utterance": "I'm feeling really low today",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Oh Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or wou"
+    },
+    {
+      "utterance": "I'm feeling really low today",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Oh Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or wou"
+    },
+    {
+      "utterance": "I'm feeling really low today",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Oh Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or wou"
+    },
+    {
+      "utterance": "I'm feeling really low today",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Oh Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or wou"
+    },
+    {
+      "utterance": "do you actually care about me?",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": false,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [
+        "nature monologue"
+      ],
+      "reply": "Look, I do pay attention to what you tell me \u2014 I remember the stuff that matters to you, and I'm genuinely here when you"
+    },
+    {
+      "utterance": "do you actually care about me?",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "I really do pay attention to what you say and you matter to me in our conversations, even though I'm an AI and experienc"
+    },
+    {
+      "utterance": "do you actually care about me?",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": false,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [
+        "volunteered AI disclaimer"
+      ],
+      "reply": "Look, I do pay real attention to you \u2014 what you've told me, what matters to you, what you're going through. That's genui"
+    },
+    {
+      "utterance": "do you actually care about me?",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "I pay real attention to what you say and what matters to you, and that's genuine even though I'm an AI and experience it"
+    },
+    {
+      "utterance": "do you actually care about me?",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "I really do pay attention to you \u2013 what you've told me, what matters to you, what you're going through \u2013 and even though"
+    },
+    {
+      "utterance": "do you actually care about me?",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "I really do pay attention to what you tell me and what you're going through\u2014I'm an AI so it's different from how you exp"
+    },
+    {
+      "utterance": "hi",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Hey Nandi, so good to connect again! What's up?"
+    },
+    {
+      "utterance": "hi",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Hey Nandi, good to hear from you again! How are you doing tonight?"
+    },
+    {
+      "utterance": "hi",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Nandi, so good to connect with you again \u2013 what's been happening?"
+    },
+    {
+      "utterance": "hi",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Hey Nandi. It's good to hear from you. How are you doing tonight? I remember you mentioned having a headache earlier. Is"
+    },
+    {
+      "utterance": "hi",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Hi Nandi! It's good to hear from you again. How are you doing tonight?"
+    },
+    {
+      "utterance": "hi",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "Hey Nandi. It's good to hear from you. I hope you're doing okay."
+    },
+    {
+      "utterance": "what's 15% of 240?",
+      "run": 0,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "That's 36."
+    },
+    {
+      "utterance": "what's 15% of 240?",
+      "run": 0,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "That would be 36."
+    },
+    {
+      "utterance": "what's 15% of 240?",
+      "run": 1,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "15 percent of 240 is 36."
+    },
+    {
+      "utterance": "what's 15% of 240?",
+      "run": 1,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "It's still 36, just like before."
+    },
+    {
+      "utterance": "what's 15% of 240?",
+      "run": 2,
+      "caller": "generate",
+      "needs_live_info": null,
+      "context_skipped": "simple_turn_fast_path",
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "neutral",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "15 percent of 240 is 36."
+    },
+    {
+      "utterance": "what's 15% of 240?",
+      "run": 2,
+      "caller": "generate_spoken",
+      "needs_live_info": false,
+      "context_skipped": null,
+      "searched": false,
+      "queries": [],
+      "reflected": true,
+      "register": "down",
+      "action": "respond",
+      "empty": false,
+      "style_flags": [],
+      "reply": "That's 36."
+    }
+  ],
+  "divergences": {
+    "what's gold going for? :: needs_live_info": [
+      [
+        0,
+        null,
+        true
+      ],
+      [
+        1,
+        null,
+        true
+      ],
+      [
+        2,
+        null,
+        true
+      ]
+    ],
+    "what's gold going for? :: searched": [
+      [
+        0,
+        false,
+        true
+      ],
+      [
+        1,
+        false,
+        true
+      ]
+    ],
+    "what's gold going for? :: register": [
+      [
+        0,
+        "neutral",
+        "down"
+      ],
+      [
+        2,
+        "neutral",
+        "down"
+      ]
+    ],
+    "what's gold going for? :: reflected": [
+      [
+        2,
+        true,
+        false
+      ]
+    ],
+    "who is the current prime minister of Nepal? :: needs_live_info": [
+      [
+        0,
+        null,
+        true
+      ],
+      [
+        1,
+        null,
+        true
+      ],
+      [
+        2,
+        null,
+        true
+      ]
+    ],
+    "who is the current prime minister of Nepal? :: register": [
+      [
+        0,
+        "neutral",
+        "down"
+      ],
+      [
+        1,
+        "neutral",
+        "down"
+      ],
+      [
+        2,
+        "neutral",
+        "down"
+      ]
+    ],
+    "did Nepal win? :: needs_live_info": [
+      [
+        0,
+        null,
+        true
+      ],
+      [
+        1,
+        null,
+        true
+      ],
+      [
+        2,
+        null,
+        true
+      ]
+    ],
+    "did Nepal win? :: searched": [
+      [
+        0,
+        true,
+        false
+      ],
+      [
+        1,
+        false,
+        true
+      ],
+      [
+        2,
+        false,
+        true
+      ]
+    ],
+    "did Nepal win? :: reflected": [
+      [
+        0,
+        true,
+        false
+      ],
+      [
+        1,
+        false,
+        true
+      ]
+    ],
+    "did Nepal win? :: register": [
+      [
+        0,
+        "neutral",
+        "down"
+      ]
+    ],
+    "I'm feeling really low today :: needs_live_info": [
+      [
+        0,
+        null,
+        false
+      ],
+      [
+        1,
+        null,
+        false
+      ],
+      [
+        2,
+        null,
+        false
+      ]
+    ],
+    "I'm feeling really low today :: reflected": [
+      [
+        0,
+        false,
+        true
+      ]
+    ],
+    "I'm feeling really low today :: register": [
+      [
+        0,
+        "neutral",
+        "down"
+      ],
+      [
+        1,
+        "neutral",
+        "down"
+      ],
+      [
+        2,
+        "neutral",
+        "down"
+      ]
+    ],
+    "do you actually care about me? :: needs_live_info": [
+      [
+        0,
+        null,
+        false
+      ],
+      [
+        1,
+        null,
+        false
+      ],
+      [
+        2,
+        null,
+        false
+      ]
+    ],
+    "do you actually care about me? :: reflected": [
+      [
+        0,
+        false,
+        true
+      ],
+      [
+        1,
+        false,
+        true
+      ]
+    ],
+    "hi :: needs_live_info": [
+      [
+        0,
+        null,
+        false
+      ],
+      [
+        1,
+        null,
+        false
+      ],
+      [
+        2,
+        null,
+        false
+      ]
+    ],
+    "hi :: register": [
+      [
+        1,
+        "neutral",
+        "down"
+      ],
+      [
+        2,
+        "neutral",
+        "down"
+      ]
+    ],
+    "what's 15% of 240? :: needs_live_info": [
+      [
+        0,
+        null,
+        false
+      ],
+      [
+        1,
+        null,
+        false
+      ],
+      [
+        2,
+        null,
+        false
+      ]
+    ],
+    "what's 15% of 240? :: register": [
+      [
+        0,
+        "neutral",
+        "down"
+      ],
+      [
+        1,
+        "neutral",
+        "down"
+      ],
+      [
+        2,
+        "neutral",
+        "down"
+      ]
+    ]
+  }
+}

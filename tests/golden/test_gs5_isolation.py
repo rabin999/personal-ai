@@ -99,16 +99,25 @@ async def test_gs5_no_cross_user_leak(db: Database, user_a: str, user_b: str) ->
         if "blunt" in rule.rule_text:
             leaks.append(f"procedural rule leaked to user B: {rule.rule_text}")
 
-    # Semantic (Graphiti) isolation — group_ids scoping.
+    try:
+        await db.mongo("procedural_memory").delete_many({"user_id": {"$in": [user_a, user_b]}})
+    finally:
+        # E0: this assertion used to sit AFTER a `pytest.skip` in the Graphiti probe's
+        # `except`. A Graphiti outage therefore discarded the episodic / entity /
+        # self-model / procedural leak findings already collected above — a real breach
+        # of the §0.5 hard invariant would have reported as "skipped". The graph probe
+        # now lives in its own test, so it can be unavailable without silencing this one.
+        assert leaks == [], "MULTI-TENANT ISOLATION BREACH (critical):\n" + "\n".join(leaks)
+
+
+async def test_gs5_semantic_graph_does_not_leak(db: Database, user_a: str, user_b: str) -> None:
+    """Graphiti/Neo4j `group_ids` scoping (§0.5). Split out of the test above so an
+    unavailable Graphiti degrades THIS probe only, never the whole invariant."""
     try:
         graph = SemanticMemory(GraphitiGraphStore(db))
         await graph.add_episode(user_a, "user's secret ticker ZORPX with 999 shares")
         facts = await graph.facts_for(user_b, ["ZORPX"], limit=10)
-        if any("ZORPX" in f.fact for f in facts):
-            leaks.append("semantic (Graphiti) leaked ZORPX to user B")
-    except Exception as exc:  # Graphiti needs an LLM key; note if unavailable
+    except Exception as exc:  # Graphiti needs a reachable LLM + Neo4j
         pytest.skip(f"semantic isolation probe skipped (Graphiti unavailable): {exc}")
-    finally:
-        await db.mongo("procedural_memory").delete_many({"user_id": {"$in": [user_a, user_b]}})
-
-    assert leaks == [], "MULTI-TENANT ISOLATION BREACH (critical):\n" + "\n".join(leaks)
+    leaked = [f.fact for f in facts if "ZORPX" in f.fact]
+    assert not leaked, f"MULTI-TENANT ISOLATION BREACH (critical): semantic leaked {leaked}"

@@ -68,7 +68,12 @@ class Driver:
             # Resolve deterministically by re-asserting; not under test here.
             prompt = await p.assembler.assemble(self.user_id, session_id, text)
         context = _ctx(self.user_id, session_id, prompt)
-        result = await p.generator.generate(prompt, p.dispatcher, context)
+        # E0: this drove `p.generator` — the bare `ResponseGenerator`. Production
+        # (`api/routes/chat.py:143`) drives `p.orchestrator`, the LangGraph engine,
+        # whose `resolve_context` node produces `needs_live_info`. So the file named
+        # "core engine e2e" was exercising an engine the app does not run, and the
+        # `live_lookup_always_false` mutation survived it untouched.
+        result = await p.orchestrator.generate(prompt, p.dispatcher, context)
         p.working.append(session_id, Turn(role="assistant", text=result.final_text))
         # WRITE step (§1): the explicit extraction decides what/where to persist.
         # Awaited here so the next session deterministically sees the write.

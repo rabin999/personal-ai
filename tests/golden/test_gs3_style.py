@@ -1,25 +1,23 @@
 """GS3-style — the companion never talks like a service desk (design §1.2; brief §7).
 
-Three layers:
-1. Detector coverage — every banned phrasing is caught (regression on the guard).
+Two deterministic layers, both mutation-proven (`detector_never_flags` kills 23 of
+these; `scrub_forbidden_is_identity` kills 3):
+
+1. Detector coverage — every banned phrasing is caught, and warm speech is not.
 2. Config guard — the seeded `response_voice` trait still explicitly bans the shapes,
    so a config edit can't silently drop the tone standard.
-3. Paid e2e (skip-loud) — real turns through the real fast model must not emit any
-   forbidden assistant-speak. This is the layer that catches an actual tone regression;
-   it needs OPEN_ROUTER_API_KEY and is skipped loudly without one.
+
+Real-model tone is NOT measured here. It is measured against a threshold in
+`scripts/engine_gate.py`, which drives the wired engine and reports a gate result.
 """
 
-import os
 from pathlib import Path
 
 import pytest
 
 from core.profile import ProfileService, TraitRegistry
-from core.reasoning.prompt_assembly import AssembledPrompt
-from core.reasoning.response_gen import ResponseGenerator
-from core.reasoning.self_model import SelfModel
 from core.reasoning.style import find_forbidden
-from tests.fakes import FakeDocStore, FakeVectorStore
+from tests.fakes import FakeDocStore
 
 DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
 USER = "u_demo_001"
@@ -91,70 +89,13 @@ async def test_response_voice_trait_still_bans_service_desk_phrasing() -> None:
     assert "disclaimer" in voice or "caveat" in voice
 
 
-def _prompt(utterance: str, system_prompt: str) -> AssembledPrompt:
-    return AssembledPrompt(
-        user_id=USER,
-        session_id="gs3_style",
-        utterance=utterance,
-        system_prompt=system_prompt,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": utterance},
-        ],
-        complexity_hint="simple",
-    )
-
-
-# Prompts that most tempt a model into assistant-speak.
-_TEMPTING_OPENERS = [
-    "hi",
-    "hello there",
-    "hey",
-    "good morning",
-    "so... i don't really know where to start",
-]
-
-
-async def _faithful_system_prompt(registry: TraitRegistry) -> str:
-    """Compose the seeded behavioral traits the way §10 does, so the paid probe
-    tests production-representative prompting (not a strawman one-liner)."""
-    traits = await registry.enabled_traits(USER)
-    lines = [
-        "You are a warm, voice-first personal companion — a friend, not an assistant.",
-        *(f"- {t.description}" for t in traits),
-    ]
-    return "\n".join(lines)
-
-
-# NOTE (§7 hand-off): this is a real-model DIAGNOSTIC, not a hard gate. Tone is
-# human-tuned and model output is nondeterministic, so a miss is recorded as
-# xfail rather than reding the build. It surfaces exactly the assistant-speak the
-# design forbids so the human tuner can see when/where the model slips (see
-# REMEDIATION_LOG F-STYLE). The deterministic detector + config-guard tests above
-# ARE the gating regression tests.
-@pytest.mark.paid
-@pytest.mark.xfail(reason="§7 tone is human-tuned; real-model diagnostic, not a gate", strict=False)
-@pytest.mark.skipif(not os.getenv("OPEN_ROUTER_API_KEY"), reason="needs OPEN_ROUTER_API_KEY (paid)")
-@pytest.mark.parametrize("opener", _TEMPTING_OPENERS)
-async def test_real_model_never_talks_like_a_service_desk(opener: str) -> None:
-    from adapters.llm.openrouter import OpenRouterLLM
-    from config.settings import Settings
-
-    docs = FakeDocStore()
-    profiles = ProfileService(docs)
-    registry = TraitRegistry(docs, profiles)
-    await registry.seed_defaults(DEFAULTS_DIR)
-    await profiles.first_run_sync(USER)
-    tiers_doc = await docs.get("provider_config", "llm_router")
-    llm = OpenRouterLLM(Settings(), tiers=tiers_doc.get("tiers") if tiers_doc else None)
-    gen = ResponseGenerator(llm, SelfModel(docs, FakeVectorStore(), llm=None), registry)
-
-    system_prompt = await _faithful_system_prompt(registry)
-    result = await gen.generate(_prompt(opener, system_prompt))
-    assert result.style_flags == [], (
-        f"real model emitted assistant-speak on {opener!r}: "
-        f"{result.style_flags} — {result.final_text!r}"
-    )
+# DELETED (engine test session, E0): `test_real_model_never_talks_like_a_service_desk`.
+# It was `@pytest.mark.xfail(strict=False)`, so neither a miss NOR a hit could ever
+# change the build result — the five parametrisations sat in the "5 xpassed" column
+# forever. It also built a bare `ResponseGenerator` rather than the wired engine, so
+# it never exercised the orchestrator the app actually runs. Real-model tone is now
+# measured, with a threshold, in `scripts/engine_gate.py` (`chatbot_like` 0/11), where
+# a miss is a reported gate failure instead of an invisible xpass.
 
 
 @pytest.mark.parametrize(

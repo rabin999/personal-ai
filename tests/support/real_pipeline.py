@@ -1,14 +1,22 @@
 """Real-call harness (plan §3/§4): drive the REAL reasoning engine end-to-end —
 real OpenRouter model + real Mongo/Qdrant/Neo4j/Redis — with NO mocks.
 
-`RealTurns` wraps a built `Pipeline` and exposes `say()` to run a real text turn
-(the same core loop as voice, minus STT/TTS) capturing the reply + trace, so the
-real-call suites can assert on genuine model output the way a human would judge it.
+`RealTurns` wraps a built `Pipeline` and exposes three drivers over the SAME assembled
+prompt, so a test can ask what changes when only the caller changes (E5):
+
+    say()         → `orchestrator.generate()`        what `api/routes/chat.py` runs
+    say_spoken()  → `orchestrator.generate_spoken()` what `voice/session.py` runs, minus
+                    STT/TTS — the engine boundary, not the transducers around it
+    say_voice()   → `VoiceSession.converse()`        the whole live path incl. audio
+
+`say` and `say_spoken` differ in exactly one line: which method of the wired engine they
+call. Any behavioural difference between their results is therefore a property of the
+engine, not of the harness — which is what makes caller-independence testable at all.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from api.composition import Pipeline, build_pipeline
@@ -28,6 +36,49 @@ class TurnResult:
     action: str
     style_flags: list[str]
     trace: list[TraceEvent]
+    # The DURABLE spans for this turn, read back from the trace store after the turn
+    # completes. `trace` above holds only what this harness emitted; the engine's own
+    # spans — every LLM call, every tool, the reflection step — land in the store via
+    # the bound logger, and this is the only place a test can see them.
+    spans: list[dict[str, Any]] = field(default_factory=list)
+    # E5: the sentences handed to TTS, in order. Empty on the text path. A spoken turn
+    # that ends with `spoken == []` means the user heard silence.
+    spoken: list[str] = field(default_factory=list)
+
+    def _stage(self, stage: str) -> list[dict[str, Any]]:
+        return [s for s in self.spans if s.get("stage") == stage]
+
+    @property
+    def searches(self) -> list[str]:
+        """DISTINCT `web_search` queries actually issued. The tool stage emits several
+        spans per search (dispatcher `phase=request` plus the capability-repair backstop),
+        so a naive count double-reports."""
+        seen: list[str] = []
+        for span in self._stage("tool"):
+            data = span.get("data") or {}
+            if data.get("tool") != "web_search":
+                continue
+            query = str((data.get("args") or {}).get("query") or "").strip()
+            if query and query not in seen:
+                seen.append(query)
+        return seen
+
+    @property
+    def reflected(self) -> bool:
+        """Did the §9.3 self-reflection step run? Read from the trace, never assumed."""
+        return bool(self._stage("reflection"))
+
+    @property
+    def purposes(self) -> list[str]:
+        return [str((s.get("data") or {}).get("purpose")) for s in self._stage("llm")]
+
+    def graph_node(self, node: str) -> dict[str, Any]:
+        """The envelope the named orchestrator graph node wrote, or {}."""
+        for span in self._stage("reasoning"):
+            data = span.get("data") or {}
+            if data.get("node") == node:
+                return data
+        return {}
 
 
 class RecordingTrace(TraceEmitter):
@@ -81,7 +132,22 @@ class RealTurns:
 
         return await drive_turn(self._p, self._user, text, **kwargs)
 
+    async def say_spoken(self, text: str, session_id: str) -> TurnResult:
+        """One real turn through `orchestrator.generate_spoken()` — the engine method the
+        voice edge calls — capturing the sentences it hands to TTS.
+
+        STT and TTS are deliberately absent: they are transducers around the engine, and
+        this harness exists to isolate the engine's DECISIONS from them. Compare against
+        `say()` on the same utterance to test caller independence (E5).
+        """
+        return await self._run(text, session_id, spoken=True)
+
     async def say(self, text: str, session_id: str) -> TurnResult:
+        """One real turn through `orchestrator.generate()` — the engine method the text
+        edge (`api/routes/chat.py`) calls."""
+        return await self._run(text, session_id, spoken=False)
+
+    async def _run(self, text: str, session_id: str, *, spoken: bool) -> TurnResult:
         """Run one real turn through assembly → generation (real model + stores)."""
         # Real per-session turn number (mirrors api/routes/chat.py) so each turn's
         # spans — incl. the graph-node reasoning + per-LLM-call spans bound below —
@@ -91,7 +157,9 @@ class RealTurns:
         trace = RecordingTrace(session_id)
         for _ in range(turn_no):
             trace.begin_turn()  # advance the emitter to this turn index
-        trace.emit("session", "text turn", user_id=self._user, text=text)
+        trace.emit(
+            "session", "spoken turn" if spoken else "text turn", user_id=self._user, text=text
+        )
         self._p.working.append(session_id, Turn(role="user", text=text))
         prompt = await self._p.assembler.assemble(self._user, session_id, text)
         if isinstance(prompt, DisambiguationRequest):
@@ -129,13 +197,22 @@ class RealTurns:
             "router", f"routing to {prompt.complexity_hint} tier", tier=prompt.complexity_hint
         )
         ctx = ToolContext(user_id=self._user, session_id=session_id, project_id=None)
+        spoken_sentences: list[str] = []
+
+        async def speak(sentence: str) -> None:
+            spoken_sentences.append(sentence)
+
         # Bind the logs so the generator's per-LLM-call / reflection spans persist
         # under this turn (mirrors api/routes/chat.py) — the trace then reconstructs
         # the whole pipeline, not just the stage headers we emit here.
         with self._p.logs.bind(trace_id=session_id, turn_id=turn_no, user_id=self._user):
             # Exercise the WIRED engine (LangGraph orchestrator by default) — not
             # the native generator directly — so tests judge the real turn engine.
-            result = await self._p.orchestrator.generate(prompt, self._p.dispatcher, ctx)
+            engine = self._p.orchestrator
+            if spoken:
+                result = await engine.generate_spoken(prompt, self._p.dispatcher, ctx, speak)
+            else:
+                result = await engine.generate(prompt, self._p.dispatcher, ctx)
         trace.emit("generation", f"action={result.action}", action=result.action)
         trace.emit("response", result.final_text, voice_text=result.voice_text or result.final_text)
         trace.emit("session", "turn complete", total_ms=0.0)
@@ -146,11 +223,18 @@ class RealTurns:
             span["turn"] = turn_no
             await self._p.traces.record(self._user, span)
         self._p.working.append(session_id, Turn(role="assistant", text=result.final_text))
+        # Read the DURABLE spans back: the engine's own spans (llm / tool / reflection /
+        # graph-node) went to the bound logger, not to `trace.recorded`. Without this a
+        # test can only see the reply — which is how "did self-reflection run?" stayed
+        # unanswerable for so long.
+        spans = await self._p.traces.traces_for(self._user, session_id)
         return TurnResult(
             reply=result.final_text,
             action=result.action,
             style_flags=result.style_flags,
             trace=trace.recorded,
+            spans=[s for s in spans if s.get("turn") in (turn_no, None)],
+            spoken=spoken_sentences,
         )
 
     @property
