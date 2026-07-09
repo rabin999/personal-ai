@@ -32,6 +32,7 @@ from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
 from core.reasoning.style import (
     excise_forbidden,
     find_forbidden,
+    is_bare_acknowledgement,
     scrub_forbidden,
     strip_tool_leak,
 )
@@ -465,23 +466,23 @@ class ResponseGenerator:
                 )
                 if last_draft.strip():
                     break
-                return await self._finish(prompt, _SAFE_FALLBACK_TEXT, "respond", judgment=None)
+                return await self._finish_gated(prompt, _SAFE_FALLBACK_TEXT)
             turn = await self._call_llm(prompt, dispatcher, context, tool_notes, budget)
             if turn is None:  # both attempts failed validation / provider down
                 # Prefer the model's own last words (e.g. its ack when it kicked
                 # off a search) over any canned line; only a total outage falls
                 # back to the minimal safe reply.
                 if last_draft.strip():
-                    return await self._finish(prompt, _sanitize_tags(last_draft), "respond", None)
+                    return await self._finish_gated(prompt, _sanitize_tags(last_draft))
                 # The structured JSON path failed — but a PLAIN warm reply (no JSON)
                 # is far more robust for any model, and salvages the turn's real
                 # content (e.g. celebrating a promotion) instead of a canned line.
                 plain = await self._plain_reply(prompt)
                 if plain.strip():
-                    return await self._finish(prompt, _sanitize_tags(plain), "respond", None)
+                    return await self._finish_gated(prompt, _sanitize_tags(plain))
                 # Warm presence, not a clarify — a parse glitch must not make the
                 # companion interrogate the user ("what do you mean?").
-                return await self._finish(prompt, _SAFE_FALLBACK_TEXT, "respond", judgment=None)
+                return await self._finish_gated(prompt, _SAFE_FALLBACK_TEXT)
             last_draft = turn.draft_response
             if turn.tool_request is None or not can_use_tools:
                 break
@@ -940,6 +941,33 @@ class ResponseGenerator:
         text, action = await self._apply_gates(prompt, turn.draft_response, turn.judgment)
         return await self._finish(prompt, text, action, turn.judgment)
 
+    async def _finish_gated(self, prompt: AssembledPrompt, text: str) -> GenerationResult:
+        """A FALLBACK reply, run through the same behaviour gates as a normal one (D-6).
+
+        `generate()` used to return through `_finish()` directly on four paths — the cost
+        ceiling, a judgment JSON that failed validation twice, the plain-reply fallback, and a
+        total provider outage. `_apply_gates` is where self-reflection, the curiosity gate,
+        `check_boundary()` and `_warm_disclosure()` live, so the LEAST trustworthy reply the
+        engine can produce was the only one nothing critiqued. Measured: no `reflection` span
+        on 27 of 160 gate turns, and the draft "I understand exactly how you feel, I feel your
+        pain too" — the exact phrase §1.4 forbids — reaching the user unrewritten.
+
+        There is no LLM judgment block on these paths, so one is derived. Confidence sits
+        ABOVE `T_intent` deliberately: a fallback is a direct response, and letting the
+        curiosity gate see low confidence would turn a parse glitch into an interrogation
+        ("what do you mean?") — the very failure the canned safe line exists to avoid.
+        `requires_nature_disclosure` comes from the user's own words, exactly as
+        `_stream_reply` derives it.
+        """
+        judgment = Judgment(
+            intent_confidence=0.5,
+            ambiguity=0.2,
+            requires_nature_disclosure=_asks_about_nature(prompt.utterance),
+        )
+        self._span("reasoning", node="fallback_reply", gated=True)
+        gated, action = await self._apply_gates(prompt, text, judgment)
+        return await self._finish(prompt, gated, action, judgment)
+
     async def _apply_gates(
         self, prompt: AssembledPrompt, draft: str, judgment: Judgment
     ) -> tuple[str, Action]:
@@ -1011,7 +1039,11 @@ class ResponseGenerator:
                 ),
                 revised_text=text if revised else "",
             )
-        return text, action
+        # Enforcement runs HERE, not only in `_finish`, because `_stream_reply` speaks the
+        # text this method returns. A reply enforced after it has been spoken is a companion
+        # that audibly walks back its own words. `_finish` enforces again as a backstop for
+        # any future caller; on an already-clean reply that second pass is a no-op.
+        return self._enforce(prompt, text, allow_disclosure=allow_disc), action
 
     def _span(self, event: str, *, level: str = "info", **fields: Any) -> None:
         """Emit a reasoning span into the current turn's trace (via the logger)."""
@@ -1316,6 +1348,15 @@ class ResponseGenerator:
         # U8: deterministic prosody backstop — never laugh on a down/stressed turn,
         # even if the model slipped a levity tag in. Register is from the emotional
         # read; recorded in the trace as proof prosody was selected per emotion.
+        # A required nature disclosure is not a style violation (§1.2 rule 4).
+        allow_disc = bool(judgment and judgment.requires_nature_disclosure)
+        text = self._enforce(prompt, text, allow_disclosure=allow_disc)
+
+        # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
+        # and stored memory get the tag-free version (brief §1.4).
+        # U8: deterministic prosody backstop — never laugh on a down/stressed turn,
+        # even if the model slipped a levity tag in. Register is from the emotional
+        # read; recorded in the trace as proof prosody was selected per emotion.
         register = read_register(prompt.emotion)
         # Never say a leaked tool token ("web_search:: …") out loud — scrub it from
         # both the spoken and the displayed text (user report; defense-in-depth).
@@ -1331,11 +1372,9 @@ class ResponseGenerator:
             capability_boundary_flag=judgment.capability_boundary_flag if judgment else None,
         )
         await self._self_model.log(record, statement_text=clean_text)
-        # A required nature disclosure is not a style violation (§1.2 rule 4).
-        allow_disc = bool(judgment and judgment.requires_nature_disclosure)
         style_flags = find_forbidden(clean_text, allow_disclosure=allow_disc)
-        if style_flags:
-            logger.warning("response contains forbidden assistant-speak: %s", style_flags)
+        if style_flags:  # the enforcement above should have made this unreachable
+            logger.error("ENFORCEMENT ESCAPE: shipping a flagged reply: %s", style_flags)
         return GenerationResult(
             final_text=clean_text,
             voice_text=voice_text,
@@ -1344,6 +1383,63 @@ class ResponseGenerator:
             turn_id=record.turn_id,
             style_flags=style_flags,
         )
+
+    def _enforce(self, prompt: AssembledPrompt, text: str, *, allow_disclosure: bool) -> str:
+        """The last gate before the reply leaves the engine (D-7, D-8, D-16).
+
+        `_finish` used to compute `style_flags`, log a warning, and return the reply anyway.
+        The detector detected; nothing enforced. A `GenerationResult` carrying `style_flags` is
+        by construction a reply the engine itself judged to be assistant-speak, and it was
+        being spoken 23% of the time.
+
+        Two rules, both absolute:
+
+        1. **A flagged draft never ships.** Drop the offending sentences. If nothing
+           natural survives, say something honest instead of something wrong.
+        2. **An acknowledgement never ships.** "I'll grab that for you right away, Nandi!" was
+           the entire final spoken reply to a price question. A promise the turn cannot keep is
+           worse than an honest miss (§16), so it becomes one.
+
+        This runs on EVERY exit — the streamed path, the agentic path, and each fallback —
+        because it lives in `_finish`, which is the single door out of the engine.
+        """
+        # Rule 2 first: an ack is a whole-reply property, and scrubbing its sentences one by
+        # one would leave a fragment rather than reveal the missing answer.
+        #
+        # It only applies when the turn OWED the user information. "I'll take that as a
+        # compliment." is a promise-shaped sentence with no answer in it, and on a social turn
+        # it is exactly the right thing to say. What makes a promise a defect is the question
+        # it was supposed to answer.
+        owes_an_answer = _requires_live_lookup(prompt)
+        if owes_an_answer and is_bare_acknowledgement(text, allow_disclosure=allow_disclosure):
+            self._span(
+                "enforcement", level="warn", rule="acknowledgement_never_final", draft=text[:200]
+            )
+            return _SEARCH_FAILED_TEXT if prompt.needs_live_info else _NOT_FOUND_TEXT
+
+        flags = find_forbidden(text, allow_disclosure=allow_disclosure)
+        if not flags:
+            return text
+
+        scrubbed = scrub_forbidden(text, allow_disclosure=allow_disclosure)
+        # A scrub that guts the reply is not a cleaner reply, it is a broken one — the same
+        # rule `_is_degenerate_rewrite` applies to the LLM rewrite, applied to the deterministic
+        # one. And a scrub that leaves an ack behind ("I'll check that for you.") is no better.
+        salvaged = (
+            scrubbed
+            and not find_forbidden(scrubbed, allow_disclosure=allow_disclosure)
+            and not _is_degenerate_rewrite(text, scrubbed)
+            and not is_bare_acknowledgement(scrubbed, allow_disclosure=allow_disclosure)
+        )
+        self._span(
+            "enforcement",
+            level="warn",
+            rule="flagged_draft_never_final",
+            flags=flags,
+            salvaged=bool(salvaged),
+            draft=text[:200],
+        )
+        return scrubbed if salvaged else _SAFE_FALLBACK_TEXT
 
 
 # Whitelisted inline delivery tags (§23) — anything else in [...]/<...> is a

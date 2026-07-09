@@ -9,6 +9,7 @@ from core.profile import ProfileService, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.response_gen import ResponseGenerator
 from core.reasoning.self_model import SELF_MODEL_LOG_COLLECTION, SelfModel
+from core.reasoning.style import find_forbidden
 from tests.fakes import FakeDocStore, FakeLLM, FakeVectorStore
 
 DEFAULTS_DIR = Path(__file__).parents[2] / "config" / "defaults"
@@ -92,8 +93,14 @@ async def test_two_bad_payloads_fall_back_to_warm_plain_reply() -> None:
     h = await _generator(["nope", "still nope"])
     result = await h.generator.generate(_prompt())
     assert result.action == "respond"
-    assert result.judgment is None
     assert result.final_text  # non-empty warm fallback, not a service-desk clarify
+    # D-6: this path used to return through `_finish()` directly, skipping every gate. It
+    # now goes through `_finish_gated()`, which derives a judgment so the curiosity gate,
+    # check_boundary() and self-reflection can all run on the least trustworthy reply the
+    # engine produces. Confidence sits above T_intent on purpose: a parse glitch must not
+    # make the companion ask "what do you mean?".
+    assert result.judgment is not None
+    assert result.judgment.intent_confidence >= 0.3
 
 
 # ── rule 2: curiosity gate (acceptance 1-2) ──────────────────────────────
@@ -265,12 +272,23 @@ async def test_reflection_scrubs_when_rewrite_still_dirty() -> None:
     assert result.style_flags == []
 
 
-async def test_self_reflection_off_leaves_draft_untouched() -> None:
+async def test_enforcement_is_absolute_even_with_self_reflection_off() -> None:
+    """D-7. `self_reflect` toggles the LLM *rewrite*. It does not toggle the invariant.
+
+    This test used to assert that a flagged draft shipped verbatim when self-reflection was
+    off — "still flagged for the trace, just not rewritten". That is the defect, written down
+    as a contract: the detector detected and nothing enforced. A `GenerationResult` carrying
+    `style_flags` is by construction a reply the engine judged to be assistant-speak, and it
+    must never be the one the user hears, whatever the config says.
+
+    Here the scrub leaves only "Hello!", which is degenerate, so the honest safe line ships.
+    """
     draft = "Hello! How can I help you today?"
     h = await Harness([_turn_json(draft=draft)], self_reflect=False).seed()
     result = await h.generator.generate(_prompt("hi"))
-    assert result.final_text == draft
-    assert result.style_flags  # still flagged for the trace, just not rewritten
+    assert result.final_text != draft
+    assert result.style_flags == []
+    assert find_forbidden(result.final_text) == []
 
 
 async def test_duplicate_action_tool_call_runs_once_per_turn() -> None:

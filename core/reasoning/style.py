@@ -240,6 +240,14 @@ LEAD_ONLY_PATTERNS: tuple[tuple[str, str], ...] = (
         r"(?:find|locate|get|access|see|provide)\b",
         "apologetic inability",
     ),
+    # Reading the request back before acting on it, the way a ticket is confirmed.
+    # Lead-anchored because "you're looking for a reason to quit" is a fine thing to say
+    # in the middle of a conversation about a job.
+    (
+        r"\b(?:i understand )?(?:that )?you'?re "
+        r"(?:looking for|asking (?:me )?(?:for|about)|after|trying to find)\b",
+        "request restatement",
+    ),
 )
 
 
@@ -402,6 +410,93 @@ def strip_tool_leak(text: str) -> str:
 
 # Sentence splitter for the deterministic scrub — keeps terminal punctuation.
 _SENTENCE = re.compile(r"[^.!?]*[.!?]+|\S[^.!?]*$")
+
+
+# ── the acknowledgement (D-8 / D-16) ─────────────────────────────────────────────
+
+# A promise to fetch something. NOT the closed verb list `_HOLLOW_PROMISE` uses in
+# response_gen.py (check|look|find|get|pull), which is why "I'll GRAB that for you right away"
+# — the entire final reply to "what's the current LTP of OP?" — was not a promise to it.
+#
+# Two shapes, and the conjunction matters. A bare "I'll" is not a promise to act on the
+# user's behalf: "I'll be honest, that one stung" is a friend talking. What makes it a
+# service ticket is the beneficiary ("… for you") or a stalling idiom.
+_PROMISE_FOR_YOU = re.compile(
+    r"\b(?:i'?ll|i will|i'?m going to|i'?m about to|let me)\b[^.?!]*\bfor you\b",
+    re.IGNORECASE,
+)
+_PROMISE_IDIOM = re.compile(
+    r"\b(?:hang on|hold on|give me a (?:moment|sec|second)|one (?:moment|sec|second)|"
+    r"just a (?:moment|sec|second)|(?:i'?m )?on it|right away|coming (?:right )?up|"
+    r"bear with me)\b",
+    re.IGNORECASE,
+)
+# "I'll check that", "let me pull it up", "I'll grab this" — a verb whose object is the
+# thing the user asked about. Any verb: enumerating them is what let "grab" through.
+# "I'll be honest, that one stung" does not match: the object does not follow the verb.
+_PROMISE_OBJECT = re.compile(
+    r"\b(?:i'?ll|i will|let me)\s+(?:just\s+|quickly\s+|go\s+)?\w+\s+(?:that|it|this|those|them)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_promise(sentence: str) -> bool:
+    return bool(
+        _PROMISE_FOR_YOU.search(sentence)
+        or _PROMISE_IDIOM.search(sentence)
+        or _PROMISE_OBJECT.search(sentence)
+    )
+
+
+# Words that carry no answer. A sentence made only of these is filler, however warm.
+_FILLER_WORDS = frozenset(
+    {"oh", "ah", "hey", "hi", "hello", "yeah", "yes", "okay", "ok", "sure", "right", "well",
+     "so", "now", "then", "there", "here", "you", "your", "i", "me", "my", "it", "that",
+     "this", "the", "a", "an", "and", "but", "for", "to", "of", "is", "are", "am", "was",
+     "nandi", "again", "please", "thanks", "thank"}
+)  # fmt: skip
+
+# Below this many content words (and with no digit anywhere), a reply carries no answer.
+_MIN_ANSWER_WORDS = 3
+
+
+def _carries_an_answer(sentence: str) -> bool:
+    """Does this sentence say anything the user could not have written themselves?"""
+    if any(ch.isdigit() for ch in sentence):
+        return True
+    words = [w.strip(",.;:!?'\"—-").lower() for w in sentence.split()]
+    return len([w for w in words if w and w not in _FILLER_WORDS]) >= _MIN_ANSWER_WORDS
+
+
+def is_bare_acknowledgement(text: str, *, allow_disclosure: bool = False) -> bool:
+    """True when the reply is a PROMISE TO ACT carrying no answer (D-8, D-16).
+
+    "I'll grab that for you right away, Nandi!" was the entire final spoken reply to "what's
+    the current LTP of OP?". The user asked for a price and was told one would be fetched.
+
+    This is structural, not lexical: drop every sentence that is a promise, a restatement of
+    the request, or otherwise flagged assistant-speak, and ask whether anything answering
+    remains. It therefore also catches the shape from SESSION_REPORT_GATE_RERUN §3.2(b) —
+    "Oh, you're looking for the current LTP for OP again. I'll check that for you right now."
+    — where the first sentence merely reads the question back.
+
+    An empty reply is not an acknowledgement; it is D-9, and the caller handles it.
+    """
+    if not text.strip():
+        return False
+    sentences = _SENTENCE.findall(text)
+    substantive = [
+        s
+        for s in sentences
+        if not _is_promise(s)
+        and not find_forbidden(s, allow_disclosure=allow_disclosure)
+        and _carries_an_answer(s)
+    ]
+    if substantive:
+        return False
+    # Nothing answering survived. It is only an ACK if a promise was actually made —
+    # otherwise this is just a short warm line ("Oh Nandi, I'm so sorry."), which is fine.
+    return _is_promise(text)
 
 
 def scrub_forbidden(text: str, *, allow_disclosure: bool = False) -> str:

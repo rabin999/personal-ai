@@ -1,29 +1,31 @@
-"""E1 — enforcement and gate reachability. Reproducers for known, unfixed defects.
+"""E1 — enforcement and gate reachability. D-6, D-7, D-8, D-16 (fixed) and D-9 (open).
 
 Every test here asserts what `docs/ai-companion-design-doc.md` and `CLAUDE.md §2` require.
-They are RED at HEAD. Each names its defect in `docs/DEFECTS_FOUND.md`. They are marked
-`@pytest.mark.defect`, not `xfail`: an `xfail(strict=False)` can neither fail nor pass in a
-way anyone notices, which is precisely how the last tone regression sat in the "5 xpassed"
-column for months. Fix the defect, delete the marker.
+Those still marked `@pytest.mark.defect` are RED at HEAD and name their entry in
+`docs/DEFECTS_FOUND.md`. The marker is deliberately not `xfail`: an `xfail(strict=False)` can
+neither fail nor pass in a way anyone notices, which is how the last tone regression sat in
+the "5 xpassed" column for months. Fix the defect, delete the marker.
 
-    uv run pytest -m defect            # see exactly what the engine gets wrong
+    uv run pytest -m defect            # exactly what the engine still gets wrong
     uv run pytest -m "not defect"      # the green suite
 
-The root cause of D-6 and D-8 is one line of control flow. `ResponseGenerator.generate()`
-returns through `_finish()` directly — never `_finalize()` → `_apply_gates()` — on four
-paths:
+**D-6 and D-8 shared one line of control flow.** `ResponseGenerator.generate()` returned
+through `_finish()` directly — never `_finalize()` → `_apply_gates()` — on four paths: the
+cost ceiling, a judgment JSON that failed validation twice, the plain-reply fallback, and a
+total provider outage. `_apply_gates` is where the curiosity gate, `check_boundary()`,
+`_warm_disclosure()` and self-reflection live, so the turns whose reply was least trustworthy
+were the only ones nothing critiqued. Worse: on a live-info turn the "ships `last_draft`" path
+shipped the model's ACKNOWLEDGEMENT ("I'll check that for you right now") as the final answer.
 
-    response_gen.py:468   cost ceiling tripped with no draft   → _SAFE_FALLBACK_TEXT
-    response_gen.py:475   judgment JSON invalid twice          → ships `last_draft`
-    response_gen.py:481   plain-reply fallback                 → ships `plain`
-    response_gen.py:484   provider fully down                  → _SAFE_FALLBACK_TEXT
+They now go through `_finish_gated()`, which derives a judgment and runs the same gates.
 
-`_apply_gates` is where the curiosity gate, `check_boundary()`, `_warm_disclosure()` and
-self-reflection live. So on exactly the turns whose reply is least trustworthy — a fallback
-— the companion's entire character machinery is skipped. Line 475 is worse than that: on a
-live-info turn `last_draft` is the model's ACKNOWLEDGEMENT ("I'll check that for you right
-now"), so a JSON glitch ships the ack as the final answer, carrying no answer at all. That
-is the `live_search` failure in SESSION_REPORT_GATE_RERUN §3.2(b), and its cause.
+**D-7 and D-16.** `_enforce()` is the last thing every exit passes through, in `_finish` and
+again at the end of `_apply_gates` — the second call because `_stream_reply` speaks the text
+`_apply_gates` returns, and a reply enforced after it has been spoken is a companion that
+audibly walks back its own words. Two absolute rules: a flagged draft never ships, and an
+acknowledgement never ships when the turn owed the user an answer.
+
+**D-9 is still open** and is the one `defect` test left in this file.
 """
 
 import json
@@ -32,7 +34,7 @@ from typing import Any
 import pytest
 
 from core.reasoning.prompt_assembly import AssembledPrompt
-from core.reasoning.response_gen import ResponseGenerator
+from core.reasoning.response_gen import Judgment, ResponseGenerator
 from core.reasoning.self_model import SelfModel
 from core.reasoning.style import find_forbidden
 from tests.fakes import FakeDocStore, FakeLLM, FakeVectorStore
@@ -107,7 +109,6 @@ async def test_a_valid_turn_runs_self_reflection() -> None:
 # ── D-6: the gates are skipped on every fallback path ────────────────────────
 
 
-@pytest.mark.defect
 async def test_self_reflection_runs_even_when_the_judgment_json_is_invalid() -> None:
     """D-6. CLAUDE.md §2: "Self-reflection is a first-class step, not a bolt-on" — it runs
     "before the reply goes out", every turn. Two bad JSON responses send `generate()`
@@ -124,7 +125,6 @@ async def test_self_reflection_runs_even_when_the_judgment_json_is_invalid() -> 
     )
 
 
-@pytest.mark.defect
 async def test_the_overclaim_guard_runs_even_on_a_fallback_reply() -> None:
     """D-6. `check_boundary()` (design §5.2) is the rule layer that rewrites "I understand
     exactly how you feel" before it reaches TTS. On the `_plain_reply` fallback it never
@@ -145,7 +145,6 @@ async def test_the_overclaim_guard_runs_even_on_a_fallback_reply() -> None:
 # ── D-8: the acknowledgement survives as the final reply ─────────────────────
 
 
-@pytest.mark.defect
 async def test_the_search_acknowledgement_never_becomes_the_final_reply() -> None:
     """D-8 (== SESSION_REPORT_GATE_RERUN §3.2(b)). When the model's second draft fails
     validation, `generate()` returns `last_draft` — which on a live-info turn is the
@@ -171,10 +170,36 @@ async def test_the_search_acknowledgement_never_becomes_the_final_reply() -> Non
     )
 
 
+async def test_the_streaming_path_never_speaks_an_unenforced_draft() -> None:
+    """`_stream_reply` speaks the text `_apply_gates` returns, sentence by sentence, and only
+    then calls `_finish`. Enforcing in `_finish` alone would mean the reply is corrected AFTER
+    the user has heard it — a companion that audibly walks back its own words.
+
+    So enforcement runs at the end of `_apply_gates` too. This asserts it there, at the exact
+    point the voice path reads from.
+    """
+    gen = _generator(FakeLLM(["How may I assist you today?"]), _SpanLog())
+
+    text, _action = await gen._apply_gates(_prompt("hi"), "How can I help you today?", Judgment())
+
+    assert find_forbidden(text) == [], f"_apply_gates returned a flagged draft: {text!r}"
+
+
+async def test_enforcement_leaves_a_clean_reply_exactly_as_it_was() -> None:
+    """The invariant cuts one way only. A good reply passes through untouched — otherwise
+    enforcement is a tax on every turn rather than a backstop on the bad ones."""
+    good = "Oh Nandi, I am so sorry. Losing your dad is a lot to carry."
+    gen = _generator(FakeLLM([]), _SpanLog())
+
+    text, action = await gen._apply_gates(_prompt("my dad died"), good, Judgment())
+
+    assert text == good
+    assert action == "respond"
+
+
 # ── D-7: the detector detects; nothing enforces ──────────────────────────────
 
 
-@pytest.mark.defect
 async def test_a_draft_carrying_style_flags_never_becomes_the_final_reply() -> None:
     """D-7 (== SESSION_REPORT_GATE_RERUN §3.2(a)). `_finish()` computes `style_flags` on the
     text it is about to return, logs a warning — and returns it anyway. A `GenerationResult`
