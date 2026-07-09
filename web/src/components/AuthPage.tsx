@@ -38,23 +38,20 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
           </p>
         </div>
 
-        {/* Card */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
-          {failed && (
-            <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-600 dark:bg-red-950/40 dark:text-red-400">
-              Sign-in didn't complete. Please try again.
-            </p>
-          )}
+        {failed && (
+          <p className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-600 dark:bg-red-950/40 dark:text-red-400">
+            Sign-in didn't complete. Please try again.
+          </p>
+        )}
 
-          <button
-            type="button"
-            onClick={onGoogle}
-            className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700/70"
-          >
-            <GoogleIcon />
-            Continue with Google
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onGoogle}
+          className="flex w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700/70"
+        >
+          <GoogleIcon />
+          Continue with Google
+        </button>
       </div>
     </div>
   );
