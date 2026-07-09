@@ -96,3 +96,43 @@ def test_close_candidates_are_ambiguous_dominant_one_is_not() -> None:
     assert not is_ambiguous([_candidate("a", 0.90), _candidate("b", 0.30)])
     assert not is_ambiguous([_candidate("a", 0.90)])
     assert not is_ambiguous([])
+
+
+def _hit(entity_id: str, score: float, entity_type: str = "holding") -> VectorHit:
+    return VectorHit(
+        id=entity_id,
+        score=score,
+        payload={"entity_id": entity_id, "entity_type": entity_type, "name": entity_id.upper()},
+    )
+
+
+async def test_resolve_returns_candidates_best_first_whatever_order_the_store_gave() -> None:
+    """A silent WRONG resolution is a critical failure (spec §8), and every caller reads this
+    list POSITIONALLY: `is_ambiguous()` compares `candidates[0]` to `candidates[1]`, and the
+    assembler treats the first as the resolved entity.
+
+    Nothing asserted the order. `docs/TEST_AUDIT.md` §6 named this as an unproven invariant,
+    and the mutation `entity_resolution_ignores_the_score_order` proves the gap was real: a
+    reversed list changed no test, because every case in `gs2_entities.json` yields exactly one
+    candidate above `MIN_RESOLUTION_SCORE`, and reversing a one-element list is a no-op.
+    """
+    vectors = FakeVectorStore([_hit("op", 0.67), _hit("portfolio", 1.0, "project")])
+    resolver = EntityResolver(vectors)
+
+    candidates = await resolver.resolve("u1", "my portfolio")
+
+    assert [c.entity_id for c in candidates] == ["portfolio", "op"]
+    assert not is_ambiguous(candidates)  # 0.67 < 0.8 * 1.0
+
+
+async def test_a_dominant_candidate_is_never_shadowed_by_a_weaker_one() -> None:
+    """The user's project must win over a holding inside it, however the store ranked them."""
+    vectors = FakeVectorStore(
+        [_hit("sypnl", 0.75), _hit("op", 0.7), _hit("portfolio", 1.0, "project")]
+    )
+    resolver = EntityResolver(vectors)
+
+    candidates = await resolver.resolve("u1", "my portfolio")
+
+    assert candidates[0].entity_id == "portfolio"
+    assert candidates[0].entity_type == "project"

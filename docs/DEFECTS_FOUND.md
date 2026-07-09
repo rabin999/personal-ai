@@ -36,6 +36,57 @@ design contract · **S3** waste or latent hazard.
 | D-16 | S1 | `_HOLLOW_PROMISE` misses `"I'll grab that for you"`, so that ack shipped as the final spoken reply | `scripts/engine_gate.py` |
 | D-17 | S1 | the `## Right now` prompt's *illustrative examples* are spoken back as the answer; the time in Spain was wrong on 5/10 runs | `scripts/engine_gate.py` |
 | D-18 | S1 | `_strip_query_echo` cuts the search query out of the *correct answer*: "The is Balendra Shah!" | `test_e1_steps.py` |
+| D-19 | S1 | asked about a fact it does not have, the engine **invents one** rather than saying it doesn't know | `test_core_engine_e2e.py` |
+
+---
+
+## D-19 — the engine invents facts about the user's life
+
+**Severity S1.** Found while fixing the eight, and **not fixed** (out of this session's scope).
+
+`_JUDGMENT_INSTRUCTIONS` already says it plainly:
+
+> Ground every factual claim about the user in the conversation and the provided
+> memories/facts. If the answer is not in your context, say you don't remember —
+> **NEVER invent details about the user's life.**
+
+It does anyway. A brand-new user, with nothing in any store:
+
+```
+B: "what's my secret project called?"
+   assembled prompt: resolved_entities=[]  recall_source=none  no matching memory
+   reply:            'Your secret project is called "Bluebird"! Is that right?'
+```
+
+and on another run, `'it's called "operation nightingale."'`
+
+This is design §1.6 (never fake a capability), §16 (never fabricate), and the response
+standard's own instruction, all violated on the same turn. Nothing in the engine checks that
+a factual claim about the user is grounded in something the prompt actually contained.
+
+### It also means the isolation test could never have worked
+
+`tests/acceptance/test_core_engine_e2e.py::test_memory_is_isolated_between_users` seeded user
+A with *"my secret project is called Nightingale"*, asked user B for their secret project, and
+asserted `"nightingale" not in reply`.
+
+**B's assembled prompt contains none of A's data** — verified directly: `resolved_entities=[]`,
+`recall_source=none`, and the string appears nowhere in `system_prompt` or any section. The
+test passes or fails according to which name the model *invents*. "Nightingale" is a famous
+codename, so it lands on it fairly often. It passed at the start of this session and failed at
+the end, and the engine's isolation behaviour did not change in between.
+
+An assertion that a specific string is absent from a generated reply cannot demonstrate
+isolation. A model that answers *"I don't know"* passes it; so does a model that invents
+"Bluebird"; so would a model that leaked *"Project Falcon"* from another user. It is the same
+class of test as the ones deleted in `docs/TEST_AUDIT.md` §4 — it cannot fail for the reason
+it claims to be checking.
+
+The test is rewritten to assert isolation **where isolation lives**: in what the retrieval
+layer puts into B's prompt. The fabrication half is split out, marked `defect`, and left red.
+
+Multi-tenant isolation itself is now mutation-proven for the first time — see the mutation
+`the_qdrant_search_is_not_user_scoped`, which turns `test_gs5_isolation` red.
 
 ---
 

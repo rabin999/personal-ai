@@ -179,13 +179,18 @@ class EntityResolver:
     async def resolve(
         self, user_id: str, phrase: str, k: int = 3, min_score: float = MIN_RESOLUTION_SCORE
     ) -> list[EntityCandidate]:
-        """Hybrid dense+BM25 candidates for a phrase, this user only (rule 2).
+        """Hybrid dense+BM25 candidates for a phrase, this user only (rule 2), best first.
 
         Candidates below ``min_score`` are dropped: an unrelated phrase resolves
         to nothing rather than to the nearest entity (V-ENTITY-1).
+
+        The descending sort is explicit rather than inherited from the store. Every caller
+        reads this list POSITIONALLY — `is_ambiguous()` compares `candidates[0]` against
+        `candidates[1]`, and the assembler treats the first as the resolved entity — so the
+        order is part of this method's contract, not an implementation detail of Qdrant.
         """
         hits = await self._vectors.hybrid_search(ENTITIES_COLLECTION, phrase, user_id=user_id, k=k)
-        return [
+        candidates = [
             EntityCandidate(
                 entity_id=str(hit.payload.get("entity_id", "")),
                 entity_type=str(hit.payload.get("entity_type", "")),
@@ -195,6 +200,7 @@ class EntityResolver:
             for hit in hits
             if hit.score >= min_score
         ]
+        return sorted(candidates, key=lambda c: c.score, reverse=True)
 
     async def resolve_references(self, user_id: str, utterance: str) -> ReferenceResolution:
         """Resolve each reference span in ``utterance`` separately (design §14.2, D-13).

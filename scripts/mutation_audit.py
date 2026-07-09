@@ -99,6 +99,34 @@ class Mutation:
 
 
 MUTATIONS: list[Mutation] = [
+    # ── The two mutations `docs/TEST_AUDIT.md` §6 names as missing. Multi-tenant isolation is
+    # a HARD invariant (§0.5), and a silent wrong-resolution is a critical failure; neither was
+    # mutation-proven. If either of these survives, that is a defect more serious than anything
+    # in docs/DEFECTS_FOUND.md — it means the test guarding the invariant cannot see it break.
+    # NOTE on the first: removing only `query_filter=` does NOT leak — the two prefetch legs
+    # carry their own `filter=user_filter`, so the post-fusion filter is defence in depth. A
+    # mutation that removes it therefore SURVIVES, and would have been reported as a hole in
+    # the isolation test rather than as a redundant line of code. The real invariant is that
+    # `user_filter` exists at all, so that is what this breaks.
+    Mutation(
+        name="the_qdrant_search_is_not_user_scoped",
+        file="adapters/vector/qdrant.py",
+        old="        user_filter = models.Filter(\n            must=[models.FieldCondition(key=USER_ID_FIELD, match=models.MatchValue(value=user_id))]\n        )\n        # Both legs fetch a wider candidate set, filtered per-leg; RRF fuses",
+        new="        user_filter = None\n        # Both legs fetch a wider candidate set, filtered per-leg; RRF fuses",
+        breaks="§0.5 MULTI-TENANT ISOLATION: every user's vectors become searchable by every other",
+    ),
+    # And on the second: `reversed(hits)` is a NO-OP for every case in gs2_entities.json,
+    # because a dominant reference yields exactly one candidate above `MIN_RESOLUTION_SCORE`.
+    # Reversing a one-element list changes nothing. The claim that needed proving was that
+    # `resolve()` returns candidates in descending score order, which nothing asserted — and
+    # `is_ambiguous()` reads `candidates[0]` and `candidates[1]` positionally.
+    Mutation(
+        name="entity_resolution_ignores_the_score_order",
+        file="core/memory/entities.py",
+        old="        return sorted(candidates, key=lambda c: c.score, reverse=True)",
+        new="        return sorted(candidates, key=lambda c: c.score)",
+        breaks="a silent WRONG resolution: the runner-up is returned as the match",
+    ),
     Mutation(
         name="vol_always_false",
         file="core/reasoning/volatility.py",

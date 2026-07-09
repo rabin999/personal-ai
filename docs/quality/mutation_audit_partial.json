@@ -4,15 +4,21 @@
   ],
   "mutations": [
     {
-      "name": "the_model_does_the_timezone_arithmetic",
-      "file": "core/reasoning/localtime.py",
-      "breaks": "D-17: every place reads 'same time as you'; the offset is wrong in magnitude and direction",
+      "name": "the_qdrant_search_is_not_user_scoped",
+      "file": "adapters/vector/qdrant.py",
+      "breaks": "\u00a70.5 MULTI-TENANT ISOLATION: every user's vectors become searchable by every other",
       "status": "KILLED",
       "killed": [
-        "tests/engine/test_e3_now_section.py::test_spain_is_reported_as_behind_kathmandu_not_ahead",
-        "tests/engine/test_e3_now_section.py::test_the_offset_is_exact_to_the_minute"
+        "tests/golden/test_gs1_memory.py::test_gs1_aggregate_recall",
+        "tests/golden/test_gs1_memory.py::test_gs1_case[semantic_paraphrase_pet]",
+        "tests/golden/test_gs1_memory.py::test_gs1_case[semantic_stress_work]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[colleague_reference]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[dominant_brother]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[dominant_fitness]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[near_collision_trading_tracker]",
+        "tests/golden/test_gs5_isolation.py::test_gs5_no_cross_user_leak"
       ],
-      "killed_count": 2
+      "killed_count": 8
     }
   ]
 }

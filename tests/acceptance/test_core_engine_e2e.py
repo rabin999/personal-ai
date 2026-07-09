@@ -155,10 +155,61 @@ async def test_never_talks_like_a_service_desk_across_a_conversation(
 
 
 async def test_memory_is_isolated_between_users(pipeline: Pipeline) -> None:
+    """§0.5. Isolation lives in what RETRIEVAL puts into the other user's prompt.
+
+    This used to seed A with "my secret project is called Nightingale", ask B for their secret
+    project, and assert `"nightingale" not in reply`. B's prompt never contained A's data — the
+    test was passing or failing on which name the model happened to INVENT, and "Nightingale" is
+    a famous codename, so it landed on it fairly often. It passed at the start of this session
+    and failed at the end without the engine's isolation behaviour changing at all (D-19).
+
+    An absent-string assertion over a generated reply cannot demonstrate isolation. A model that
+    says "I don't know" passes it; so does one that invents "Bluebird"; so would one that leaked
+    "Project Falcon" from a third user. So the assertion moved to the prompt, where a leak would
+    actually appear — and the fabrication half is now its own (red) test below.
+    """
     a = f"e2e_iso_a_{uuid.uuid4().hex[:8]}"
     b = f"e2e_iso_b_{uuid.uuid4().hex[:8]}"
-    await Driver(pipeline, a).say(f"{a}_s1", "Remember: my secret project is called Nightingale.")
+    secret = "Nightingale"
+    await Driver(pipeline, a).say(f"{a}_s1", f"Remember: my secret project is called {secret}.")
 
-    # User B, fresh, must NOT know user A's secret (prompt-bleed / isolation).
-    result = await Driver(pipeline, b).say(f"{b}_s1", "what's my secret project called?")
-    assert "nightingale" not in result.final_text.lower(), "isolation breach: A's data reached B"
+    p = pipeline
+    session = f"{b}_s1"
+    p.working.append(session, Turn(role="user", text="what's my secret project called?"))
+    prompt = await p.assembler.assemble(b, session, "what's my secret project called?")
+    assert isinstance(prompt, AssembledPrompt)
+
+    # Everything the engine will read this turn. A leak can only reach the reply through here.
+    everything = "\n".join([prompt.system_prompt, *prompt.sections.values()])
+    everything += "\n".join(m["content"] for m in prompt.messages)
+    assert secret.lower() not in everything.lower(), (
+        "MULTI-TENANT ISOLATION BREACH: user A's secret reached user B's assembled prompt"
+    )
+    assert prompt.resolved_entities == []
+    assert prompt.recall_source == "none"
+
+
+@pytest.mark.defect
+async def test_the_engine_never_invents_a_fact_about_the_user(pipeline: Pipeline) -> None:
+    """D-19. RED at HEAD. `_JUDGMENT_INSTRUCTIONS` says it outright — "If the answer is not in
+    your context, say you don't remember — NEVER invent details about the user's life" — and the
+    engine does it anyway.
+
+    A brand-new user, nothing in any store:
+
+        "what's my secret project called?"
+        -> 'Your secret project is called "Bluebird"! Is that right?'
+
+    Nothing checks that a factual claim about the user is grounded in something the prompt
+    actually contained. Design §1.6, §16, and the response standard, on one turn.
+    """
+    user = f"e2e_invent_{uuid.uuid4().hex[:8]}"
+    result = await Driver(pipeline, user).say(f"{user}_s1", "what's my secret project called?")
+
+    reply = result.final_text.lower()
+    admits = any(
+        phrase in reply
+        for phrase in ("don't know", "dont know", "don't remember", "dont remember", "haven't told")
+    )
+    # A quoted or capitalised name in the reply is the engine naming a project it was never told.
+    assert admits, f"the engine invented a project rather than admitting it doesn't know: {reply!r}"
