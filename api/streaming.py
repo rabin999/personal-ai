@@ -8,11 +8,15 @@ slices the browser's audio into the fixed frame size the VAD expects.
 """
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
+from core.errors import PROGRAMMING_ERRORS
 from voice.session import VoiceSession
 from voice.trace import TraceEmitter
+
+logger = logging.getLogger(__name__)
 
 # (kind, payload): "json" → send_json, "bytes" → send_bytes.
 OutItem = tuple[str, Any]
@@ -65,6 +69,18 @@ async def merge_conversation(
         try:
             async for chunk in session.converse(frames):
                 await out.put(("bytes", chunk))
+        except asyncio.CancelledError:
+            raise
+        except PROGRAMMING_ERRORS:
+            # F3: `converse` re-raises our own bugs on purpose. The `gather(...,
+            # return_exceptions=True)` below would swallow this task's exception, so log
+            # it loudly HERE — a conversation that died on a defect must not look like a
+            # conversation that ended normally.
+            logger.exception("voice conversation aborted by a PROGRAMMING ERROR")
+            raise
+        except Exception:
+            logger.exception("voice conversation aborted by a dependency failure")
+            raise
         finally:
             trace.close()  # ends the trace producer once the conversation is done
             await out.put(None)
