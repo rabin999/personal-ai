@@ -14,6 +14,7 @@ can show the whole pipeline and replay each reply's audio.
 
 import asyncio
 import logging
+import random
 import re
 import time
 from collections import deque
@@ -77,6 +78,20 @@ _BARGE_IN_FRAMES = 8
 # it continues the conversation rather than initiating one (§3.6.4) — the companion
 # gently checks in once ("still there? / lost in thought?"). Reset on the next speech.
 _LULL_MS = 22_000.0
+
+# A fresh ANGLE is drawn each open so the greeting prompt itself differs every
+# session — the model was converging on the same "welcome back" line because the
+# input never changed. Combined with a hotter temperature, this keeps hellos varied.
+_GREETING_ANGLES = (
+    "lead with the time of day (morning/evening) in a natural way",
+    "riff lightly on how long it's been since you last talked",
+    "just an easy, plain 'hey' with their name — nothing extra",
+    "be a little playful or teasing",
+    "sound genuinely glad they showed up, warm but brief",
+    "open low-key and breezy, like catching up mid-thought",
+    "pick up on the vibe of the moment and keep it casual",
+    "a short, curious 'hey, you' kind of energy",
+)
 
 # The user explicitly ending the conversation (spoken). Kept deliberately tight so a
 # passing "bye the way" or "goodbye kiss" story doesn't hang up on them.
@@ -606,12 +621,16 @@ class VoiceSession:
         prompt: AssembledPrompt | DisambiguationRequest,
         context: ToolContext,
         out: asyncio.Queue[bytes | None],
+        *,
+        temperature: float | None = None,
     ) -> GenerationResult:
         """Generate + speak one turn, routing ALL of the turn's speech through a
         single TTS session so the voice never changes mid-reply (§2b). Prefers the
         streaming WebSocket session; degrades to per-sentence REST if the adapter
         can't stream or the session fails to open. Barge-in/turn-end always closes
-        the session (finally) so synthesis stops and cost is logged (rule 5)."""
+        the session (finally) so synthesis stops and cost is logged (rule 5).
+        ``temperature`` overrides the reply temperature (greetings run hotter so
+        they vary session to session)."""
         stream = None
         pump: asyncio.Task[None] | None = None
         if isinstance(self._tts, StreamingTTS):
@@ -645,7 +664,9 @@ class VoiceSession:
                     ):
                         out.put_nowait(chunk)
 
-            result = await self._generator.generate_spoken(prompt, self._dispatcher, context, speak)
+            result = await self._generator.generate_spoken(
+                prompt, self._dispatcher, context, speak, temperature=temperature
+            )
             if stream is not None:
                 await stream.finish()  # flush the tail
                 if pump is not None:
@@ -665,21 +686,27 @@ class VoiceSession:
         swallowed so a greeting hiccup never blocks the conversation."""
         try:
             note = await self._last_seen_note()
+            avoid = await self._recent_greetings()
+            angle = random.choice(_GREETING_ANGLES)
             instr = (
                 "[The user just opened the app to talk with you. Greet them first, warmly and "
                 "CASUALLY, in ONE short natural spoken line — like a friend genuinely glad they "
-                f"showed up.{note} Use their name if you know it, and let the time of day / how "
-                "long it's been colour it (e.g. 'Hey Nandi, welcome back!', 'Nandi — that was "
-                "quick, good to see you', 'Evening Nandi, been a minute!'). Keep it informal. Do "
-                "NOT ask 'how can I help' or end on a stock filler question like 'what's on your "
-                "mind?' / 'what's up?'; just an easy warm hello.]"
+                f"showed up.{note} Use their name if you know it. For THIS greeting: {angle}. "
+                "Make it FRESH and clearly DIFFERENT from a stock 'welcome back' — never reuse "
+                "the same wording twice; vary the opener, rhythm and words every single time. "
+                "Keep it informal. Do NOT ask 'how can I help' or end on a stock filler question "
+                "like 'what's on your mind?' / 'what's up?'; just an easy, original warm hello."
+                + (f" Do NOT repeat any of these recent openers: {avoid}]" if avoid else "]")
             )
             prompt = await self._assembler.assemble(self._user_id, self._session_id, instr)
             if isinstance(prompt, DisambiguationRequest):
                 return
             # Route through the streaming turn path so the greeting is chunked to TTS
             # (first words start immediately) instead of synthesized whole (L4/§8.12).
-            result = await self._speak_turn(prompt, self._tool_context(prompt), out)
+            # Hotter temperature than a normal reply so the hello genuinely varies.
+            result = await self._speak_turn(
+                prompt, self._tool_context(prompt), out, temperature=1.1
+            )
             text = (result.voice_text or result.final_text).strip()
             if not text:
                 return
@@ -707,7 +734,9 @@ class VoiceSession:
             prompt = await self._assembler.assemble(self._user_id, self._session_id, instr)
             if isinstance(prompt, DisambiguationRequest):
                 return
-            result = await self._speak_turn(prompt, self._tool_context(prompt), out)
+            result = await self._speak_turn(
+                prompt, self._tool_context(prompt), out, temperature=1.0
+            )
             text = (result.voice_text or result.final_text).strip()
             if not text:
                 return
@@ -743,6 +772,27 @@ class VoiceSession:
             return " They last talked earlier / yesterday."
         days = int(gap_s // 86400)
         return f" It's been about {days} day(s) since they last talked."
+
+    async def _recent_greetings(self, n: int = 3) -> str:
+        """The last few lines the companion SAID unprompted (greetings/check-ins),
+        so the model can avoid repeating an opener verbatim — the user dislikes
+        hearing the same hello every session. Empty if none / store unavailable."""
+        if self._conversations is None:
+            return ""
+        try:
+            rows = await self._conversations.recent_raw_turns(self._user_id, limit=8)
+        except Exception:
+            return ""
+        lines: list[str] = []
+        for r in rows:
+            if str(r.get("user_text") or "").strip():
+                continue  # a real exchange, not an unprompted opener
+            text = str(r.get("assistant_text") or "").strip()
+            if text:
+                lines.append(text[:70])
+            if len(lines) >= n:
+                break
+        return " | ".join(f'"{ln}"' for ln in lines)
 
     async def _synthesize(self, text: str, out: asyncio.Queue[bytes | None]) -> None:
         self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)

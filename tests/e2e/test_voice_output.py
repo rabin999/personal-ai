@@ -73,6 +73,7 @@ class _Gen:
         dispatcher: object,
         context: object,
         speak: Callable[[str], Awaitable[None]],
+        **_kw: object,
     ) -> GenerationResult:
         # A multi-clause reply → the session may call speak once; GrokTTS would
         # sub-chunk internally, but the voice id must be identical throughout.

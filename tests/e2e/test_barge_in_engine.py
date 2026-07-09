@@ -153,6 +153,7 @@ class ScriptedGenerator:
         dispatcher,
         context,
         speak: Callable[[str], Awaitable[None]],
+        **_kw,
     ) -> GenerationResult:
         self.turns_started += 1
         reply = f"a calm, warm reply about: {prompt.utterance}"
@@ -457,7 +458,7 @@ class DelayedGenerator:
         self.delay_s = delay_s
         self.transcripts: list[str] = []
 
-    async def generate_spoken(self, prompt, dispatcher, context, speak) -> GenerationResult:
+    async def generate_spoken(self, prompt, dispatcher, context, speak, **_kw) -> GenerationResult:
         self.transcripts.append(prompt.utterance)
         try:
             await asyncio.sleep(self.delay_s)  # "reasoning" before any speech

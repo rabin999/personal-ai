@@ -83,7 +83,7 @@ class FakeGenerator:
         return GenerationResult(final_text="Hey, good to hear you.", action="respond", turn_id="t1")
 
     async def generate_spoken(
-        self, prompt: object, dispatcher: object, context: object, speak: object
+        self, prompt: object, dispatcher: object, context: object, speak: object, **_kw: object
     ) -> GenerationResult:
         result = await self.generate(prompt, dispatcher, context)
         await speak(result.voice_text or result.final_text)  # type: ignore[operator]
@@ -307,7 +307,7 @@ class InterruptibleGenerator:
         )
 
     async def generate_spoken(
-        self, prompt: object, dispatcher: object, context: object, speak: object
+        self, prompt: object, dispatcher: object, context: object, speak: object, **_kw: object
     ) -> GenerationResult:
         # Mirror the runtime: streaming path resolves to generate() then speaks.
         result = await self.generate(prompt, dispatcher, context)

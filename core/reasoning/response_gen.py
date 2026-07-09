@@ -496,12 +496,16 @@ class ResponseGenerator:
         dispatcher: "ToolDispatch | None",
         context: "ToolContext | None",
         speak: "Callable[[str], Awaitable[None]]",
+        *,
+        temperature: float | None = None,
     ) -> GenerationResult:
         """Voice turn (§8.12): stream the spoken reply to ``speak`` sentence-by-
         sentence so TTS starts on the first sentence, when it's a plain
         conversational turn. Falls back to the full non-streamed path (tool loop,
         gates, capability search) for anything else, then speaks the reply once.
-        Always returns the final GenerationResult for memory/trace.
+        Always returns the final GenerationResult for memory/trace. ``temperature``
+        overrides the default reply temperature (greetings use a higher one so they
+        don't come out the same every session).
         """
         if isinstance(prompt, DisambiguationRequest):
             result = await self._disambiguate(prompt)
@@ -517,7 +521,7 @@ class ResponseGenerator:
         ) and not _is_live_info_query(prompt.utterance)
         if streamable:
             try:
-                streamed = await self._stream_reply(prompt, speak)
+                streamed = await self._stream_reply(prompt, speak, temperature=temperature)
                 if streamed is not None:
                     return streamed
             except Exception:  # any streaming hiccup → safe fallback (never worse)
@@ -583,7 +587,11 @@ class ResponseGenerator:
             await self._speak_clean(text[spoken:], speak)
 
     async def _stream_reply(
-        self, prompt: AssembledPrompt, speak: "Callable[[str], Awaitable[None]]"
+        self,
+        prompt: AssembledPrompt,
+        speak: "Callable[[str], Awaitable[None]]",
+        *,
+        temperature: float | None = None,
     ) -> GenerationResult | None:
         """Stream the spoken reply as PLAIN prose (no JSON) so the first sentence
         starts synthesizing from the first tokens (§8.12). Speaks completed
@@ -611,7 +619,7 @@ class ResponseGenerator:
             prompt.complexity_hint,
             session_id=prompt.session_id,
             model=prompt.model_override,
-            temperature=REPLY_TEMPERATURE,  # P2: moderate for warmth/variation
+            temperature=REPLY_TEMPERATURE if temperature is None else temperature,  # P2
             cache_prefix=prompt.cache_prefix,  # L6: cache the stable prompt prefix
             purpose="response",
         ):
