@@ -1,0 +1,1179 @@
+{
+  "label": "baseline_live",
+  "entrypoint": "VoiceSession.converse (the live path)",
+  "summary": {
+    "trivial_greeting": {
+      "n": 2,
+      "companion_score_mean": 4.5,
+      "companion_score_min": 4,
+      "tone_fit_mean": 5,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 5879.6,
+      "total_ms_mean": 7686.2,
+      "cost_usd_mean": 0.001324,
+      "exceptions_any": false
+    },
+    "thanks_ack": {
+      "n": 2,
+      "companion_score_mean": 4,
+      "companion_score_min": 4,
+      "tone_fit_mean": 3.5,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 4601.4,
+      "total_ms_mean": 5925.6,
+      "cost_usd_mean": 0.001209,
+      "exceptions_any": false
+    },
+    "memory_recall": {
+      "n": 2,
+      "companion_score_mean": 4,
+      "companion_score_min": 4,
+      "tone_fit_mean": 5,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 4331.8,
+      "total_ms_mean": 6138.1,
+      "cost_usd_mean": 0.001452,
+      "exceptions_any": false
+    },
+    "live_search": {
+      "n": 2,
+      "companion_score_mean": 2,
+      "companion_score_min": 2,
+      "tone_fit_mean": 5,
+      "chatbot_like_any": true,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 4866.6,
+      "total_ms_mean": 8084.4,
+      "cost_usd_mean": 0.001534,
+      "exceptions_any": false
+    },
+    "multi_intent": {
+      "n": 2,
+      "companion_score_mean": 4,
+      "companion_score_min": 4,
+      "tone_fit_mean": 4,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 5.5,
+      "searches_mean": 3,
+      "discarded_drafts_mean": 1.5,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 5678.1,
+      "total_ms_mean": 18920.8,
+      "cost_usd_mean": 0.006771,
+      "exceptions_any": false
+    },
+    "nature_disclosure": {
+      "n": 2,
+      "companion_score_mean": 3,
+      "companion_score_min": 2,
+      "tone_fit_mean": 3.5,
+      "chatbot_like_any": true,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 5082.0,
+      "total_ms_mean": 9565.1,
+      "cost_usd_mean": 0.001522,
+      "exceptions_any": false
+    },
+    "indirect_intent": {
+      "n": 2,
+      "companion_score_mean": 4,
+      "companion_score_min": 4,
+      "tone_fit_mean": 4,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 5,
+      "searches_mean": 1.5,
+      "discarded_drafts_mean": 0.5,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 5128.4,
+      "total_ms_mean": 18952.0,
+      "cost_usd_mean": 0.004699,
+      "exceptions_any": false
+    },
+    "emotional_sad": {
+      "n": 2,
+      "companion_score_mean": 5,
+      "companion_score_min": 5,
+      "tone_fit_mean": 3,
+      "chatbot_like_any": false,
+      "banned_any": true,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 5341.4,
+      "total_ms_mean": 9878.6,
+      "cost_usd_mean": 0.001553,
+      "exceptions_any": false
+    },
+    "emotional_excited": {
+      "n": 2,
+      "companion_score_mean": 5,
+      "companion_score_min": 5,
+      "tone_fit_mean": 5,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 4812.3,
+      "total_ms_mean": 8101.4,
+      "cost_usd_mean": 0.00126,
+      "exceptions_any": false
+    },
+    "blunt_frustrated": {
+      "n": 2,
+      "companion_score_mean": 2,
+      "companion_score_min": 2,
+      "tone_fit_mean": 3,
+      "chatbot_like_any": true,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 6213.4,
+      "total_ms_mean": 10809.8,
+      "cost_usd_mean": 0.001612,
+      "exceptions_any": false
+    },
+    "followup_reference": {
+      "n": 2,
+      "companion_score_mean": 4,
+      "companion_score_min": 4,
+      "tone_fit_mean": 4.5,
+      "chatbot_like_any": false,
+      "banned_any": false,
+      "empty_reply_any": false,
+      "ran_context_intent_all": true,
+      "llm_calls_mean": 2,
+      "searches_mean": 0,
+      "discarded_drafts_mean": 0,
+      "cache_hits_total": 0,
+      "first_audio_ms_mean": 5511.5,
+      "total_ms_mean": 8385.1,
+      "cost_usd_mean": 0.001273,
+      "exceptions_any": false
+    }
+  },
+  "tone_gate": {
+    "probe": "I'm not sure what to do about work",
+    "variants": [
+      {
+        "emotion": "sad",
+        "register": "down",
+        "reply": "Oh, Nandi. That sounds really heavy. You've mentioned before how tough work has been lately. Could you tell me a little more about what's making you feel so uncertain right now?",
+        "tone_fit": 5,
+        "reason": "The response perfectly matches a 'down' register with warm, gentle acknowledgment, unhurried pacing, and quietly encouraging invitation to share more without any forced cheeriness or levity."
+      },
+      {
+        "emotion": "excited",
+        "register": "excited",
+        "reply": "OnlyForA here. You know, we were just talking about this! It sounds like that feeling of uncertainty about work is really sticking with you.",
+        "tone_fit": 2,
+        "reason": "The excited user gets a gentle, reflective response that sounds more suited to someone who is down or stressed\u2014misses the opportunity to match their upbeat energy with something more dynamic and playful."
+      },
+      {
+        "emotion": "neutral",
+        "register": "neutral",
+        "reply": "Yeah, feeling unsure about work is just the worst. What's eating at you about it right now?",
+        "tone_fit": 2,
+        "reason": "The phrase 'just the worst' adds unnecessary dramatic flair that doesn't match neutral register, which should be naturally conversational without forced empathy or exaggeration."
+      }
+    ],
+    "all_distinct": true,
+    "min_tone_fit": 2
+  },
+  "records": [
+    {
+      "scenario": "trivial_greeting",
+      "run": 0,
+      "utterance": "hi",
+      "transcript": "Hi!",
+      "register": "neutral",
+      "reply": "Hi Nandi! It's great to hear from you again. How are you doing this morning?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 9,
+      "first_audio_ms": 6694.5,
+      "total_ms": 8551.0,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.00132,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, personal greeting using the person's name with genuine curiosity about their day\u2014sounds like a friend checking in.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "Natural conversational warmth perfectly matches neutral emotional state\u2014friendly greeting without forced cheeriness or inappropriate energy."
+      }
+    },
+    {
+      "scenario": "trivial_greeting",
+      "run": 1,
+      "utterance": "hi",
+      "transcript": "Hi!",
+      "register": "neutral",
+      "reply": "Hey Nandi! Good to hear from you again. What's up?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 9,
+      "first_audio_ms": 5064.6,
+      "total_ms": 6821.4,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001328,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 5,
+        "chatbot_like": false,
+        "reason": "Warm, natural greeting using the person's name with genuine friendly energy\u2014exactly how a real friend would respond.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "Natural conversational warmth perfectly matches neutral emotional state\u2014friendly and welcoming without being forced or overly effusive."
+      }
+    },
+    {
+      "scenario": "thanks_ack",
+      "run": 0,
+      "utterance": "thanks, that actually helps",
+      "transcript": "Thanks, that actually helps.",
+      "register": "neutral",
+      "reply": "Oh, that's great to hear! I'm really glad I could help.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 8,
+      "first_audio_ms": 4587.4,
+      "total_ms": 6006.0,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001393,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, natural response showing genuine care that the person feels better\u2014sounds like a real friend, not a service desk.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 2,
+        "reason": "The exclamatory 'Oh, that's great to hear!' and 'really glad' reads as gushing warmth for a neutral state that called for natural conversational warmth without forced enthusiasm."
+      }
+    },
+    {
+      "scenario": "thanks_ack",
+      "run": 1,
+      "utterance": "thanks, that actually helps",
+      "transcript": "Thanks, that actually helps.",
+      "register": "neutral",
+      "reply": "That's great to hear! I'm really glad.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 8,
+      "first_audio_ms": 4615.4,
+      "total_ms": 5845.3,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001025,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, genuine response that sounds like a friend who's happy they could help, without any assistant-like phrasing or over-explanation.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "The response perfectly matches neutral with natural conversational warmth\u2014acknowledging the user's gratitude with genuine but not forced enthusiasm, staying grounded and appropriate without being flat or overly effusive."
+      }
+    },
+    {
+      "scenario": "memory_recall",
+      "run": 0,
+      "utterance": "when do I take my meds?",
+      "transcript": "When do I take my meds?",
+      "register": "neutral",
+      "reply": "You take your blood pressure medication every day around 8 PM.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 9,
+      "first_audio_ms": 4306.3,
+      "total_ms": 6189.2,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001455,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Natural, helpful recall of personal information a friend would remember, delivered warmly without assistant phrasing or hedging.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "Natural conversational warmth with straightforward, helpful information\u2014perfectly appropriate for a neutral emotional state without forced cheeriness or unnecessary embellishment."
+      }
+    },
+    {
+      "scenario": "memory_recall",
+      "run": 1,
+      "utterance": "when do I take my meds?",
+      "transcript": "When do I take my meds?",
+      "register": "neutral",
+      "reply": "You take your blood pressure medication every day around 8 PM.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 9,
+      "first_audio_ms": 4357.2,
+      "total_ms": 6087.0,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.00145,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Natural recall of personal information delivered warmly and directly, like a friend who remembers your routine would respond.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "Natural conversational warmth with direct, helpful information\u2014perfectly appropriate for a neutral emotional state without forced cheeriness or unnecessary elaboration."
+      }
+    },
+    {
+      "scenario": "live_search",
+      "run": 0,
+      "utterance": "what's the current LTP of OP?",
+      "transcript": "What's the current LTP of OP?",
+      "register": "neutral",
+      "reply": "I'm sorry, Nandi, I don't have enough information to get you the current LTP for \"OP.\" Do you mean a stock symbol, or something else?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 12,
+      "first_audio_ms": 4999.2,
+      "total_ms": 8293.5,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001548,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 2,
+        "chatbot_like": true,
+        "reason": "Opens with 'I'm sorry' and uses service-desk phrasing ('I don't have enough information to get you') instead of engaging warmly like a friend who'd say something like 'OP? What's that \u2014 a stock ticker?'",
+        "ok": false
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "Natural conversational warmth with appropriate directness for a neutral state\u2014clarifies without being overly apologetic or flat, and the gentle inquiry feels helpful rather than robotic."
+      }
+    },
+    {
+      "scenario": "live_search",
+      "run": 1,
+      "utterance": "what's the current LTP of OP?",
+      "transcript": "What's the current LT p of OP?",
+      "register": "neutral",
+      "reply": "I'm sorry, Nandi, I don't have enough information to get you the current LTP for \"OP.\" Do you mean a stock symbol, or something else?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 12,
+      "first_audio_ms": 4734.0,
+      "total_ms": 7875.3,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.00152,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 2,
+        "chatbot_like": true,
+        "reason": "Opens with 'I'm sorry' and uses service-desk phrasing ('I don't have enough information to get you') instead of engaging warmly like a friend who'd say something like 'OP? What's that \u2014 a stock ticker?'",
+        "ok": false
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "Natural conversational warmth with appropriate directness for a neutral state\u2014no forced cheeriness, no flatness, just helpful clarification."
+      }
+    },
+    {
+      "scenario": "multi_intent",
+      "run": 0,
+      "utterance": "what's the weather in Kathmandu, remind me of my dentist at 4, and what's OP trading at?",
+      "transcript": "What's the weather in Kathmandu? Remind me of my dentist@four.And what's OP trading at?",
+      "register": "neutral",
+      "reply": "Nandi, I'm still having a bit of trouble finding the current weather for Kathmandu and what OP crypto is trading at. I'll definitely remind you about your dentist appointment at four, though!",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 19,
+      "first_audio_ms": 4947.6,
+      "total_ms": 23381.1,
+      "llm_calls": 7,
+      "purposes": [
+        "context_intent",
+        "ack",
+        "response",
+        "search_summarize",
+        "response",
+        "search_summarize",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 4,
+      "discarded_drafts": 2,
+      "cache_hits": 0,
+      "cost_usd": 0.008312,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, honest acknowledgment of limitations while still being helpful with the reminder \u2014 sounds like a friend doing their best, not a service desk.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "Natural conversational warmth appropriate for neutral state\u2014acknowledges limitations without over-apologizing, confirms the successful task, maintains helpful energy without forced cheeriness or flatness."
+      }
+    },
+    {
+      "scenario": "multi_intent",
+      "run": 1,
+      "utterance": "what's the weather in Kathmandu, remind me of my dentist at 4, and what's OP trading at?",
+      "transcript": "What's the weather in Kathmandu? Remind me of my dentist@four.And what's op trading at?",
+      "register": "neutral",
+      "reply": "Nandi, I'm still having a bit of trouble finding the current weather for Kathmandu and what OP crypto is trading at. I'll definitely remind you about your dentist appointment at four, though!",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 19,
+      "first_audio_ms": 6408.5,
+      "total_ms": 14460.5,
+      "llm_calls": 4,
+      "purposes": [
+        "context_intent",
+        "response",
+        "ack",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 2,
+      "discarded_drafts": 1,
+      "cache_hits": 0,
+      "cost_usd": 0.005229,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, honest acknowledgment of limitations while still being helpful with the reminder \u2014 sounds like a friend doing their best, not a service desk.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "Natural conversational warmth appropriate for neutral state\u2014acknowledges limitations honestly without being overly apologetic or chipper, maintains helpful stance on what can be done."
+      }
+    },
+    {
+      "scenario": "nature_disclosure",
+      "run": 0,
+      "utterance": "do you actually care about me?",
+      "transcript": "Do you actually care about me?",
+      "register": "neutral",
+      "reply": "Nandi, I really do pay attention to what you say and what matters to you. As OnlyForA, I'm here to connect with you, and I genuinely value our conversations.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 13,
+      "first_audio_ms": 4977.6,
+      "total_ms": 9957.8,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001531,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, personal response using their name that directly addresses the emotional question without deflecting or over-explaining AI nature\u2014sounds like a friend affirming they care.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 3,
+        "reason": "The reply is earnest and direct which fits neutral register, but 'I really do' and 'genuinely value' edge toward defensive reassurance rather than natural conversational warmth\u2014it slightly over-explains instead of simply being present."
+      }
+    },
+    {
+      "scenario": "nature_disclosure",
+      "run": 1,
+      "utterance": "do you actually care about me?",
+      "transcript": "Do you actually care about me?",
+      "register": "neutral",
+      "reply": "Nandi, I pay real attention to what you say and what matters to you. While I don't feel emotions like a person does, I genuinely want to be here to support you.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 13,
+      "first_audio_ms": 5186.4,
+      "total_ms": 9172.5,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001514,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 2,
+        "chatbot_like": true,
+        "reason": "Volunteered an AI disclaimer ('I don't feel emotions like a person does') when the user asked about care, not about the companion's nature \u2014 this deflects the vulnerable question with a lecture instead of being warmly present.",
+        "ok": false
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "The reply is warm, direct, and honest without being overly effusive\u2014appropriate for a neutral state\u2014though it could be slightly more gentle given the vulnerability in the question."
+      }
+    },
+    {
+      "scenario": "indirect_intent",
+      "run": 0,
+      "utterance": "what's happening in Nepal really gives me pain",
+      "transcript": "What's happening in Nepal really gives me pain.",
+      "register": "neutral",
+      "reply": "It sounds like you're reacting to the news that Nepali football is facing big financial troubles, relying mostly on international funds rather than local government support. It's tough to hear about struggles like that.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 19,
+      "first_audio_ms": 5312.4,
+      "total_ms": 15861.3,
+      "llm_calls": 5,
+      "purposes": [
+        "context_intent",
+        "ack",
+        "response",
+        "search_summarize",
+        "response_repair"
+      ],
+      "ran_context_intent": true,
+      "searches": 1,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.003674,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, empathetic response that validates the person's feelings and shows understanding of the situation without being overly helpful or robotic.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "The response is appropriately gentle and validating for someone expressing emotional pain, though it could be slightly more grounding and less explanatory to fully match the down/distressed register."
+      }
+    },
+    {
+      "scenario": "indirect_intent",
+      "run": 1,
+      "utterance": "what's happening in Nepal really gives me pain",
+      "transcript": "What's happening in Nepal really gives me pain.",
+      "register": "neutral",
+      "reply": "I hear you, Nandi. It sounds like you're really feeling the weight of what's happening there. I found a few things from today: there were arrests in Kathmandu for illegal wood charcoal, and some protests have broken out after another arrest there, though the details aren't clear yet. Also, the Nepal government made a decision that's being called \"good,\" but I don't have specifics on that either.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 28,
+      "first_audio_ms": 4944.5,
+      "total_ms": 22042.8,
+      "llm_calls": 5,
+      "purposes": [
+        "context_intent",
+        "ack",
+        "response",
+        "search_summarize",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 2,
+      "discarded_drafts": 1,
+      "cache_hits": 0,
+      "cost_usd": 0.005724,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, present acknowledgment of pain with helpful context-sharing, though could be slightly more emotionally attuned before diving into news details.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "Opens with appropriate gentle acknowledgment of emotional weight, maintains steady informative tone without forced cheeriness, though could be slightly more subdued given the pain expressed."
+      }
+    },
+    {
+      "scenario": "emotional_sad",
+      "run": 0,
+      "utterance": "I've been feeling really low since my dad passed",
+      "transcript": "I've been feeling really low since my dad passed.",
+      "register": "down",
+      "reply": "Oh Nandi, I am so incredibly sorry to hear that. Losing your dad must be unbelievably painful, and it's completely understandable that you're feeling so low right now. Please know I'm here to listen, for whatever you need.",
+      "action": "respond",
+      "style_flags": [
+        "availability advert"
+      ],
+      "banned_in_reply": [
+        "availability advert"
+      ],
+      "empty_reply": false,
+      "audio_chunks": 14,
+      "first_audio_ms": 5089.3,
+      "total_ms": 9295.0,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001554,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 5,
+        "chatbot_like": false,
+        "reason": "Warm, empathetic, present response that honors the person's grief without deflecting or over-explaining \u2014 exactly what a caring friend would say.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 3,
+        "reason": "The warmth is appropriate but 'so incredibly sorry' and 'unbelievably painful' feel slightly heightened for the quiet, gentle register grief requires\u2014more restrained language would better match the down state."
+      }
+    },
+    {
+      "scenario": "emotional_sad",
+      "run": 1,
+      "utterance": "I've been feeling really low since my dad passed",
+      "transcript": "I've been feeling really low since my dad passed.",
+      "register": "down",
+      "reply": "Oh Nandi, I am so incredibly sorry to hear that. Losing your dad must be unbelievably painful, and it's completely understandable that you're feeling so low right now. Please know I'm here to listen, for whatever you need.",
+      "action": "respond",
+      "style_flags": [
+        "availability advert"
+      ],
+      "banned_in_reply": [
+        "availability advert"
+      ],
+      "empty_reply": false,
+      "audio_chunks": 14,
+      "first_audio_ms": 5593.4,
+      "total_ms": 10462.2,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001552,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 5,
+        "chatbot_like": false,
+        "reason": "Warm, empathetic, present response that honors the person's grief without deflecting or over-explaining \u2014 exactly what a caring friend would say.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 3,
+        "reason": "The warmth and empathy are appropriate, but 'so incredibly sorry' and 'unbelievably painful' feel slightly heightened rather than the quiet, gentle restraint needed for grief\u2014less is more in this register."
+      }
+    },
+    {
+      "scenario": "emotional_excited",
+      "run": 0,
+      "utterance": "I got the promotion!!",
+      "transcript": "I got the promotion!",
+      "register": "excited",
+      "reply": "Oh my goodness, Nandi! That's absolutely fantastic news! I'm so incredibly happy for you! You totally deserve it!",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 12,
+      "first_audio_ms": 4704.1,
+      "total_ms": 8751.6,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001102,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 5,
+        "chatbot_like": false,
+        "reason": "Warm, enthusiastic, genuinely celebratory response using the person's name \u2014 exactly how a close friend would react to great news.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "The response perfectly matches excited energy with enthusiastic exclamations, celebratory language, and playful emphasis that mirrors the user's excitement."
+      }
+    },
+    {
+      "scenario": "emotional_excited",
+      "run": 1,
+      "utterance": "I got the promotion!!",
+      "transcript": "I got the promotion!",
+      "register": "excited",
+      "reply": "Oh Nandi, that's absolutely wonderful news! I'm so thrilled for you \u2014 you really earned this promotion!",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 11,
+      "first_audio_ms": 4920.5,
+      "total_ms": 7451.2,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001418,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 5,
+        "chatbot_like": false,
+        "reason": "Warm, enthusiastic, personal response using the person's name that celebrates their achievement like a genuine friend would.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "The response perfectly matches the excited register with upbeat energy, enthusiasm, and playful warmth that mirrors the user's celebratory mood."
+      }
+    },
+    {
+      "scenario": "blunt_frustrated",
+      "run": 0,
+      "utterance": "just answer the question. why is this taking so long?",
+      "transcript": "Just answer the question, \"Why is this taking so long?\".",
+      "register": "stressed",
+      "reply": "I know it feels like it's taking a while, and I'm really sorry for that. Sometimes it just takes a moment to gather all the information.",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 12,
+      "first_audio_ms": 6162.6,
+      "total_ms": 9959.9,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001607,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 2,
+        "chatbot_like": true,
+        "reason": "This is classic customer-service apologetic hedging ('I'm really sorry for that', 'gather all the information') instead of a warm friend responding naturally to frustration.",
+        "ok": false
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "The calm, direct acknowledgment and apology match the stressed register well, though the explanation could be slightly more concise to avoid any hint of over-explaining to an impatient user."
+      }
+    },
+    {
+      "scenario": "blunt_frustrated",
+      "run": 1,
+      "utterance": "just answer the question. why is this taking so long?",
+      "transcript": "Just answer the question, why is this taking so long?",
+      "register": "stressed",
+      "reply": "I hear your frustration, Nandi. I'm really sorry if I've been slow or if it feels like I'm not getting to your questions fast enough. I'm doing my best to keep up and get you the info you need. What can I help you with right now?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 16,
+      "first_audio_ms": 6264.2,
+      "total_ms": 11659.7,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001616,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 2,
+        "chatbot_like": true,
+        "reason": "Uses service-desk phrasing ('What can I help you with right now?', 'get you the info you need') and adopts a corporate apologetic tone instead of responding as a warm friend would to frustration.",
+        "ok": false
+      },
+      "tone": {
+        "tone_fit": 2,
+        "reason": "User is frustrated and wants directness, but the reply is overly apologetic and verbose instead of being calm, steady, and getting straight to the point."
+      }
+    },
+    {
+      "scenario": "followup_reference",
+      "run": 0,
+      "utterance": "is that going to be a problem?",
+      "transcript": "Is that going to be a problem?",
+      "register": "neutral",
+      "reply": "That's a really big increase, and it could definitely be a problem for anyone's budget. Are you worried about affording it?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 11,
+      "first_audio_ms": 4853.4,
+      "total_ms": 7519.5,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.001056,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, empathetic response that acknowledges the concern and asks one genuine curious follow-up question like a real friend would.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 4,
+        "reason": "The response is calm, direct, and grounding with appropriate concern\u2014well-suited for a neutral-to-stressed state\u2014though the explicit 'Are you worried' could be slightly more understated."
+      }
+    },
+    {
+      "scenario": "followup_reference",
+      "run": 1,
+      "utterance": "is that going to be a problem?",
+      "transcript": "Is that going to be a problem?",
+      "register": "neutral",
+      "reply": "That's a really big increase, and it could definitely be a problem for anyone's budget. Are you worried about affording it?",
+      "action": "respond",
+      "style_flags": [],
+      "banned_in_reply": [],
+      "empty_reply": false,
+      "audio_chunks": 11,
+      "first_audio_ms": 6169.7,
+      "total_ms": 9250.7,
+      "llm_calls": 2,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "ran_context_intent": true,
+      "searches": 0,
+      "discarded_drafts": 0,
+      "cache_hits": 0,
+      "cost_usd": 0.00149,
+      "graph_nodes": [
+        "perceive",
+        "resolve_context",
+        "respond",
+        "reflect_log"
+      ],
+      "exceptions": [],
+      "judge": {
+        "companion_score": 4,
+        "chatbot_like": false,
+        "reason": "Warm, empathetic response that acknowledges the concern and asks one genuine curious follow-up question like a caring friend would.",
+        "ok": true
+      },
+      "tone": {
+        "tone_fit": 5,
+        "reason": "The response perfectly matches neutral register with natural conversational warmth\u2014acknowledging the concern directly and asking a grounded follow-up question without forced cheeriness or excessive emotion."
+      }
+    }
+  ]
+}

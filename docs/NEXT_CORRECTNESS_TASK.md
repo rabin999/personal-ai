@@ -1,3 +1,46 @@
+# Next correctness work — two findings, both diagnosed, neither fixed
+
+## 0. THE BIGGER ONE — the voice path skips half of §12 (self-reflection never runs)
+
+Found while capturing the first-ever judged quality baseline of the live voice path
+(`docs/quality/baseline_live.json`, TEST_REPORT F6).
+
+`ResponseGenerator.generate_spoken` → `_stream_reply` → `_finish_spoken` → `_finish`.
+The behaviour gates live in `_finalize`, which **only the non-streaming path reaches**. A plain
+streamed voice turn therefore never runs:
+
+| Step | Spec | Runs on text path | Runs on voice path |
+|---|---|---|---|
+| self-reflection / assistant-speak rewrite | §9.3 | yes | **no** |
+| curiosity gate | §12 rule 2 | yes | **no** |
+| `self_model.check_boundary()` overclaim rewrite | §9 | yes | **no** |
+| `_warm_disclosure()` | §1.2 rule 4 | yes | **no** |
+
+**Verified on real turns:** `"hi"` and `"do you actually care about me?"` both yield
+`purposes=['context_intent','response']` with `judgment` and `prosody` spans present and **no
+`reflection` span at all**.
+
+This violates CLAUDE.md §2 ("Self-reflection is a first-class step, not a bolt-on") and §9
+("ReAct + self-reflection are real steps, every turn") for every spoken turn.
+
+**The measured cost.** Judged through `VoiceSession`, three of eleven scenarios come back
+`chatbot_like=true`, and the deterministic `style_flags` detector catches none of them:
+
+- `blunt_frustrated` (score **2**) — *"I know it feels like it's taking a while, and I'm really
+  sorry for that. Sometimes it just takes a moment to gather all the information."*
+- `nature_disclosure` (score **3**) — *"…While I don't feel emotions like a person does…"*, the
+  exact cold disclosure `_warm_disclosure` exists to prevent.
+- `live_search` (score **2**) — the SRC1 punt below.
+- Dynamic-tone gate **fails**: `min_tone_fit = 2`; the excited variant opens *"OnlyForA here."*
+
+**Why it's hard:** self-reflection is a second LLM call, and the streaming path exists to get audio
+out fast. Reflecting after the sentence has already been spoken is too late. Options worth
+measuring: reflect on the first clause before it is voiced; run the gates on the buffered draft and
+correct in the *next* sentence; or accept a small first-audio cost for a rewrite pass. **Requires a
+judged before/after; do not guess.**
+
+---
+
 # SRC1 — "what's the current LTP of OP?" · evidence-based diagnosis
 
 **Status: diagnosed, NOT fixed.** F5 asked to diagnose before acting, because the earlier

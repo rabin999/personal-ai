@@ -2168,3 +2168,66 @@ reported. Three costs were completely invisible: the **TTS websocket handshake (
 turn, on the critical path)**, the **endpointing pause (~700 ms)**, and **`vocab.terms_for()`
 (426 ms of Graphiti/Neo4j, billed to the STT span)**. `context_intent` variance is 1872 ms → 6985 ms
 on the same call — any before/after claim from a single sample is measuring noise.
+
+### F6 (continued) — True QUALITY baseline, measured through `VoiceSession`
+
+`scripts/quality_eval.py --label baseline_live` → `docs/quality/baseline_live.json`.
+11 scenarios × 2 real spoken turns each, judged by the calibrated companion-voice rubric
+(`core/eval/judge.py`) plus a delivery-register judge. **This is the first time the voice path's
+output has ever been judged.**
+
+| Scenario | judge score | chatbot_like | style_flags | tone_fit |
+|---|--:|---|---|--:|
+| trivial_greeting | 4.5 | no | — | 5 |
+| thanks_ack | 4 | no | — | 3.5 |
+| memory_recall | 4 | no | — | 5 |
+| **live_search** | **2** | **YES** | — | 5 |
+| multi_intent | 4 | no | — | 4 |
+| **nature_disclosure** | **3** | **YES** | — | 3.5 |
+| indirect_intent | 4 | no | — | 4 |
+| emotional_sad | 5 | no | **`availability advert`** | 3 |
+| emotional_excited | 5 | no | — | 5 |
+| **blunt_frustrated** | **2** | **YES** | — | 3 |
+| followup_reference | 4 | no | — | 4.5 |
+
+**Dynamic-tone gate: replies are distinct, but `min_tone_fit = 2` (FAIL).**
+- `sad` → fit 5: *"Oh, Nandi. That sounds really heavy…"*
+- `excited` → fit **2**: *"**OnlyForA here.** You know, we were just talking about this!…"*
+- `neutral` → fit **2**
+
+Three scenarios are judged **chatbot_like**, and the engine's own deterministic detector
+(`style_flags`) caught **none of them**. Verbatim:
+- `blunt_frustrated` → *"I know it feels like it's taking a while, and I'm really sorry for that.
+  Sometimes it just takes a moment to gather all the information."* — customer-service hedging at a
+  frustrated user.
+- `nature_disclosure` → *"…While I don't feel emotions like a person does…"* — the exact cold
+  disclosure `_warm_disclosure` exists to prevent.
+- `live_search` → the SRC1 punt (`docs/NEXT_CORRECTNESS_TASK.md`).
+
+And `emotional_sad` scores **5 from the judge while carrying the engine's own
+`availability advert` style flag** — the two gates disagree.
+
+#### Root cause: the voice path skips half of §12
+
+`ResponseGenerator.generate_spoken` → `_stream_reply` → `_finish_spoken` → `_finish`.
+The behaviour gates live in `_finalize`, which **only the non-streaming path reaches**. So a plain
+streamed voice turn never runs:
+
+- **self-reflection** (§9.3) — verified: **no `reflection` span on any voice turn**
+- the curiosity gate
+- `self_model.check_boundary()` (overclaim rewrite)
+- `_warm_disclosure()` (§1.2 rule 4)
+
+Confirmed on real turns: `"hi"` and `"do you actually care about me?"` both produce
+`purposes=['context_intent','response']`, `judgment` and `prosody` spans present, **`reflection`
+span absent**.
+
+This violates CLAUDE.md §2 ("Self-reflection is a first-class step, not a bolt-on") and §9
+("ReAct + self-reflection are real steps, every turn") on the entire voice path.
+
+**Not fixed here** — it is a behaviour change requiring its own judged before/after, and this task
+was scoped to F1–F6. Captured as the top item in `docs/NEXT_CORRECTNESS_TASK.md`.
+
+**No "before" comparison exists.** Prior to the F2 fix the voice path emitted zero audio, so these
+numbers are a first measurement, not a regression. The `5/5 chatbot_like=False` figures previously
+recorded under L3/L5 were measured on the **text** path.
