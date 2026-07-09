@@ -152,6 +152,31 @@ def test_strip_query_echo_leaves_an_unrelated_reply_alone() -> None:
     assert _strip_query_echo(text, "some other query") == text
 
 
+@pytest.mark.defect
+def test_strip_query_echo_does_not_eat_the_answer_it_is_cleaning() -> None:
+    """D-18. `_strip_query_echo` removes the query VERBATIM wherever it appears. When the
+    query is an ordinary noun phrase — which is what `_build_search_query` produces — it also
+    appears in the correct answer, and gets cut out of it.
+
+    Observed on a real turn through `generate()`:
+
+        query : 'current prime minister of Nepal'
+        reply : 'The is Balendra Shah! He's also the youngest person to ever hold that…'
+
+    The engine searched, found the right answer, and then mutilated it on the way out. This is
+    a fix from a previous session (S2) whose mutation survived the entire suite until now.
+    """
+    query = "current prime minister of Nepal"
+    answer = "The current prime minister of Nepal is Balendra Shah! He is the youngest to hold it."
+
+    cleaned = _strip_query_echo(answer, query)
+
+    assert "Balendra Shah" in cleaned
+    assert cleaned.startswith("The current prime minister"), (
+        f"the answer was mutilated: {cleaned!r}. See docs/DEFECTS_FOUND.md D-18."
+    )
+
+
 # ── capability repair (the forced search backstop) ────────────────────────────
 
 

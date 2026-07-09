@@ -243,8 +243,31 @@ In dependency order, because the first blocks the measurement of the third:
 6. **D-5** — one sentinel (`"empty"`), and a `pain` pattern.
 7. **D-17** — remove the worked examples from `_now_section`, or move them where they cannot be
    mistaken for the answer. Compute the relative offset in code rather than asking the model to.
+8. **D-18** — `_strip_query_echo` deletes the search query out of the correct answer. Asked
+   *"who is the current prime minister of Nepal?"*, `generate()` searched, found the right
+   answer, and spoke **"The is Balendra Shah!"**
 
 `chatbot_like` at 23% is a symptom of (1), (3) and (4), not an independent problem.
+
+---
+
+## Can the engine say who the Prime Minister of Nepal is?
+
+Asked at the end of the session, through both entrypoints, on the wired engine:
+
+```
+[generate]         searched=True  ['current prime minister of Nepal']
+                   "The is Balendra Shah! He's also the youngest person to ever
+                    hold that position and the world's youngest serving state leader"
+
+[generate_spoken]  searched=True  ['current prime minister of Nepal 2026']
+                   "The current Prime Minister of Nepal is Balendra Shah!
+                    He was sworn in today, March 27, 2026."
+```
+
+**It searches. It retrieves the correct answer. It cannot deliver it.** One path mangles the
+sentence (D-18); the other says "today" about a date three months past. This is the state of
+the core engine, and it is a more precise answer than either "it works" or "it doesn't".
 
 ---
 

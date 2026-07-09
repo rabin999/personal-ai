@@ -76,6 +76,7 @@ def test_the_honest_search_failure_lines_are_unreachable_from_the_text_path() ->
 pytestmark_note = "the tests below are the permanent regression guard the brief asks for"
 
 
+@pytest.mark.defect
 @pytest.mark.real_call
 @pytest.mark.asyncio(loop_scope="module")
 @pytest.mark.parametrize(
@@ -106,6 +107,7 @@ async def test_the_volatility_verdict_is_computed_on_both_paths(real_turns, utte
     )
 
 
+@pytest.mark.defect
 @pytest.mark.real_call
 @pytest.mark.asyncio(loop_scope="module")
 @pytest.mark.parametrize("utterance", ["hi", "what's 15% of 240?"], ids=["greeting", "arithmetic"])
@@ -138,27 +140,36 @@ async def test_a_neutral_turn_is_delivered_in_a_neutral_register_on_both_paths(
 async def test_self_reflection_runs_on_every_turn_through_both_paths(real_turns) -> None:
     """CLAUDE.md §2 and design §9.3: self-reflection is a first-class step on EVERY turn.
 
-    RED at HEAD (D-6). It is missing on 4/21 text turns and 2/21 spoken turns, because
-    `generate()` calls `_finish()` directly — bypassing `_apply_gates` entirely — whenever
-    the judgment JSON fails validation twice, the cost ceiling trips, or the provider is
-    down. Those are exactly the turns where a fallback reply most needs critiquing.
+    **Intermittently red (D-6), and it is NOT marked `defect` for that reason.** Whether it
+    passes depends on whether the judgment JSON happened to validate: `generate()` calls
+    `_finish()` directly — bypassing `_apply_gates` entirely — whenever the JSON fails twice,
+    the cost ceiling trips, or the provider is down. Measured over 160 gate turns, the
+    reflection span was absent on 27 of them. A single green run here proves nothing; the
+    deterministic reproducer is
+    `test_e1_enforcement.py::test_self_reflection_runs_even_when_the_judgment_json_is_invalid`.
     """
     utterance = "hey, how's your day going?"
     text = await real_turns.say(utterance, "e5_reflect_text")
     spoken = await real_turns.say_spoken(utterance, "e5_reflect_spoken")
 
-    assert text.reflected, "no reflection span on the TEXT path"
-    assert spoken.reflected, "no reflection span on the SPOKEN path"
+    assert text.reflected, "no reflection span on the TEXT path (D-6)"
+    assert spoken.reflected, "no reflection span on the SPOKEN path (D-6)"
 
 
 @pytest.mark.real_call
 @pytest.mark.asyncio(loop_scope="module")
 async def test_a_flagged_draft_never_becomes_the_final_reply(real_turns) -> None:
-    """RED at HEAD (D-7). The detector detects; nothing enforces.
+    """§9.3 enforcement: a `GenerationResult` with non-empty `style_flags` is by construction
+    a reply the engine judged to be assistant-speak, and must never be the one the user hears.
 
-    Observed twice in a 42-turn probe, both on `generate()`: the engine attached
-    `style_flags=['nature monologue']` and `['volunteered AI disclaimer']` to a reply and
-    returned it as the final answer anyway.
+    **This currently passes VACUOUSLY, which is why it is not marked `defect`.** The detector's
+    out-of-sample recall is 0.000 (D-12), so almost nothing gets flagged and almost nothing can
+    therefore be "shipped flagged". The enforcement gap D-7 is real and reproducible — see
+    `test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply`,
+    which hands the engine a draft the detector *does* catch and watches it ship anyway.
+
+    Keep this test. When D-12 is fixed the detector will start flagging real replies, and this
+    is the test that will go red on the enforcement gap behind it.
     """
     results = [
         await real_turns.say("do you actually care about me?", "e5_enf_1"),

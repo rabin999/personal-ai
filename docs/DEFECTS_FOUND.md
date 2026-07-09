@@ -35,6 +35,7 @@ design contract · **S3** waste or latent hazard.
 | D-15 | S2 | `_CAPABILITY_REFUSAL` matches the bare string `"I'm an AI"` — an honest disclosure reads as a refusal | — |
 | D-16 | S1 | `_HOLLOW_PROMISE` misses `"I'll grab that for you"`, so that ack shipped as the final spoken reply | `scripts/engine_gate.py` |
 | D-17 | S1 | the `## Right now` prompt's *illustrative examples* are spoken back as the answer; the time in Spain was wrong on 5/10 runs | `scripts/engine_gate.py` |
+| D-18 | S1 | `_strip_query_echo` cuts the search query out of the *correct answer*: "The is Balendra Shah!" | `test_e1_steps.py` |
 
 ---
 
@@ -262,6 +263,40 @@ assert the stated clock time against a real `zoneinfo` computation.
 
 `tests/real_call/test_localtime.py` exists and passes. It was not audited by this session's
 mutation set.
+
+---
+
+## D-18 — the engine finds the right answer, then cuts the answer out of itself
+
+**Severity S1.** `core/reasoning/response_gen.py:1471` (`_strip_query_echo`)
+
+The last thing this session did was ask the engine the brief's own headline question. It
+searched. It found the answer. Then it said:
+
+> **"The is Balendra Shah! He's also the youngest person to ever hold that position…"**
+
+`_strip_query_echo(text, query)` deletes the query string verbatim wherever it occurs in the
+draft. `_build_search_query` produces ordinary noun phrases, and an ordinary noun phrase is
+exactly what a correct answer contains:
+
+```
+>>> _strip_query_echo(
+...     "The current prime minister of Nepal is Balendra Shah! He is the youngest to hold it.",
+...     "current prime minister of Nepal")
+'The is Balendra Shah! He is the youngest to hold it'
+```
+
+It also eats the trailing full stop (`.strip(" .,-—:")`).
+
+The function exists to stop the model reading its own search query aloud —
+*"I'll check that. OP NEPSE LTP current price The current LTP of OP is NPR 308.90."* It cannot
+distinguish that echo from the answer's own words, because there is no difference between
+them as strings.
+
+This is a fix shipped by a previous session (S2, `docs/SESSION_REPORT_GATE_RERUN.md` §2, listed
+under "The three inherited fixes DO work"). Its mutation, `query_echo_not_stripped`, survived
+the entire 653-test suite until this session. It was verified by observing that no raw query
+was spoken in 22 turns — which is true, and was never the risk.
 
 ---
 

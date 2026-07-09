@@ -34,16 +34,29 @@ one-line statement of the engine claim each falsifies.
 
 | | before | after |
 |---|--:|--:|
-| test files | 114 | 118 |
-| tests collected | 653 | 713 |
-| green by default (`-m "not real_call and not defect"`) | 653 | 654 |
-| RED on purpose (`-m defect`) | 0 | 9 |
+| test files | 114 | 119 |
+| tests collected | 653 | 717 |
+| green by default (`-m "not real_call and not defect"`) | 653 | 656 |
+| RED on purpose (`-m defect`) | 0 | 16 (11 deterministic + 5 real-call) |
 | real-call | 43 | 50 |
 | **deleted** | | **12** |
-| **added** | | **72** |
+| **added** | | **76** |
 
-The `defect` tests are new. They assert what the design requires, fail at HEAD, and turn
-green when the defect is fixed. Each names its entry in `docs/DEFECTS_FOUND.md`.
+Verified:
+
+```
+uv run pytest -m "not real_call and not defect"    652 passed, 2 failed, 2 skipped
+uv run pytest -m "defect and not real_call"         11 failed          (by design)
+uv run pytest -m "defect and real_call"              5 failed          (by design)
+uv run lint-imports                                  2 contracts kept, 0 broken
+git status --porcelain core/ adapters/ api/ …        clean — no product code changed
+```
+
+The 2 green-suite failures are the standing SMTP-credential tests, blocked since F1–F16.
+
+The `defect` tests are new. They assert what the design requires, fail at HEAD, and turn green
+when the defect is fixed. Each names its entry in `docs/DEFECTS_FOUND.md`. **The count of red
+tests is the count of known defects** — nothing is hidden behind `xfail` or `skip`.
 
 ---
 
@@ -212,9 +225,18 @@ isolation is a hard invariant; it should not remain unproven.
 | `tests/engine/test_e1_steps.py` | 22 | the six untested steps; every mutation now dies |
 | `tests/engine/test_e1_enforcement.py` | 8 | enforcement + gate reachability; 5 are `defect` |
 | `tests/engine/test_e2_volatility_classifier.py` | 13 | the labeled set as a regression guard |
+| `tests/engine/test_e2_detector_agreement.py` | 4 | detector vs judge, **out-of-sample**; 2 are `defect` |
 | `tests/engine/test_e3_prosody_read.py` | 25 | the emotional-read → register seam; 3 are `defect` |
-| `tests/engine/test_e5_caller_independence.py` | 8 | the two callers must agree; 6 are `real_call` |
+| `tests/engine/test_e5_caller_independence.py` | 9 | the two callers must agree; 7 `real_call`, 5 `defect` |
+| `tests/engine/conftest.py` | — | re-exports `real_turns` so E5 can drive both entrypoints |
 | `tests/labeled/volatility.jsonl` | — | 174 labeled questions, 87 volatile / 87 stable |
+
+`tests/engine/test_e2_detector_agreement.py` is the counterweight to
+`tests/golden/test_style_judge_agreement.py`. The latter asserts the detector agrees with the
+judge on `docs/quality/baseline_live.json` — the 22 replies its patterns were written from —
+and has always passed at 1.000. The former scores it on 104 replies it has never seen. Recall:
+**0.000**. Both files are kept. Read together, they are the clearest statement of what an
+in-sample test is worth.
 
 ---
 
