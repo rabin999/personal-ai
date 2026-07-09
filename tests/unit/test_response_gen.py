@@ -247,8 +247,16 @@ async def test_self_reflection_rewrites_assistant_speak_draft() -> None:
 async def test_reflection_scrubs_when_rewrite_still_dirty() -> None:
     # If the model's rewrite is STILL assistant-speak, the deterministic scrub
     # drops the offending sentence so no banned shape ever ships (§7 safety net).
+    # C2: a dirty first rewrite now triggers ONE more attempt on the escalated tier
+    # (the instruction names the exact shapes found), so both are scripted here.
     draft = "Hi there! How can I help you today?"
-    h = await Harness([_turn_json(draft=draft), "What can I do for you today?"]).seed()
+    h = await Harness(
+        [
+            _turn_json(draft=draft),
+            "Hi there! What can I do for you today?",  # rewrite attempt 1 — still dirty
+            "Hi there! Is there anything else?",  # rewrite attempt 2 — still dirty
+        ]
+    ).seed()
     result = await h.generator.generate(_prompt("hi"))
     from core.reasoning.style import find_forbidden
 

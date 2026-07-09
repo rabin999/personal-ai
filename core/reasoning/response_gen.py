@@ -317,6 +317,68 @@ _HAS_DISCLOSURE = re.compile(
     re.IGNORECASE,
 )
 
+# What each detector label means, in plain language the rewrite model can act on (C2).
+# A generic "remove assistant phrasing" instruction left the offending shape in place.
+_FLAG_GUIDANCE: dict[str, str] = {
+    "corporate apology": "the customer-service apology ('I'm sorry for/about/if…', "
+    "'I'm doing my best', 'bear with me') — a friend doesn't apologise like a call centre",
+    "service framing": "the service framing ('get you the information', 'gather all the "
+    "details', 'I don't have enough information') — just talk like a person",
+    "service-desk opener": "the service-desk question ('what can I help you with')",
+    "clarifier": "the clarifying question ('do you mean…?', 'or something else?') — "
+    "engage with what they obviously meant instead of interrogating them",
+    "clarifier hedge": "the QA hedge ('I want to make sure I get this right')",
+    "cold feeling denial": "the cold denial ('I don't feel emotions', 'I don't have "
+    "feelings') — if you must be honest that you're an AI, lead with the genuine "
+    "attention you DO pay them and keep it to one warm sentence",
+    "volunteered AI disclaimer": "the volunteered AI disclaimer — they didn't ask",
+    "availability advert": "advertising your availability ('I'm always here for you')",
+    "assistant offer": "the assistant offer ('happy to help', 'I can help with that')",
+    "assistant-speak": "the assistant phrasing ('feel free to ask', 'is there anything else')",
+    "flat filler opener": "the stock filler question ('what's on your mind')",
+    "flat filler reply": "a reply that is nothing but a stock filler question — say something real",
+    "self-announcement": "announcing your own name at the top like a receptionist",
+    "nature monologue": "the defensive monologue about not being a person",
+    "assistant-existence framing": "describing your existence as processing/assisting",
+    "bolted-on disclaimer": "the bolted-on 'not a substitute for real people' disclaimer",
+    "ToS disclaimer": "the ToS-style disclaimer",
+}
+
+
+def _critique_note(flags: list[str]) -> str:
+    """Name the exact shapes the detector found, so the rewrite can remove THEM."""
+    seen: list[str] = []
+    for f in flags:
+        note = _FLAG_GUIDANCE.get(f)
+        if note and note not in seen:
+            seen.append(note)
+    if not seen:
+        return ""
+    bullets = "\n".join(f"- {s}" for s in seen)
+    return (
+        "\n\nYour line was flagged for the following. Remove EVERY one of them, keep the "
+        f"genuine content, and stay in your own warm voice:\n{bullets}"
+    )
+
+
+# Does the user's message directly ask about the companion's NATURE (§1.2 rule 4)?
+# The streaming voice path has no LLM judgment block to tell it, so it derives the
+# disclosure flag here. High precision: a false positive costs one warm-polish call; a
+# false negative ships the cold "I don't feel emotions like a person does" line.
+_NATURE_QUESTION = re.compile(
+    r"\bdo you (actually |really |even |truly )?(care|feel|love|miss|like me|have feelings)"
+    r"|\bare you (a |an )?(real|human|alive|conscious|sentient|person|bot|ai|robot|machine)"
+    r"|\bdo you have (feelings|emotions|a soul|consciousness|a heart)"
+    r"|\bwould you (miss|remember) me"
+    r"|\bare you (just )?(a )?(program|computer|chatbot)"
+    r"|\bwhat are you\b|\bare you real\b|\bcan you (actually )?feel\b",
+    re.IGNORECASE,
+)
+
+
+def _asks_about_nature(utterance: str) -> bool:
+    return bool(_NATURE_QUESTION.search(utterance))
+
 
 class ResponseGenerator:
     def __init__(
@@ -600,10 +662,25 @@ class ResponseGenerator:
         *,
         temperature: float | None = None,
     ) -> GenerationResult | None:
-        """Stream the spoken reply as PLAIN prose (no JSON) so the first sentence
-        starts synthesizing from the first tokens (§8.12). Speaks completed
-        sentences as they arrive. Returns None (→ caller falls back) on an empty
-        stream. Used only for plain conversational turns (no tool/live-info)."""
+        """Stream the spoken reply as PLAIN prose (no JSON), run the §12 behaviour gates
+        on the completed draft, then speak it sentence-by-sentence into TTS.
+
+        C1 — why the draft is buffered instead of spoken as it streams. This path used to
+        speak each sentence the moment it completed, and returned via `_finish_spoken`,
+        which never reached `_finalize`. So on the ONLY path real users touch, the
+        companion's character machinery — self-reflection (§9.3), the curiosity gate,
+        `check_boundary()`, `_warm_disclosure()` (§1.2 rule 4) — had never once executed.
+
+        The gates cannot correct a sentence that has already been spoken, and a companion
+        that audibly walks back its own words is worse than one that pauses. Measured cost
+        of holding the draft until the stream completes (N=25 real turns, 5 utterances):
+        **median 177 ms, p95 669 ms** — 2-9% of the 7.3 s real time-to-first-audio. Cheap
+        enough to buy the character back. TTS still receives the reply sentence-by-sentence,
+        so synthesis remains progressive; only the LLM/TTS overlap is given up.
+
+        Returns None (→ caller falls back) on an empty stream. Used only for plain
+        conversational turns (no tool/live-info).
+        """
         instructions = _SPOKEN_REPLY_INSTRUCTIONS
         # U8: turn the emotional read into an explicit register directive so the model
         # weaves the RIGHT delivery tags (sad→gentle/encouraging, excited→upbeat,
@@ -619,7 +696,6 @@ class ResponseGenerator:
         ]
 
         text = ""
-        spoken = 0
         async for delta in self._llm.stream(
             prompt.user_id,
             messages,
@@ -631,18 +707,30 @@ class ResponseGenerator:
             purpose="response",
         ):
             text += delta
-            while (b := _sentence_end(text, spoken)) is not None:
-                await self._speak_clean(text[spoken:b], speak)
-                spoken = b
 
         if not text.strip():
             return None  # empty stream → fall back to the full path
-        if spoken < len(text):  # flush the final (unterminated) sentence
-            await self._speak_clean(text[spoken:], speak)
 
-        # A streamed plain reply is a confident direct response by construction.
-        judgment = Judgment(intent_confidence=0.9, ambiguity=0.1)
-        return await self._finish_spoken(prompt, text, judgment)
+        # A streamed plain reply is a confident direct response by construction, so the
+        # curiosity gate is a formality here. `requires_nature_disclosure` is NOT — there
+        # is no LLM judgment block on this path, so it is derived from the user's own
+        # words. Without it `_warm_disclosure` never fires and "do you actually care about
+        # me?" gets answered with a cold "I don't feel emotions like a person does".
+        judgment = Judgment(
+            intent_confidence=0.9,
+            ambiguity=0.1,
+            requires_nature_disclosure=_asks_about_nature(prompt.utterance),
+        )
+        gated, action = await self._apply_gates(prompt, text, judgment)
+
+        spoken = 0
+        while (b := _sentence_end(gated, spoken)) is not None:
+            await self._speak_clean(gated[spoken:b], speak)
+            spoken = b
+        if spoken < len(gated):  # flush the final (unterminated) sentence
+            await self._speak_clean(gated[spoken:], speak)
+
+        return await self._finish_spoken(prompt, gated, judgment, action)
 
     async def _speak_clean(self, sentence: str, speak: "Callable[[str], Awaitable[None]]") -> None:
         """Sanitize a sentence (keep whitelisted voice tags, drop assistant-speak)
@@ -661,7 +749,11 @@ class ResponseGenerator:
             await speak(text)
 
     async def _finish_spoken(
-        self, prompt: AssembledPrompt, decoded_draft: str, judgment: Judgment
+        self,
+        prompt: AssembledPrompt,
+        decoded_draft: str,
+        judgment: Judgment,
+        action: Action = "respond",
     ) -> GenerationResult:
         """Build the result for an already-spoken streamed reply (trace/memory)."""
         self._span(
@@ -672,10 +764,11 @@ class ResponseGenerator:
             ambiguity=judgment.ambiguity,
             complexity=judgment.complexity_tier,
             boundary_flag=judgment.capability_boundary_flag,
+            requires_nature_disclosure=judgment.requires_nature_disclosure,
             streamed=True,
         )
         voice_text = _sanitize_tags(decoded_draft)
-        return await self._finish(prompt, voice_text, "respond", judgment)
+        return await self._finish(prompt, voice_text, action, judgment)
 
     async def _resolve_confirmation(
         self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
@@ -722,11 +815,24 @@ class ResponseGenerator:
             complexity=turn.judgment.complexity_tier,
             boundary_flag=turn.judgment.capability_boundary_flag,
         )
-        action = await self._curiosity_gate(prompt, turn.judgment)
-        text = turn.draft_response
+        text, action = await self._apply_gates(prompt, turn.draft_response, turn.judgment)
+        return await self._finish(prompt, text, action, turn.judgment)
+
+    async def _apply_gates(
+        self, prompt: AssembledPrompt, draft: str, judgment: Judgment
+    ) -> tuple[str, Action]:
+        """The §12 behaviour gates — curiosity, overclaim, disclosure, self-reflection.
+
+        C1: this is the companion's CHARACTER machinery, and it used to live inline in
+        `_finalize`, which the streaming voice path never reaches. Extracted so BOTH the
+        spoken path and the text path run it. `_stream_reply` calls this on the accumulated
+        draft *before* the first sentence is spoken, so nothing has to be corrected aloud.
+        """
+        action = await self._curiosity_gate(prompt, judgment)
+        text = draft
 
         boundary = await self._self_model.check_boundary(
-            prompt.user_id, text, judgment_flag=turn.judgment.capability_boundary_flag
+            prompt.user_id, text, judgment_flag=judgment.capability_boundary_flag
         )
         if boundary.flagged and boundary.rewritten_text:
             text = boundary.rewritten_text
@@ -742,7 +848,7 @@ class ResponseGenerator:
         # anti-disclaimer patterns scrub it (§1.2 rule 4). It's also emotionally
         # high-stakes and weak models answer it coldly, so warm-polish it on a
         # stronger tier before anything else.
-        allow_disc = turn.judgment.requires_nature_disclosure
+        allow_disc = judgment.requires_nature_disclosure
         if allow_disc:
             text = await self._warm_disclosure(prompt, text)
         # Self-reflection (§9.3): critique the draft against the response standard.
@@ -754,7 +860,7 @@ class ResponseGenerator:
         revised = False
         scrubbed_used = False
         if self._self_reflect and flags_before:
-            text = await self._rewrite_assistant_speak(prompt, text)
+            text = await self._rewrite_assistant_speak(prompt, text, flags_before)
             revised = True
             # Deterministic safety net: if the rewrite still carries a banned
             # shape, drop the offending sentence(s) — but only if something
@@ -783,7 +889,7 @@ class ResponseGenerator:
                 ),
                 revised_text=text if revised else "",
             )
-        return await self._finish(prompt, text, action, turn.judgment)
+        return text, action
 
     def _span(self, event: str, *, level: str = "info", **fields: Any) -> None:
         """Emit a reasoning span into the current turn's trace (via the logger)."""
@@ -827,29 +933,46 @@ class ResponseGenerator:
             return candidate
         return text
 
-    async def _rewrite_assistant_speak(self, prompt: AssembledPrompt, text: str) -> str:
-        """One bounded rewrite pass to strip service-desk phrasing; keep the
-        original if the rewrite is empty, worse, or the provider is down.
+    async def _rewrite_assistant_speak(
+        self, prompt: AssembledPrompt, text: str, flags: list[str] | None = None
+    ) -> str:
+        """Bounded rewrite pass(es) to strip service-desk phrasing; keep the original
+        if the rewrite is empty, worse, or the provider is down.
+
+        C2: the instruction now NAMES the shapes the detector found. A generic "remove
+        assistant phrasing" left "I'm really sorry about that" and "or something else?"
+        in the rewrite, because the model could not see what we objected to. If the first
+        rewrite is still dirty, one more attempt runs on the escalated tier; the cleanest
+        candidate wins.
 
         F13: the rewrite instruction is fetched from prompt management (Langfuse)
         when wired, so it's versioned/editable without a code change; falls back to
         the bundled default (== _REWRITE_INSTRUCTIONS) so behaviour is unchanged."""
-        instruction = await self._rewrite_instruction(text)
-        try:
-            completion = await self._llm.complete(
-                prompt.user_id,
-                [{"role": "user", "content": instruction}],
-                "simple",
-                session_id=prompt.session_id,
-                purpose="style_rewrite",
-            )
-        except LLMUnavailable:
-            return text
-        candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
-        # Only accept a rewrite that is non-empty and strictly cleaner.
-        if candidate and len(find_forbidden(candidate)) < len(find_forbidden(text)):
-            return candidate
-        return text
+        found = flags if flags is not None else find_forbidden(text)
+        best, best_flags = text, len(found)
+        for attempt in range(2):
+            instruction = await self._rewrite_instruction(best)
+            if found:
+                instruction += _critique_note(found)
+            try:
+                completion = await self._llm.complete(
+                    prompt.user_id,
+                    [{"role": "user", "content": instruction}],
+                    "simple" if attempt == 0 else "moderate",
+                    session_id=prompt.session_id,
+                    purpose="style_rewrite",
+                )
+            except LLMUnavailable:
+                return best
+            candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+            if not candidate:
+                return best
+            found = find_forbidden(candidate)
+            if len(found) < best_flags:  # strictly cleaner → keep it
+                best, best_flags = candidate, len(found)
+            if not found:  # fully clean; no second pass needed
+                return best
+        return best
 
     async def _dispatch_tool(
         self, dispatcher: "ToolDispatch", context: "ToolContext", req: ToolRequest
