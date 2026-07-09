@@ -48,7 +48,14 @@ class RecordingTrace(TraceEmitter):
 
 
 class RealTurns:
-    """A live pipeline you can hold a real conversation with (text path)."""
+    """A live pipeline you can hold a real conversation with.
+
+    ``say`` drives the TEXT path (``orchestrator.generate``) — what ``api/routes/chat.py``
+    runs. ``say_voice`` drives the VOICE path (``VoiceSession.converse``) — what
+    ``api/routes/voice.py`` runs. They are DIFFERENT code paths (docs/CODE_FLOW.md §0), and
+    for a long time only the text one was ever tested, which is how a TypeError that silenced
+    every voice turn coexisted with a green real-call suite (F4).
+    """
 
     def __init__(self, pipeline: Pipeline, user_id: str = "u_demo_001") -> None:
         self._p = pipeline
@@ -58,6 +65,17 @@ class RealTurns:
     @classmethod
     async def build(cls, user_id: str = "u_demo_001") -> RealTurns:
         return cls(await build_pipeline(get_settings()), user_id)
+
+    @property
+    def pipeline(self) -> Pipeline:
+        return self._p
+
+    async def say_voice(self, text: str, **kwargs: object) -> object:
+        """One real turn through the LIVE voice entrypoint (VAD → endpointing → STT →
+        orchestrator → TTS). Returns a ``scripts.live_turn.TurnCapture``."""
+        from scripts.live_turn import drive_turn
+
+        return await drive_turn(self._p, self._user, text, **kwargs)  # type: ignore[arg-type]
 
     async def say(self, text: str, session_id: str) -> TurnResult:
         """Run one real turn through assembly → generation (real model + stores)."""

@@ -396,8 +396,19 @@ class VoiceSession:
                 if speech_since_transcribe or not last_transcript:
                     # F3: STT runs HERE, outside _run_turn_inner's guard. An adapter
                     # outage must degrade (say so, keep listening); a bug must not hide.
+                    stt_started = time.perf_counter()
                     try:
                         last_transcript = await self._transcribe(buffer)
+                        # The STT gap the USER feels: end-of-speech has already elapsed
+                        # (the endpointer's pause), and nothing downstream can start until
+                        # this returns. Previously untimed — F6 needs it to be measured,
+                        # not inferred.
+                        self._trace.emit(
+                            "stt",
+                            "transcription complete",
+                            duration_ms=round((time.perf_counter() - stt_started) * 1000, 1),
+                            audio_ms=round(len(b"".join(buffer)) * _MS_PER_BYTE, 1),
+                        )
                     except PROGRAMMING_ERRORS:
                         self._fail_loudly("speech-to-text", "the STT path")
                         raise
