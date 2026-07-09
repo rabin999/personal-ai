@@ -14,6 +14,43 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-09
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
+> ## ⚠️ 2026-07-09 — the LIVE VOICE PATH WAS DEAD; fixed. Read `docs/SESSION_REPORT_F1-F6.md` first.
+>
+> Every voice turn and every greeting raised `TypeError` (`generate_spoken()` got an unexpected
+> keyword `temperature`) and was swallowed by a broad `except Exception` → **zero audio, every
+> turn, no fallback**. Introduced by `3182dd6` (greeting variety); the hazard was created by
+> `447016f` (LangGraph migration typed `VoiceSession.generator` as the concrete engine).
+> **No test drove `VoiceSession`**, and `latency_trace_capture.py` bypassed it — so a green suite
+> and a full latency report sat on top of a dead path.
+>
+> **Fixed + hardened:** `temperature` is on the `Orchestrator` port; `core/errors.py` splits our
+> bugs (fail loudly) from dependency failures (degrade honestly); `assert_orchestrator_contract()`
+> fails fast at wiring time; `scripts/live_turn.py` + `tests/real_call/test_live_voice_path.py`
+> now drive the real entrypoint. Guard proven by reintroducing the bug.
+>
+> **Consequences for this file — the following ✅ marks are NOT trustworthy as written:**
+> - **L3** "`context_intent` skipped on SIMPLE turns" — **false on the voice path** (the gate is a
+>   graph node only `generate()` reaches). Real traces show it firing on `"hi"`.
+> - **L5 / L0** latency numbers — measured on the text path. True baseline:
+>   `docs/LATENCY_BASELINE_REAL.md` (first audio **7.3–11.1 s**, not 4.6–5.4 s).
+> - **U8** "dynamic prosody ✅" — **never fires in production**: `ser_service_url` is empty, so
+>   `prompt.emotion` is always `None` and the register is always `"neutral"`. The "falls back to
+>   text-sentiment" claim in three docstrings has **no implementation**.
+> - **GS3 judge / SRC1 "LLM-judge 1.0"** — the judge layer scores **canned strings**, not engine
+>   output. The per-turn evaluator is also **disabled** (`langfuse_eval_enabled=False`), so nothing
+>   has ever scored production quality.
+>
+> **Open, diagnosed, NOT fixed** (`docs/NEXT_CORRECTNESS_TASK.md`):
+> 1. **The voice path skips §12's gates** — no self-reflection, curiosity gate, `check_boundary`
+>    or `_warm_disclosure` on any spoken turn (they live in `_finalize`, which `_stream_reply`
+>    never reaches). Violates CLAUDE.md §2/§9. First judged voice baseline: **3/11 scenarios
+>    `chatbot_like=true`**, dynamic-tone gate fails.
+> 2. **SRC1** — `_is_live_info_query` misses "LTP"/"trading at" (routing gap), the sample user has
+>    no OP holding (fixture gap), and `_capability_repair` searches the raw utterance so it answers
+>    with the crypto token even with a correct fixture.
+>
+> Not deployed yet: run `sudo bash /opt/companion/deploy/update.sh` on the server.
+
 > **Latency + UX pass (2026-07-09):** shipped the three follow-ups (prompt caching #17,
 > Grok STT adapter #18, 26-voice roster + natural default #19), the interactive
 > knowledge-graph, and a full latency program: profiled the turn (L0), right-sized the
