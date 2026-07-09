@@ -107,6 +107,28 @@ def is_assistant_speak(text: str) -> bool:
     return bool(find_forbidden(text))
 
 
+# Connector + trailing whitespace before a banned tail ("Hey Nandi — what's on your
+# mind?"): a dash/comma/semicolon, optionally a joining word. Used to lop off the
+# filler clause while keeping the warm lead-in.
+_TAIL_CONNECTOR = re.compile(r"[\s,;:.—–-]+(?:and|so|but|or|then)?\s*$", re.IGNORECASE)  # noqa: RUF001 — en/em dash both intended
+
+
+def excise_forbidden(text: str, *, allow_disclosure: bool = False) -> str:
+    """Remove a banned clause (and its leading connector) from WITHIN a sentence,
+    keeping the rest — so "Hey Nandi — what's on your mind?" becomes "Hey Nandi"
+    instead of being dropped whole. For the common case the banned filler is a
+    trailing question; everything from the connector before it to the end is cut."""
+    out = text
+    for pattern, label in _COMPILED:
+        if allow_disclosure and label == _DISCLOSURE_OK_LABEL:
+            continue
+        m = pattern.search(out)
+        if m is None:
+            continue
+        out = _TAIL_CONNECTOR.sub("", out[: m.start()])  # keep the lead-in, drop the tail
+    return out.strip(" ,;:.—–-")  # noqa: RUF001 — en/em dash both intended
+
+
 # Tool-call syntax that a weaker/fast model sometimes leaks into its spoken draft
 # instead of emitting it as the structured tool_request (e.g. "web_search:: NEPSE
 # news", 'tool_request: {...}'). This scrubs those fragments from the USER-FACING text

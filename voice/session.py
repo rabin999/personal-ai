@@ -666,12 +666,13 @@ class VoiceSession:
         try:
             note = await self._last_seen_note()
             instr = (
-                "[The user just opened the app to talk with you. Greet them first, warmly, "
-                "in ONE short natural spoken line — like a friend genuinely glad they showed "
-                f"up.{note} Use their name if you know it, and let the time of day / how long "
-                "it's been colour it (e.g. 'Hey Nandi, welcome back!', 'Nandi — that was "
-                "quick, good to see you', 'Evening, Nandi — how's it going?'). Do NOT ask "
-                "'how can I help'; just a warm hello, maybe a gentle nudge to talk.]"
+                "[The user just opened the app to talk with you. Greet them first, warmly and "
+                "CASUALLY, in ONE short natural spoken line — like a friend genuinely glad they "
+                f"showed up.{note} Use their name if you know it, and let the time of day / how "
+                "long it's been colour it (e.g. 'Hey Nandi, welcome back!', 'Nandi — that was "
+                "quick, good to see you', 'Evening Nandi, been a minute!'). Keep it informal. Do "
+                "NOT ask 'how can I help' or end on a stock filler question like 'what's on your "
+                "mind?' / 'what's up?'; just an easy warm hello.]"
             )
             prompt = await self._assembler.assemble(self._user_id, self._session_id, instr)
             if isinstance(prompt, DisambiguationRequest):

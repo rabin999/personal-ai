@@ -362,3 +362,27 @@ async def test_cost_ceiling_stops_a_runaway_tool_loop() -> None:
     )
     # And the turn still completed with a real reply (never a hang/crash).
     assert result.final_text and result.action == "respond"
+
+
+async def test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in() -> None:
+    # Regression: the streamed voice path used to fall back to speaking the ORIGINAL
+    # sentence when the scrub emptied it — so "What's on your mind?" was heard out
+    # loud despite the ban (user report). Now the filler clause is excised and the
+    # warm lead-in survives; a pure-filler sentence is dropped, never spoken.
+    h = await Harness([]).seed()
+    spoken: list[str] = []
+
+    async def speak(text: str) -> None:
+        spoken.append(text)
+
+    await h.generator._speak_clean("Hey Nandi — what's on your mind?", speak)
+    await h.generator._speak_clean("What's on your mind?", speak)
+    await h.generator._speak_clean("Good to see you, how can I help you today?", speak)
+    await h.generator._speak_clean("Hey, what's up?", speak)  # informal, allowed
+
+    joined = " ".join(spoken).lower()
+    assert "on your mind" not in joined  # the banned filler never reaches TTS
+    assert "how can i help" not in joined
+    assert "Hey Nandi" in spoken  # the warm lead-in was kept
+    assert "Good to see you" in spoken
+    assert "Hey, what's up?" in spoken  # informal opener is fine, untouched

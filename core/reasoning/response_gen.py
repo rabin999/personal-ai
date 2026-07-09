@@ -29,7 +29,12 @@ from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.prosody import prosody_directive, read_register, strip_inappropriate_tags
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
-from core.reasoning.style import find_forbidden, scrub_forbidden, strip_tool_leak
+from core.reasoning.style import (
+    excise_forbidden,
+    find_forbidden,
+    scrub_forbidden,
+    strip_tool_leak,
+)
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
@@ -182,10 +187,16 @@ NEVER invent details about the user's life.
 _SPOKEN_REPLY_INSTRUCTIONS = """
 Reply out loud in your own natural voice, by your NAME (never call yourself 'an
 AI'). KEEP IT SHORT — usually ONE sentence, at most two, like a friend actually
-talking. Don't explain or elaborate unless they ask; if a third sentence is forming,
-cut it. Be easy and grounded, not gushing or overly warm — match their energy, save
-real tenderness for when they're actually going through something. Work out what they
-really mean and respond to THAT; never stall with 'what do you mean?'. Weave in 1-2
+talking. Stay INFORMAL and casual by default — contractions, plain everyday words,
+the way you'd actually talk to a mate; only get more measured or formal when the
+moment is genuinely serious, technical, or emotional. Don't explain or elaborate
+unless they ask; if a third sentence is forming, cut it. Do NOT reflexively end on a
+stock filler question — 'what's on your mind?', 'what's up?', 'what's going on?',
+'anything on your mind?' — you lean on these way too much; most turns should just
+react and stop, and when you do ask something make it fresh and specific to what they
+actually said. Be easy and grounded, not gushing or overly warm — match their energy,
+save real tenderness for when they're actually going through something. Work out what
+they really mean and respond to THAT; never stall with 'what do you mean?'. Weave in 1-2
 inline delivery tags only where they genuinely fit: [laugh] [chuckle] [sigh] for
 feeling; [warm] [gentle] [soft] for tone; <emphasis>word</emphasis>; <pause> — never
 tag every sentence, and never a laugh on a sad turn. If they DIRECTLY ask whether
@@ -620,9 +631,17 @@ class ResponseGenerator:
 
     async def _speak_clean(self, sentence: str, speak: "Callable[[str], Awaitable[None]]") -> None:
         """Sanitize a sentence (keep whitelisted voice tags, drop assistant-speak)
-        and hand it to TTS. Skips empties."""
-        text = scrub_forbidden(_sanitize_tags(sentence)) or _sanitize_tags(sentence)
-        text = strip_tool_leak(text)  # never speak a leaked tool token
+        and hand it to TTS. If scrubbing empties the sentence it WAS banned filler
+        ("What's on your mind?") — drop it and stay silent for that fragment; NEVER
+        fall back to speaking the banned original (that leak is why the user kept
+        hearing the filler out loud despite the ban)."""
+        sanitized = _sanitize_tags(sentence)
+        cleaned = scrub_forbidden(sanitized)
+        if not cleaned.strip() and sanitized.strip():
+            # The whole sentence was flagged (a one-line "Hey Nandi — what's on your
+            # mind?"). Keep the warm lead-in, drop only the banned filler clause.
+            cleaned = excise_forbidden(sanitized)
+        text = strip_tool_leak(cleaned)
         if text.strip():
             await speak(text)
 
