@@ -13,17 +13,20 @@ import pytest
 
 from core.reasoning.orchestrator import assert_orchestrator_contract
 from tests.support.judge import judge_companion_voice
+from tests.support.real_pipeline import RealTurns
 
 pytestmark = [pytest.mark.real_call, pytest.mark.asyncio(loop_scope="module")]
 
 
-async def test_wired_engine_satisfies_the_voice_edge_contract(real_turns) -> None:
+async def test_wired_engine_satisfies_the_voice_edge_contract(real_turns: RealTurns) -> None:
     """The regression guard: whatever engine composition wires must accept the exact call
     `VoiceSession._speak_turn` makes. This is the check that would have caught the outage."""
     assert_orchestrator_contract(real_turns.pipeline.orchestrator)
 
 
-async def test_a_real_voice_turn_produces_audio_and_no_swallowed_errors(real_turns) -> None:
+async def test_a_real_voice_turn_produces_audio_and_no_swallowed_errors(
+    real_turns: RealTurns,
+) -> None:
     cap = await real_turns.say_voice("hi")
 
     assert cap.exceptions == [], (
@@ -37,7 +40,7 @@ async def test_a_real_voice_turn_produces_audio_and_no_swallowed_errors(real_tur
     assert cap.reply_text.strip(), "the companion said nothing"
 
 
-async def test_the_voice_turn_runs_through_the_wired_orchestrator(real_turns) -> None:
+async def test_the_voice_turn_runs_through_the_wired_orchestrator(real_turns: RealTurns) -> None:
     """The voice path must go through the designed reasoning engine, not around it."""
     cap = await real_turns.say_voice("hi")
 
@@ -47,7 +50,7 @@ async def test_the_voice_turn_runs_through_the_wired_orchestrator(real_turns) ->
     assert "response" in cap.purposes, f"no response LLM call in {cap.purposes}"
 
 
-async def test_voice_turn_recalls_a_real_stored_fact(real_turns) -> None:
+async def test_voice_turn_recalls_a_real_stored_fact(real_turns: RealTurns) -> None:
     """Memory must be read on the VOICE path, not just the text path."""
     cap = await real_turns.say_voice("when do I take my meds?")
 
@@ -56,7 +59,7 @@ async def test_voice_turn_recalls_a_real_stored_fact(real_turns) -> None:
     assert "8" in reply or "eight" in reply, f"did not recall the real fact: {cap.reply_text!r}"
 
 
-async def test_voice_reply_sounds_like_the_companion(real_turns) -> None:
+async def test_voice_reply_sounds_like_the_companion(real_turns: RealTurns) -> None:
     """The judged bar, applied to what the VOICE path actually says."""
     cap = await real_turns.say_voice("hey")
 

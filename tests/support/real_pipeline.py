@@ -9,6 +9,7 @@ real-call suites can assert on genuine model output the way a human would judge 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from api.composition import Pipeline, build_pipeline
 from config.settings import get_settings
@@ -16,6 +17,9 @@ from core.memory.working import Turn
 from core.reasoning.prompt_assembly import DisambiguationRequest
 from core.tools.registry import ToolContext
 from voice.trace import TraceEmitter, TraceEvent
+
+if TYPE_CHECKING:
+    from scripts.live_turn import TurnCapture
 
 
 @dataclass
@@ -70,12 +74,12 @@ class RealTurns:
     def pipeline(self) -> Pipeline:
         return self._p
 
-    async def say_voice(self, text: str, **kwargs: object) -> object:
+    async def say_voice(self, text: str, **kwargs: Any) -> TurnCapture:
         """One real turn through the LIVE voice entrypoint (VAD → endpointing → STT →
-        orchestrator → TTS). Returns a ``scripts.live_turn.TurnCapture``."""
+        orchestrator → TTS)."""
         from scripts.live_turn import drive_turn
 
-        return await drive_turn(self._p, self._user, text, **kwargs)  # type: ignore[arg-type]
+        return await drive_turn(self._p, self._user, text, **kwargs)
 
     async def say(self, text: str, session_id: str) -> TurnResult:
         """Run one real turn through assembly → generation (real model + stores)."""
