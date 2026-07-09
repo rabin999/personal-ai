@@ -1083,7 +1083,10 @@ class ResponseGenerator:
             except LLMUnavailable:
                 return best
             candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
-            if not candidate:
+            if not candidate or _is_degenerate_rewrite(best, candidate):
+                # A rewrite that guts the reply is not "cleaner", it is broken. Observed:
+                # an excited turn came back as the single word "Hey," because a one-word
+                # answer trivially carries zero forbidden shapes.
                 return best
             found = find_forbidden(candidate)
             if len(found) < best_flags:  # strictly cleaner → keep it
@@ -1429,6 +1432,8 @@ _CAPABILITY_REFUSAL = re.compile(
     r"|outside (my|of my) knowledge|my knowledge (base|cut)"
     r"|(never|not) (heard|sure i'?ve heard) of"
     r"|don'?t (recognize|know (of|what|who))"
+    r"|can'?t (provide|give you|tell you|answer)"
+    r"|(too|very) ambiguous|need to know what"
     r"|i'?m (just )?an ai",
     re.IGNORECASE,
 )
@@ -1443,6 +1448,20 @@ _HOLLOW_PROMISE = re.compile(
     r"|\bhang on\b|\bone (moment|sec)\b|\bwhile i (get|find|look)\b",
     re.IGNORECASE,
 )
+
+
+# A rewrite must not gut the reply. Anything under this fraction of the original's words
+# (and shorter than a natural spoken sentence) is a degenerate answer, not a cleaner one.
+_MIN_REWRITE_WORD_RATIO = 0.4
+_MIN_REWRITE_WORDS = 4
+
+
+def _is_degenerate_rewrite(original: str, candidate: str) -> bool:
+    orig_words = len(original.split())
+    cand_words = len(candidate.split())
+    if orig_words <= _MIN_REWRITE_WORDS:
+        return False  # the original was already terse; nothing to gut
+    return cand_words < _MIN_REWRITE_WORDS or cand_words < _MIN_REWRITE_WORD_RATIO * orig_words
 
 
 def _needs_capability_repair(draft: str) -> bool:
@@ -1505,9 +1524,16 @@ def _requires_live_lookup(prompt: AssembledPrompt) -> bool:
 _REPAIR_INSTRUCTIONS = (
     "You just searched the live web for the user's question. Using ONLY these "
     "fresh search results, answer them directly, warmly, and briefly in your own "
-    "voice (one or two spoken sentences) — give the ACTUAL answer, never say you "
-    "can't find it or can't access it. If they asked for a set number of items "
-    "(e.g. 'top 2 news'), give exactly that many, each a distinct item. "
+    "voice (one or two spoken sentences) — give the ACTUAL answer. If they asked for a "
+    "set number of items (e.g. 'top 2 news'), give exactly that many, each a distinct "
+    "item.\n"
+    "If their message carried FEELING (pain, worry, grief, excitement), meet that FIRST "
+    "in one short human sentence and stay with them — then give the facts briefly. Never "
+    "reel off a list of news items at someone who just told you they're hurting.\n"
+    "If the results genuinely don't contain the answer, say so plainly in one friendly "
+    "line ('I had a look and couldn't find anything current on that') — never a formal "
+    "refusal, never 'I can't provide', never 'your query is ambiguous', and never ask "
+    "them to rephrase.\n"
     "Search results:\n"
 )
 

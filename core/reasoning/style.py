@@ -90,6 +90,11 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"gather (all )?(the )?(information|details)", "service framing"),
     (r"the (info|information) you need", "service framing"),
     (r"to (better )?(assist|serve) you", "service framing"),
+    (r"i can'?t (provide|give you|tell you)", "service framing"),
+    (r"\byour (query|request|question) is\b", "service framing"),
+    (r"to give you the (correct|right|accurate) (information|answer)", "service framing"),
+    (r"\b(too|very) ambiguous\b", "service framing"),
+    (r"i need to know what\b", "clarifier"),
     # ── Clarifying an obviously-clear message instead of engaging. (The ambiguity
     # guardrail's own "Quick check — do you mean X or Y?" never passes through here:
     # `_disambiguate` builds its GenerationResult directly.)
