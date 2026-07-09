@@ -241,6 +241,13 @@ class PromptAssembler:
                 candidates=candidates,
             )
 
+        # `enabled_traits` READS the profile that `first_run_sync` CREATES, so it is a
+        # prerequisite of the gather below, not a peer inside it. Running them as siblings
+        # makes a new user's very first turn raise ProfileNotFound: both read the doc
+        # concurrently and the trait read loses. One sequential Mongo read (~ms) buys back
+        # the L1 concurrency for every layer that really is independent.
+        profile = await self._profiles.first_run_sync(user_id)
+
         # Steps 3-8 — gather context layers. These reads are INDEPENDENT of each other
         # (they only need user_id + utterance + the resolved entity names), so they run
         # CONCURRENTLY (L1 latency): one asyncio.gather instead of ~9 sequential awaits.
@@ -262,7 +269,6 @@ class PromptAssembler:
                 _safe(self._preferences.search(user_id, utterance), [], "preferences")
                 if self._preferences
                 else _noop([]),
-                self._profiles.first_run_sync(user_id),
                 self._registry.enabled_traits(user_id),
                 _safe(
                     self._self_model.recall(user_id, utterance, k=SELF_STATEMENTS_K),
@@ -278,10 +284,9 @@ class PromptAssembler:
         profile_facts = results[3]
         rules = results[4]
         preferences = results[5]
-        profile = results[6]
-        traits = results[7]
-        prior_statements = results[8]
-        project_section = results[9]
+        traits = results[6]
+        prior_statements = results[7]
+        project_section = results[8]
 
         # Step 9 — compose sections; trim order = reverse priority.
         cold_start = not profile.onboarded  # §3.1: first conversation
