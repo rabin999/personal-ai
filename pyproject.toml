@@ -101,6 +101,13 @@ markers = [
     "acceptance: end-to-end acceptance-criteria tests",
     "paid: hits a real paid provider (needs an API key); skipped loudly without one",
     "real_call: real model + real stores end-to-end (no mocks), LLM-judged; needs keys + docker",
+    # A reproducer for a KNOWN, UNFIXED defect in docs/DEFECTS_FOUND.md. It asserts the
+    # behaviour the design requires, so it is RED at HEAD and turns green when the defect
+    # is fixed. Deliberately NOT `xfail`: an xfail(strict=False) can never fail OR pass
+    # meaningfully, which is how the last tone regression hid in the "5 xpassed" column
+    # for months. Run them: `uv run pytest -m defect`. Excluded from the default gate:
+    # `uv run pytest -m "not real_call and not defect"`.
+    "defect: reproduces a known unfixed defect; RED at HEAD, green when fixed",
 ]
 
 [tool.coverage.run]
