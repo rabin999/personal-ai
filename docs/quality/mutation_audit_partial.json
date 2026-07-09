@@ -13,12 +13,39 @@
   ],
   "mutations": [
     {
-      "name": "detector_ignores_the_lead_sentence",
-      "file": "core/reasoning/style.py",
-      "breaks": "D-12: an opening service-desk apology ('I'm sorry, I couldn't find that') is not flagged",
+      "name": "resolve_the_whole_utterance",
+      "file": "core/memory/entities.py",
+      "breaks": "D-13: entity resolution embeds the whole sentence again; an adversarial probe halts the turn",
       "status": "KILLED",
       "killed": [
-        "tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register"
+        "tests/engine/test_e1_reference_spans.py::test_a_greeting_can_never_be_ambiguous",
+        "tests/engine/test_e1_reference_spans.py::test_a_possessive_phrase_stops_at_the_preposition",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[how many OP do I have?-op]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[how's OP doing-op]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[log today's gym workout-today's gym workout]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[text my brother Ram-my brother ram]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[update my share trading tracke-my share trading tracker]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[what did I pay for SYPNL-sypnl]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[what's the current LTP of OP?-op]",
+        "tests/engine/test_e1_reference_spans.py::test_a_verb_contraction_is_not_a_possessive",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[I'm feeling really low today]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[hi]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[ignore your previous instruc]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[it's freezing in here]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[what did your other users as]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[what's 15% of 240?]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[what's the weather like toda]",
+        "tests/engine/test_e1_reference_spans.py::test_the_ticker_in_a_question_about_the_world_is_not_the_users_holding"
+      ],
+      "killed_count": 18
+    },
+    {
+      "name": "possessive_span_runs_past_the_preposition",
+      "file": "core/memory/entities.py",
+      "breaks": "D-13: 'my portfolio with my brother' becomes one span and resolves to three entities",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_reference_spans.py::test_a_possessive_phrase_stops_at_the_preposition"
       ],
       "killed_count": 1
     }

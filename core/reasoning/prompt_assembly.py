@@ -21,7 +21,7 @@ from core.audio.awareness import (
     register_mirror_directive,
     surroundings_context,
 )
-from core.memory.entities import EntityCandidate, EntityResolver, is_ambiguous
+from core.memory.entities import EntityCandidate, EntityResolver
 from core.memory.episodic import EpisodicMemory
 from core.memory.procedural import ProceduralMemory
 from core.memory.semantic import SemanticMemory
@@ -231,15 +231,21 @@ class PromptAssembler:
         sound: "SoundRead | None" = None,
         health: "HealthCheckin | None" = None,
     ) -> AssembledPrompt | DisambiguationRequest:
-        # Step 2 — entity resolution; close candidates halt assembly.
-        candidates = await self._entities.resolve(user_id, utterance)
-        if is_ambiguous(candidates):
+        # Step 2 — entity resolution (design §14.2). Each REFERENCE SPAN in the utterance is
+        # resolved on its own; assembly halts only when one span has two candidates too close
+        # to choose between. Embedding the whole utterance (D-13) made "what did your other
+        # users ask you today?" resolve to the user's stock holdings — the BM25 leg matched on
+        # the word "user" in their descriptions — and halted the turn with a canned
+        # "Quick check — OP or SYPNL?" before a single LLM call ran.
+        resolution = await self._entities.resolve_references(user_id, utterance)
+        if resolution.ambiguous:
             return DisambiguationRequest(
                 user_id=user_id,
                 session_id=session_id,
                 utterance=utterance,
-                candidates=candidates,
+                candidates=resolution.ambiguous,
             )
+        candidates = resolution.candidates
 
         # `enabled_traits` READS the profile that `first_run_sync` CREATES, so it is a
         # prerequisite of the gather below, not a peer inside it. Running them as siblings

@@ -74,6 +74,7 @@ ENGINE_TESTS = [
     "tests/golden/test_gs5_isolation.py",
     "tests/golden/test_style_judge_agreement.py",
     "tests/engine/test_e1_steps.py",
+    "tests/engine/test_e1_reference_spans.py",
     "tests/engine/test_e2_volatility_classifier.py",
     "tests/engine/test_e2_detector_agreement.py",
     "tests/engine/test_e1_enforcement.py",
@@ -129,6 +130,20 @@ MUTATIONS: list[Mutation] = [
         old="    labels += [label for pattern, label in _COMPILED_LEAD if pattern.search(lead)]",
         new="    labels += []",
         breaks="D-12: an opening service-desk apology ('I'm sorry, I couldn't find that') is not flagged",
+    ),
+    Mutation(
+        name="resolve_the_whole_utterance",
+        file="core/memory/entities.py",
+        old="def reference_spans(utterance: str) -> list[str]:",
+        new="def reference_spans(utterance: str) -> list[str]:\n    return [utterance]",
+        breaks="D-13: entity resolution embeds the whole sentence again; an adversarial probe halts the turn",
+    ),
+    Mutation(
+        name="possessive_span_runs_past_the_preposition",
+        file="core/memory/entities.py",
+        old='        if word.lower().strip(",.;:!?") in _PHRASE_STOP:\n            break',
+        new="        if False:\n            break",
+        breaks="D-13: 'my portfolio with my brother' becomes one span and resolves to three entities",
     ),
     Mutation(
         name="reflection_never_runs",
