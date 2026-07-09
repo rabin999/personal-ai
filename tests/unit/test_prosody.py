@@ -50,3 +50,36 @@ def test_strip_levity_tags_on_sad_turn() -> None:
 def test_levity_tags_kept_on_excited_turn() -> None:
     text = "[laugh] that's amazing!"
     assert strip_inappropriate_tags(text, "excited") == text
+
+
+# ── C3: the text-sentiment fallback (U8 had never executed in production) ──
+
+
+def test_text_sentiment_fallback_maps_reads_to_registers() -> None:
+    """`ser_service_url` is empty in every deployment, so `prompt.emotion` was always None
+    and `read_register` always returned "neutral". The reasoning step's own `emotional_read`
+    now drives prosody instead."""
+    from core.reasoning.prosody import emotion_from_text
+
+    assert read_register(emotion_from_text("frustration and impatience")) == "stressed"
+    assert read_register(emotion_from_text("deep sadness and grief")) == "down"
+    assert read_register(emotion_from_text("excitement and joy")) == "excited"
+    assert read_register(emotion_from_text("quiet contentment")) == "upbeat"
+
+
+def test_text_sentiment_never_forces_a_tone_off_a_blank_signal() -> None:
+    from core.reasoning.prosody import emotion_from_text
+
+    for blank in ("", "   ", "neutral", "none", None):
+        assert emotion_from_text(blank) is None
+    assert read_register(emotion_from_text("")) == "neutral"
+
+
+def test_text_sentiment_read_is_lower_confidence_than_acoustic() -> None:
+    """It is the FLOOR, not a replacement for acoustic SER."""
+    from core.reasoning.prosody import emotion_from_text
+
+    read = emotion_from_text("she sounds really sad")
+    assert read is not None
+    assert read["source"] == "text"
+    assert 0.3 <= read["confidence"] < 1.0

@@ -515,9 +515,15 @@ class ResponseGenerator:
         # real-time…") / hollow promise ("just a moment while I get those") — run a
         # real web_search and answer in-turn. The companion never says it "can't"
         # or guesses when a search could ground the answer.
+        # S1: only a WEB search discharges a volatility-flagged turn. The model reaching for
+        # `search_memory` used to satisfy `not seen_calls` and suppress the live lookup, so
+        # "what's the price of SYPNL?" answered 1,373 from a price it had stored on an
+        # earlier turn — a stale number, spoken as current. Never answer a volatile question
+        # from memory alone.
+        searched_web = any(key.startswith("web_search") for key in seen_calls)
         needs_search = (
             can_use_tools
-            and not seen_calls
+            and not searched_web
             and not prompt.suppress_live_search  # A3: answer carried in context → no re-search
             and (_requires_live_lookup(prompt) or _needs_capability_repair(turn.draft_response))
         )
@@ -535,7 +541,7 @@ class ResponseGenerator:
         # to find that for you"). It cannot keep that promise — this turn is the answer.
         elif (
             prompt.needs_live_info is True
-            and seen_calls
+            and searched_web
             and _needs_capability_repair(turn.draft_response)
         ):
             self._span("tool", tool="web_search", phase="result", status="ran_but_nothing_usable")
