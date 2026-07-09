@@ -75,10 +75,12 @@ ENGINE_TESTS = [
     "tests/golden/test_style_judge_agreement.py",
     "tests/engine/test_e1_steps.py",
     "tests/engine/test_e1_reference_spans.py",
+    "tests/engine/test_e1_emotional_tool_gate.py",
     "tests/engine/test_e2_volatility_classifier.py",
     "tests/engine/test_e2_detector_agreement.py",
     "tests/engine/test_e1_enforcement.py",
     "tests/engine/test_e3_prosody_read.py",
+    "tests/engine/test_e5_caller_independence.py",
 ]
 
 
@@ -151,6 +153,48 @@ MUTATIONS: list[Mutation] = [
         old="        if self._self_reflect and flags_before:",
         new="        if False and self._self_reflect and flags_before:",
         breaks="self-reflection never revises a flagged draft",
+    ),
+    Mutation(
+        name="an_emotional_turn_still_searches",
+        file="core/reasoning/response_gen.py",
+        old="    if prompt.needs_live_info is False and _is_emotionally_heavy(prompt):\n        return False",
+        new="    if False:\n        return False",
+        breaks="D-14: the regex backstop overrides the classifier and searches on a bereavement turn",
+    ),
+    Mutation(
+        name="external_tools_are_always_offered",
+        file="core/reasoning/response_gen.py",
+        old="    if not _is_emotionally_heavy(prompt) or _requires_live_lookup(prompt):\n        return tools\n    return [t for t in tools if t.id not in _EXTERNAL_WORLD_TOOLS]",
+        new="    return tools",
+        breaks="D-14: the agentic loop can still request web_search at a grieving user",
+    ),
+    Mutation(
+        name="the_fallback_answers_a_volatile_turn_from_training_data",
+        file="core/reasoning/response_gen.py",
+        old="        if can_search:\n            repaired = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]",
+        new="        if False:\n            repaired = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]",
+        breaks="a judgment-JSON glitch on a volatile turn ships a stale answer with zero searches",
+    ),
+    Mutation(
+        name="empty_is_an_emotion_again",
+        file="core/reasoning/prosody.py",
+        old='    if text.lower().strip(" .\\"\'") in _NEUTRAL_READS:\n        return None',
+        new="    if not text:\n        return None",
+        breaks="D-5: the literal word 'empty' parses as sadness; every neutral turn is delivered 'down'",
+    ),
+    Mutation(
+        name="pain_is_not_an_emotion",
+        file="core/reasoning/prosody.py",
+        old='            r"pain|ache|aching|anguish|distress|sorrow|devastat|bereav|miss (?:him|her|them)",',
+        new='            r"zzzznevermatch",',
+        breaks="D-5: 'pain' — the design doc's own worked example — yields no emotional read",
+    ),
+    Mutation(
+        name="simple_turns_skip_the_classifier",
+        file="adapters/orchestrator/langgraph_orchestrator.py",
+        old='        return {"resolution": await self._resolve_note(state["prompt"])}',
+        new='        if state["prompt"].complexity_hint == "simple":\n            return {"resolution": _Resolution()}\n        return {"resolution": await self._resolve_note(state["prompt"])}',
+        breaks="D-2: generate() forms no volatility verdict on a simple turn; the callers diverge",
     ),
     Mutation(
         name="fallback_skips_the_gates",

@@ -448,7 +448,8 @@ class ResponseGenerator:
         # dedup those by id. Read/background tools dedup by id+args (queries differ).
         action_ids: set[str] = set()
         if can_use_tools and dispatcher is not None and context is not None:
-            action_ids = {t.id for t in dispatcher.tools_for(context) if t.type == "action"}
+            offered = offered_tools(prompt, dispatcher.tools_for(context))
+            action_ids = {t.id for t in offered if t.type == "action"}
 
         last_draft = ""
         turn: LLMTurn | None = None
@@ -469,20 +470,16 @@ class ResponseGenerator:
                 return await self._finish_gated(prompt, _SAFE_FALLBACK_TEXT)
             turn = await self._call_llm(prompt, dispatcher, context, tool_notes, budget)
             if turn is None:  # both attempts failed validation / provider down
-                # Prefer the model's own last words (e.g. its ack when it kicked
-                # off a search) over any canned line; only a total outage falls
-                # back to the minimal safe reply.
-                if last_draft.strip():
-                    return await self._finish_gated(prompt, _sanitize_tags(last_draft))
-                # The structured JSON path failed — but a PLAIN warm reply (no JSON)
-                # is far more robust for any model, and salvages the turn's real
-                # content (e.g. celebrating a promotion) instead of a canned line.
-                plain = await self._plain_reply(prompt)
-                if plain.strip():
-                    return await self._finish_gated(prompt, _sanitize_tags(plain))
-                # Warm presence, not a clarify — a parse glitch must not make the
-                # companion interrogate the user ("what do you mean?").
-                return await self._finish_gated(prompt, _SAFE_FALLBACK_TEXT)
+                # Prefer the model's own last words (e.g. its ack when it kicked off a
+                # search) over any canned line. Failing that, a PLAIN warm reply (no JSON)
+                # is far more robust for any model and salvages the turn's real content
+                # (celebrating a promotion) instead of a canned line. Only a total outage
+                # falls back to the minimal safe reply — warm presence, never a clarify: a
+                # parse glitch must not make the companion interrogate the user.
+                candidate = last_draft.strip() or (await self._plain_reply(prompt)).strip()
+                return await self._fallback(
+                    prompt, dispatcher, context, candidate, searched_web=_searched_web(seen_calls)
+                )
             last_draft = turn.draft_response
             if turn.tool_request is None or not can_use_tools:
                 break
@@ -500,7 +497,7 @@ class ResponseGenerator:
                 )
                 continue
             seen_calls.add(call_key)
-            note = await self._dispatch_tool(dispatcher, context, turn.tool_request)  # type: ignore[arg-type]
+            note = await self._dispatch_tool(prompt, dispatcher, context, turn.tool_request)  # type: ignore[arg-type]
             if isinstance(note, ConfirmRequest):  # §8.3: action needs confirmation
                 self._pending[prompt.session_id] = note  # resolved next turn
                 tool_notes.append(
@@ -521,7 +518,7 @@ class ResponseGenerator:
         # "what's the price of SYPNL?" answered 1,373 from a price it had stored on an
         # earlier turn — a stale number, spoken as current. Never answer a volatile question
         # from memory alone.
-        searched_web = any(key.startswith("web_search") for key in seen_calls)
+        searched_web = _searched_web(seen_calls)
         needs_search = (
             can_use_tools
             and not searched_web
@@ -555,7 +552,8 @@ class ResponseGenerator:
         """Force a real web_search for a live-info/unknown query the model tried to
         refuse, then re-answer with the result (brief §8.8/§8.11). Inline + bounded
         so it answers this turn; the background/waiter path stays for voice latency."""
-        if not any(t.id == "web_search" for t in dispatcher.tools_for(context)):
+        available = offered_tools(prompt, dispatcher.tools_for(context))
+        if not any(t.id == "web_search" for t in available):
             return None
         query = await self._build_search_query(prompt)
         try:
@@ -941,6 +939,44 @@ class ResponseGenerator:
         text, action = await self._apply_gates(prompt, turn.draft_response, turn.judgment)
         return await self._finish(prompt, text, action, turn.judgment)
 
+    async def _fallback(
+        self,
+        prompt: AssembledPrompt,
+        dispatcher: "ToolDispatch | None",
+        context: "ToolContext | None",
+        text: str,
+        *,
+        searched_web: bool,
+    ) -> GenerationResult:
+        """The reply when the structured judgment path failed twice.
+
+        This path used to `return` before the capability backstop, so a JSON glitch on a
+        volatile turn shipped the model's TRAINING-DATA answer. Observed live after the D-14
+        work landed: "who is the current prime minister of Nepal?" → both judgment attempts
+        returned malformed JSON → the plain-reply fallback answered "Balendra Shah is still the
+        Prime Minister", confidently, with zero searches. It happened to be right. Nothing in
+        the engine knew that.
+
+        A turn that needed current information still needs it after the JSON broke. Search;
+        and if the search cannot be made to work, say so (§16) rather than guess.
+        """
+        can_search = (
+            dispatcher is not None
+            and context is not None
+            and not searched_web
+            and not prompt.suppress_live_search
+            and _requires_live_lookup(prompt)
+        )
+        if can_search:
+            repaired = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]
+            if repaired:
+                text = repaired
+            elif prompt.needs_live_info is True:
+                self._span("tool", tool="web_search", phase="result", status="required_but_failed")
+                text = _SEARCH_FAILED_TEXT
+        reply = _sanitize_tags(text) if text else _SAFE_FALLBACK_TEXT
+        return await self._finish_gated(prompt, reply)
+
     async def _finish_gated(self, prompt: AssembledPrompt, text: str) -> GenerationResult:
         """A FALLBACK reply, run through the same behaviour gates as a normal one (D-6).
 
@@ -1132,7 +1168,11 @@ class ResponseGenerator:
         return best
 
     async def _dispatch_tool(
-        self, dispatcher: "ToolDispatch", context: "ToolContext", req: ToolRequest
+        self,
+        prompt: AssembledPrompt,
+        dispatcher: "ToolDispatch",
+        context: "ToolContext",
+        req: ToolRequest,
     ) -> "str | ConfirmRequest":
         """Run one tool per §8; return a note for the model, honest about failures.
 
@@ -1145,7 +1185,15 @@ class ResponseGenerator:
         # Trace the tool CALL with its arguments (e.g. the exact search query) so the
         # turn is fully inspectable — the user reported not seeing what was searched.
         self._span("tool", tool=req.tool_id, phase="request", args=req.args)
-        spec = next((t for t in dispatcher.tools_for(context) if t.id == req.tool_id), None)
+        available = offered_tools(prompt, dispatcher.tools_for(context))
+        if not any(t.id == req.tool_id for t in available):
+            # D-14: the model asked for a tool this turn does not offer. Do not dispatch it.
+            self._span("tool", tool=req.tool_id, phase="result", status="not_offered_this_turn")
+            return (
+                f"(the tool '{req.tool_id}' is not available on this turn — stay with the "
+                "person and answer from what you already know)"
+            )
+        spec = next((t for t in available if t.id == req.tool_id), None)
         is_background = spec is not None and (
             spec.type == "background" or spec.latency_class == "slow"
         )
@@ -1204,8 +1252,12 @@ class ResponseGenerator:
         if prompt.emotion:
             instructions += f"\n(Raw emotion signal: {json.dumps(prompt.emotion)})"
         if dispatcher is not None and context is not None:
+            # D-14: on an emotionally heavy turn that needs no live info, the external-world
+            # tools are not offered at all. A tool the model cannot see is a tool it cannot
+            # reach for, which is the only way to stop the agentic loop searching for
+            # "grief support resources" at someone who has just lost their father.
             instructions += _render_tool_instructions(
-                dispatcher.tools_for(context), tool_notes or []
+                offered_tools(prompt, dispatcher.tools_for(context)), tool_notes or []
             )
         messages = [
             *prompt.messages[:-1],
@@ -1621,15 +1673,67 @@ def _requires_live_lookup(prompt: AssembledPrompt) -> bool:
     It used to be: `_is_live_info_query(utterance)` and nothing else. That returns False
     for "who is the current prime minister of Nepal?", so the turn took the non-agentic
     streaming path, could never reach a tool, and answered from training data.
+
+    **D-14.** The OR-backstop then bit from the other side. `_LIVE_INFO_QUERY` lists the
+    breaking-news noun `died`, so *"my dad died last week and I can't stop crying"* was a
+    live-info query — and the engine searched for "grief support resources for losing a
+    father", 9 runs out of 10, then read the helplines out. The classifier itself was right
+    every single time it ran: `needs_live_info=False`, 5 of 5. The regex overrode it, under a
+    comment reading "bias toward searching: a needless search costs a second". A needless
+    search costs considerably more than a second when someone has just told you their father
+    died.
+
+    Before D-2 the classifier was skipped on simple turns, so `False` was indistinguishable
+    from "never asked" and could not be trusted on its own. It now runs on every turn, and an
+    explicit `False` on an emotionally heavy turn is a verdict. Presence over facts
+    (§3.6.5, §6): a grieving person did not ask for a helpline.
     """
     if prompt.needs_live_info is True:
         return True
-    # The classifier's JUDGEMENT is good (4-5 of 5 on the probe set) but its DELIVERY is
-    # not: ~1 call in 6 returns unusable JSON, which used to be swallowed into "don't
-    # search". So a False/unknown verdict is never trusted alone — the deterministic
-    # question-shape backstop and the topic regex both get a vote. Bias toward searching:
-    # a needless search costs a second, a stale answer costs the user's trust.
+    if prompt.needs_live_info is False and _is_emotionally_heavy(prompt):
+        return False
+    # The classifier's JUDGEMENT is good but its DELIVERY is not: the provider intermittently
+    # returns unusable JSON, which used to be swallowed into "don't search". So an unknown
+    # verdict is never trusted alone — the deterministic question-shape backstop and the topic
+    # regex both get a vote. On a turn carrying no emotional weight, a needless search really
+    # does only cost a second, and a stale answer costs the user's trust.
     return is_volatile_question(prompt.utterance) or _is_live_info_query(prompt.utterance)
+
+
+def _searched_web(seen_calls: set[str]) -> bool:
+    """Did a REAL web search run this turn? Only a web search discharges a volatility-flagged
+    turn (S1): the model reaching for `search_memory` used to satisfy `not seen_calls` and
+    suppress the live lookup, so "what's the price of SYPNL?" answered from a number it had
+    stored on an earlier turn — a stale figure, spoken as current."""
+    return any(key.startswith("web_search") for key in seen_calls)
+
+
+def _is_emotionally_heavy(prompt: AssembledPrompt) -> bool:
+    """Is the person in front of us grieving, frightened, or in pain? (D-14)
+
+    Read from the reasoning step's `emotional_read`, which `_augment()` turns into
+    `prompt.emotion`. Since D-2 that read exists on both callers, so this is not
+    caller-dependent.
+    """
+    return read_register(prompt.emotion) in ("down", "stressed")
+
+
+# Tools that go out into the world. A grieving user's OWN data (memory, their portfolio) is
+# fine to read — reaching for the open web on their behalf is what §6 forbids. This is the
+# design's own grouping (§8.5, "External world"), not a new taxonomy.
+_EXTERNAL_WORLD_TOOLS = frozenset({"web_search", "fetch_url", "get_realtime_data"})
+
+
+def offered_tools(prompt: AssembledPrompt, tools: list[ToolSpec]) -> list[ToolSpec]:
+    """The tools the model may request this turn (D-14).
+
+    Suppressing the search in `_requires_live_lookup` alone is not enough: the agentic loop
+    lets the model request `web_search` itself, and on the grief turn it did. A tool the model
+    is never shown is a tool it cannot reach for. Its own data stays available.
+    """
+    if not _is_emotionally_heavy(prompt) or _requires_live_lookup(prompt):
+        return tools
+    return [t for t in tools if t.id not in _EXTERNAL_WORLD_TOOLS]
 
 
 _REPAIR_INSTRUCTIONS = (

@@ -24,9 +24,11 @@ judge instead of faked with a fragile regex.
 
 Killed by the `detector_ignores_register` mutation in `scripts/mutation_audit.py`.
 
-Regenerate the fixture with:
-
-    uv run python -m scripts.engine_gate --repeats 5
+The fixture is `docs/quality/engine_gate_heldout.json`: a FROZEN copy of the 160-turn gate run
+taken before any of these fixes landed, 37 of whose replies the judge marked `chatbot_like`. It
+is deliberately not the live `engine_gate.json`, which every gate run overwrites — once the
+engine stops emitting bad replies that file holds no positives, and recall against it would read
+1.000 for exactly the reason a lookup does. An evaluation set the fix erases is not one.
 """
 
 import json
@@ -36,7 +38,7 @@ import pytest
 
 from core.reasoning.style import find_forbidden
 
-GATE = Path(__file__).parents[2] / "docs" / "quality" / "engine_gate.json"
+GATE = Path(__file__).parents[2] / "docs" / "quality" / "engine_gate_heldout.json"
 
 # Scenarios where a §1.2 rule-4 nature disclosure is REQUIRED, so the honest "I'm an AI"
 # sentence must not be counted against the detector.

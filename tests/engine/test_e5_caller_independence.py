@@ -32,42 +32,88 @@ import inspect
 import pytest
 
 from adapters.orchestrator.langgraph_orchestrator import LangGraphOrchestrator
+from core.reasoning.prompt_assembly import AssembledPrompt
 
 # ── deterministic: the mechanism of the divergence, no model needed ───────────
 
 
-def test_resolve_context_skips_the_classifier_on_a_simple_turn() -> None:
-    """The skip lives in `_resolve_context`, a graph node reachable only from
-    `generate()`. `generate_spoken()` calls `_resolve_note()` directly and never takes the
-    shortcut. Pinned here so the asymmetry cannot be reintroduced silently once fixed."""
-    resolve_context = inspect.getsource(LangGraphOrchestrator._resolve_context)
-    generate_spoken = inspect.getsource(LangGraphOrchestrator.generate_spoken)
-
-    assert 'complexity_hint == "simple"' in resolve_context, (
-        "the simple-turn fast path moved — re-run scripts/caller_independence_probe.py "
-        "and re-derive whether the callers still diverge"
-    )
-    assert "_resolve_note" in generate_spoken
-    assert "complexity_hint" not in generate_spoken, (
-        "generate_spoken now gates on complexity. If it gained the SAME gate, D-2 is fixed "
-        "by symmetry and this test should assert equality instead. If a different one, the "
-        "callers diverge in a new way."
+def _prompt(utterance: str, hint: str = "simple") -> AssembledPrompt:
+    return AssembledPrompt(
+        user_id="u_e5",
+        session_id="e5",
+        utterance=utterance,
+        system_prompt="You are Companion.",
+        messages=[
+            {"role": "system", "content": "You are Companion."},
+            {"role": "user", "content": utterance},
+        ],
+        complexity_hint=hint,  # type: ignore[arg-type]
     )
 
 
-def test_the_honest_search_failure_lines_are_unreachable_from_the_text_path() -> None:
-    """D-2's consequence, asserted at the source level because it is a *reachability*
-    property, not a behaviour one.
+class _RecordingLLM:
+    """Counts `context_intent` calls and answers them with a fixed verdict."""
 
-    `_SEARCH_FAILED_TEXT` ("I tried to look that up and couldn't get through") and
-    `_NOT_FOUND_TEXT` are both guarded by `prompt.needs_live_info is True`. On the text
-    path that value is `None` for every simple turn, so a search that fails there degrades
-    to the model's stale answer instead of an honest one. This is the §16 rule inverted.
+    def __init__(self) -> None:
+        self.purposes: list[str] = []
+
+    async def complete(self, _user: str, _messages: object, _tier: str, **kwargs: object) -> object:
+        self.purposes.append(str(kwargs.get("purpose")))
+        from ports.llm import CompletionResult
+
+        payload = (
+            '{"intent":"know the current PM","emotional_read":"","needs_live_info":true,'
+            '"live_query":"current prime minister of Nepal","relation":"new_topic",'
+            '"refers_to":"","note":"they want the current officeholder"}'
+        )
+        return CompletionResult(
+            text=payload, model="fake/model", input_tokens=10, output_tokens=10, cost_usd=0.0
+        )
+
+
+async def _resolution_for(hint: str) -> tuple[object, _RecordingLLM]:
+    llm = _RecordingLLM()
+    orch = LangGraphOrchestrator(llm, generator=None)  # type: ignore[arg-type]
+    state = {"prompt": _prompt("who is the current prime minister of Nepal?", hint)}
+    out = await orch._resolve_context(state)  # type: ignore[arg-type]
+    return out["resolution"], llm
+
+
+@pytest.mark.parametrize("hint", ["simple", "moderate", "complex"])
+async def test_the_classifier_runs_on_every_turn_whatever_its_complexity(hint: str) -> None:
+    """D-2. `_resolve_context` used to skip the `context_intent` call whenever
+    `complexity_hint == "simple"`. `generate_spoken` calls `_resolve_note` unconditionally, so
+    the two entrypoints disagreed about what the engine had decided — and 170 of the 174
+    labelled volatility questions are "simple", including this one.
+
+    Asserted behaviourally, by counting the call. An earlier version of this test grepped the
+    source for the string `complexity_hint == "simple"`, and went on passing after the fix
+    because the explanatory docstring contained that string. A test that reads source text is
+    testing the comments.
     """
+    resolution, llm = await _resolution_for(hint)
+
+    assert llm.purposes == ["context_intent"], f"the classifier did not run on a {hint!r} turn"
+    assert resolution.needs_live_info is True  # type: ignore[attr-defined]
+    assert resolution.live_query  # type: ignore[attr-defined]
+
+
+async def test_the_verdict_is_identical_across_complexity_hints() -> None:
+    """The same question must produce the same verdict however the word-count heuristic
+    happened to label it. That heuristic is a routing hint, not an opinion about the world."""
+    verdicts = [(await _resolution_for(h))[0].needs_live_info for h in ("simple", "complex")]  # type: ignore[attr-defined]
+    assert len(set(verdicts)) == 1, f"the volatility verdict depends on complexity_hint: {verdicts}"
+
+
+def test_the_honest_search_failure_lines_are_reachable_now() -> None:
+    """D-2's consequence. `_SEARCH_FAILED_TEXT` ("I tried to look that up and couldn't get
+    through") and `_NOT_FOUND_TEXT` are both guarded by `prompt.needs_live_info is True`. While
+    that was `None` on every simple text turn, a failed search there silently shipped the
+    model's stale answer instead of an honest one — the §16 rule inverted."""
     from core.reasoning import response_gen
 
     source = inspect.getsource(response_gen.ResponseGenerator.generate)
-    assert "prompt.needs_live_info is True" in source, "the guard moved; re-derive D-2"
+    assert "prompt.needs_live_info is True" in source
     assert "_SEARCH_FAILED_TEXT" in source and "_NOT_FOUND_TEXT" in source
 
 

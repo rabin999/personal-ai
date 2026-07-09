@@ -46,7 +46,15 @@ Row = tuple[str, str, bool, bool]  # (source, reply, judge_says_chatbot, allow_d
 
 
 def _held_out() -> list[Row]:
-    path = ROOT / "docs" / "quality" / "engine_gate.json"
+    """The FROZEN pre-fix gate run: 160 real engine replies, 37 judged chatbot_like, none of
+    which the patterns were written from.
+
+    It is deliberately not `engine_gate.json`, which the current gate overwrites on every run.
+    Once the engine stops producing bad replies that file contains no positives, and a recall
+    measured against it would read 1.000 for the same reason a lookup does. An evaluation set
+    that the fix erases is not an evaluation set.
+    """
+    path = ROOT / "docs" / "quality" / "engine_gate_heldout.json"
     if not path.exists():
         return []
     rows: list[Row] = []

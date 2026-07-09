@@ -116,7 +116,12 @@ _TEXT_EMOTIONS: tuple[tuple[re.Pattern[str], dict[str, Any]], ...] = (
     (
         re.compile(
             r"\bsad\b|sadness|down|low\b|grief|griev|lonely|loneli|hurt|upset|heartbroken|"
-            r"disappoint|despair|depress|tired|exhaust|weary|numb|empty|mourning|loss",
+            r"disappoint|despair|depress|tired|exhaust|weary|numb|empty|mourning|loss|"
+            # D-5, other half: the design doc's own flagship indirect-emotional scenario
+            # ("what's happening in Nepal … gives me a lot of pain") produces the read
+            # "pain", which matched NOTHING here — `hurt` was listed, `pain` was not. The
+            # most emotionally loaded turn in the golden set was delivered neutrally.
+            r"pain|ache|aching|anguish|distress|sorrow|devastat|bereav|miss (?:him|her|them)",
             re.IGNORECASE,
         ),
         {"label": "sad", "valence": -0.5, "arousal": 0.2},
@@ -140,6 +145,21 @@ _TEXT_EMOTIONS: tuple[tuple[re.Pattern[str], dict[str, Any]], ...] = (
 _TEXT_CONFIDENCE = 0.6
 
 
+# D-5. The context prompt asks the model for `"emotional_read": "<the feeling, or empty>"`, so
+# on a neutral turn it writes the literal word **"empty"** — and `empty` is in the SAD family
+# above, for "I feel empty". Result: `"what's 15% of 240?"` was delivered in a `down` register,
+# 3 runs of 3. The prompt and the parser disagreed about their shared vocabulary and nothing
+# checked. These are the ways a model says "no feeling here"; they are matched on the WHOLE
+# read, so "empty, hollow, like nothing matters" still reads as sadness.
+_NEUTRAL_READS = frozenset(
+    {
+        "", "empty", "none", "neutral", "calm", "n/a", "na", "-", "nothing", "nil",
+        "no feeling", "no strong feeling", "no clear feeling", "not applicable",
+        "unclear", "unknown", "no emotion", "no particular emotion", "flat",
+    }
+)  # fmt: skip
+
+
 def emotion_from_text(emotional_read: str | None) -> dict[str, Any] | None:
     """Turn the reasoning step's free-text emotional read into an `EmotionRead`-shaped
     dict, or None when it is empty/neutral (never force a tone off a blank signal).
@@ -147,7 +167,7 @@ def emotion_from_text(emotional_read: str | None) -> dict[str, Any] | None:
     This is the text-sentiment fallback the docstrings promised and nobody implemented.
     """
     text = (emotional_read or "").strip()
-    if not text or text.lower() in ("neutral", "none", "calm", "n/a", "-"):
+    if text.lower().strip(" .\"'") in _NEUTRAL_READS:
         return None
     for pattern, read in _TEXT_EMOTIONS:
         if pattern.search(text):

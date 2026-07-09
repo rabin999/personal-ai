@@ -68,7 +68,11 @@ _CONTEXT_INSTRUCTIONS = (
     "('that', 'the temperature you told me') to the specific earlier thing, and label "
     "the relation.\n"
     'Respond ONLY with JSON: {"intent": "<what they really want, one phrase>", '
-    '"emotional_read": "<the feeling, or empty>", "needs_live_info": true|false, '
+    # D-5: this used to read `"<the feeling, or empty>"`, and models complied literally —
+    # writing the word "empty", which `emotion_from_text` then parsed as sadness. Name the
+    # neutral value explicitly so the prompt and the parser share one vocabulary.
+    '"emotional_read": "<the feeling in one word, or \\"neutral\\" if none>", '
+    '"needs_live_info": true|false, '
     '"live_query": "<search query if needs_live_info, else empty>", '
     '"relation": "follow_up|new_topic|correction|continuation", '
     '"refers_to": "<the specific earlier thing it refers to, or empty>", '
@@ -207,21 +211,27 @@ class LangGraphOrchestrator:
         )
 
     async def _resolve_context(self, state: _TurnState) -> _TurnState:
-        prompt = state["prompt"]
-        # L3 gate: a SIMPLE turn (a greeting / short casual message) has no complex
-        # reference to resolve against the conversation — skip the ~2s context_intent
-        # LLM call entirely (L0 profile: it was pure waste on "hey how are you"). The
-        # main reply model still reads the recent turns + memory and infers intent
-        # itself, so quality holds. MODERATE/COMPLEX turns (follow-ups, references,
-        # indirect asks) keep the full resolution step.
-        if prompt.complexity_hint == "simple":
-            # S1 NOTE: skipping here leaves `needs_live_info=None` (unknown), NOT False.
-            # "who is the current prime minister of Nepal?" is a `simple` turn by the
-            # word-count heuristic, so the text path relies on the reasoning core's own
-            # tool_request + the regex backstop for these. The VOICE path never skips.
-            self._span("reasoning", node="resolve_context", skipped="simple_turn_fast_path")
-            return {"resolution": _Resolution()}
-        return {"resolution": await self._resolve_note(prompt)}
+        """The context/intent step. Runs on EVERY turn, exactly as `generate_spoken` runs it.
+
+        **D-2.** This node used to skip the `context_intent` call whenever
+        `complexity_hint == "simple"` — an L3 latency optimisation. `generate_spoken` calls
+        `_resolve_note` unconditionally and never took the shortcut, so the two entrypoints
+        disagreed about what the engine had decided. Measured: `needs_live_info` was `None` on
+        21 of 21 text turns, and 170 of the 174 questions in `tests/labeled/volatility.jsonl`
+        are "simple" under the word-count heuristic — including "who is the current prime
+        minister of Nepal?".
+
+        The verdict is not a nicety. Three behaviours read it, and all three were dead on the
+        text path: the honest "I couldn't reach it" lines (`_SEARCH_FAILED_TEXT` /
+        `_NOT_FOUND_TEXT`, both guarded by `needs_live_info is True`), `suppress_live_search`,
+        and the emotional read that selects the delivery register and now gates the tool reflex
+        (D-14). A turn whose classifier never ran cannot be said to have a verdict at all.
+
+        The shortcut is deleted rather than duplicated into the voice path: symmetry is the
+        invariant, and the cost is one `simple`-tier LLM call on a greeting. Latency work
+        belongs behind a cache or a cheaper model, not behind a caller-dependent skip.
+        """
+        return {"resolution": await self._resolve_note(state["prompt"])}
 
     async def _resolve_note(self, prompt: AssembledPrompt) -> _Resolution:
         """A3 + F5 + S1: reason about how this utterance connects to the conversation,

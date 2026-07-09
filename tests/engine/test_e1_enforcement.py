@@ -197,6 +197,78 @@ async def test_enforcement_leaves_a_clean_reply_exactly_as_it_was() -> None:
     assert action == "respond"
 
 
+# ── the fallback must not answer a volatile turn from training data ──────────
+
+
+class _SearchDispatcher:
+    """One `web_search` tool, recording every inline call."""
+
+    def __init__(self, output: dict[str, Any]) -> None:
+        self.output = output
+        self.inline_calls: list[Any] = []
+
+    def tools_for(self, _context: Any) -> list[Any]:
+        from core.tools.registry import ToolSpec
+
+        return [ToolSpec(id="web_search", description="search the web", type="background")]
+
+    async def run_inline(self, call: Any, _context: Any) -> Any:
+        from core.tools.dispatcher import ToolResult
+
+        self.inline_calls.append(call)
+        return ToolResult(tool_id=call.tool_id, output=self.output, elapsed_ms=5.0)
+
+    async def dispatch(self, *_a: Any, **_k: Any) -> Any:
+        raise AssertionError("the fallback search must run INLINE")
+
+
+async def test_a_volatile_turn_still_searches_when_the_judgment_json_breaks() -> None:
+    """The fallback used to `return` before the capability backstop, so a JSON glitch on a
+    volatile turn shipped the model's TRAINING-DATA answer.
+
+    Observed live while fixing D-14: "who is the current prime minister of Nepal?" ->
+    both judgment attempts returned malformed JSON -> the plain-reply fallback answered
+    "Balendra Shah is still the Prime Minister", confidently, with zero searches. It happened
+    to be right. Nothing in the engine knew that.
+    """
+    from core.tools.registry import ToolContext
+
+    dispatcher = _SearchDispatcher({"found": True, "summary": "Sushila Karki is the current PM."})
+    ctx = ToolContext(user_id=USER, session_id="enf")
+    # `_build_search_query` makes no LLM call here: with no resolved entities and no user
+    # context there is nothing to disambiguate the query against, so it uses the utterance.
+    llm = FakeLLM(
+        [
+            "not json",  # judgment attempt 1
+            "still not json",  # judgment attempt 2
+            "Balendra Shah is still the Prime Minister.",  # _plain_reply, from training data
+            "Right now it's Sushila Karki.",  # response_repair, from the search result
+        ]
+    )
+    prompt = _prompt("who is the current prime minister of Nepal?", needs_live_info=True)
+
+    result = await _generator(llm, _SpanLog()).generate(prompt, dispatcher, ctx)
+
+    assert dispatcher.inline_calls, "a volatile turn answered from training data after a glitch"
+    assert "Sushila Karki" in result.final_text
+
+
+async def test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing() -> None:
+    """§16. The reasoning step judged the answer would go stale without a lookup, and the
+    lookup found nothing. Ship the honest line, never the model's stale draft."""
+    from core.tools.registry import ToolContext
+
+    dispatcher = _SearchDispatcher({"found": False, "summary": ""})
+    ctx = ToolContext(user_id=USER, session_id="enf")
+    llm = FakeLLM(["{bad", "{bad", "Balendra Shah is still the PM."])
+    prompt = _prompt("who is the current prime minister of Nepal?", needs_live_info=True)
+
+    result = await _generator(llm, _SpanLog()).generate(prompt, dispatcher, ctx)
+
+    assert "Balendra Shah" not in result.final_text
+    assert result.final_text.strip()
+
+
 # ── D-7: the detector detects; nothing enforces ──────────────────────────────
 
 

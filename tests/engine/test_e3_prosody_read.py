@@ -69,7 +69,6 @@ def test_a_recognised_neutral_read_forces_no_tone(read: str) -> None:
 # ── D-5: the seam ────────────────────────────────────────────────────────────
 
 
-@pytest.mark.defect
 def test_the_literal_word_empty_is_not_an_emotion() -> None:
     """D-5. `_CONTEXT_INSTRUCTIONS` offers `"<the feeling, or empty>"`, so `"empty"` IS the
     model's way of saying "no feeling". Parsing it as sadness inverts the whole mechanism.
@@ -84,7 +83,6 @@ def test_the_literal_word_empty_is_not_an_emotion() -> None:
     )
 
 
-@pytest.mark.defect
 def test_a_neutral_turn_is_never_delivered_in_a_down_register() -> None:
     """D-5, stated as the user-visible symptom: the companion answers "what's 15% of 240?"
     in a sad voice, 3 runs out of 3."""
@@ -100,27 +98,33 @@ def test_a_neutral_turn_is_never_delivered_in_a_down_register() -> None:
 PAIN_READS = ["pain", "in pain", "hurting", "distress", "anguish"]
 
 
-@pytest.mark.defect
 def test_the_emotional_reads_the_design_doc_itself_produces_are_understood() -> None:
-    """D-5, other half. Asserted as one set rather than per-word, so the failure names
-    every unrecognised read at once instead of hiding the passing ones.
+    """D-5, other half. Asserted as one set rather than per-word, so a failure names every
+    unrecognised read at once instead of hiding behind the ones that pass.
 
-    `hurting` is understood only because the SAD family lists `hurt`. `pain`, the exact word
-    the flagship indirect-emotional scenario produces, matches nothing — so the most
-    emotionally loaded turn in the entire golden set is delivered in a neutral register.
+    `hurting` was understood only because the SAD family lists `hurt`. `pain` — the exact word
+    the flagship indirect-emotional scenario produces ("what's happening in Nepal … gives me a
+    lot of pain") — matched nothing, so the most emotionally loaded turn in the entire golden
+    set was delivered in a neutral register.
+
+    The assertion is that each read lands on a LOW-VALENCE register, not specifically `down`.
+    "distress" resolves to `stressed`, because it contains "stress" and the frustrated family
+    is checked first. That is a defensible reading of the word, and pinning it to `down` would
+    be testing the ordering of two regexes rather than the behaviour anyone cares about.
     """
     unrecognised = [read for read in PAIN_READS if emotion_from_text(read) is None]
     assert not unrecognised, (
         f"these emotional reads produce NO signal, leaving the register neutral: "
         f"{unrecognised}. See docs/DEFECTS_FOUND.md D-5."
     )
-    assert all(read_register(emotion_from_text(read)) == "down" for read in PAIN_READS)
+    registers = {read: read_register(emotion_from_text(read)) for read in PAIN_READS}
+    wrong = {r: reg for r, reg in registers.items() if reg not in ("down", "stressed")}
+    assert not wrong, f"a turn carrying pain is delivered in an upbeat or neutral voice: {wrong}"
 
 
 # ── the sentinel list and the regex families must not overlap ────────────────
 
 
-@pytest.mark.defect
 def test_no_neutral_sentinel_is_also_an_emotion_word() -> None:
     """The property that would have caught D-5 the day it was written: a string the model
     uses to mean "no feeling" must never match a feeling. Checks every sentinel the prompt
