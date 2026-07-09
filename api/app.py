@@ -76,12 +76,16 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     # Warm the STT model + local embedder off the request path so the first
     # conversation doesn't pay their cold-load spike (§8.12 latency).
     async def _warm() -> None:
-        try:
-            await asyncio.to_thread(pipeline.stt.preload)
-            await asyncio.to_thread(pipeline.llm.preload)
-            logger.info("STT + embedder warmed")
-        except Exception:  # warmup is best-effort — never block/kill startup
-            logger.warning("warmup failed (non-fatal)", exc_info=True)
+        # Warm each INDEPENDENTLY. They were chained, so when `stt.preload` raised
+        # AttributeError (GrokSTT never implemented it) the embedder was never warmed
+        # either — silently, inside the best-effort `except`. Every first turn then paid
+        # the fastembed cold load.
+        for name, warm in (("STT", pipeline.stt.preload), ("embedder", pipeline.llm.preload)):
+            try:
+                await asyncio.to_thread(warm)
+                logger.info("%s warmed", name)
+            except Exception:  # warmup is best-effort — never block/kill startup
+                logger.warning("%s warmup failed (non-fatal)", name, exc_info=True)
 
     bg_tasks: list[asyncio.Task[None]] = [asyncio.create_task(_warm())]
     if settings.run_worker_in_process:

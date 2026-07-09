@@ -40,6 +40,9 @@ class GrokSTT:
         self._settings = settings
         self._ledger = ledger
 
+    def preload(self) -> None:
+        """No-op: Grok STT is a remote HTTP endpoint, so there is no model to warm."""
+
     async def transcribe_stream(
         self,
         frames: AsyncIterator[bytes],
