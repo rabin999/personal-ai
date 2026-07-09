@@ -1,16 +1,30 @@
-# Defects found — core engine test session
+# Defects found — core engine
 
-**None of these were fixed.** The session brief forbids product fixes; the job was to find
-out what is true. Each defect below has a file, a line, a reproducing input, and — where
-possible — a deterministic test that goes red at HEAD.
+D-1 … D-18 were found by the engine **test** session, which fixed nothing by design. The
+follow-up **fix** session then repaired eight of them and, in doing so, found three more.
+`docs/ENGINE_FIX_REPORT.md` is the record of that work.
 
-Run the reproducers:
+**Status of every defect below:**
+
+| fixed (8) | open (13) |
+|---|---|
+| D-2, D-5, D-6, D-7, D-8, D-12, D-13, D-14, D-16, D-17, D-18 | D-1, D-3, D-4, D-9, D-10, D-11, D-15, D-19, D-20, D-21 |
+
+(D-6/D-7/D-8/D-16 shared one control-flow fix, and D-12's fix subsumed part of D-1's symptom;
+the effective volatility gate now runs on both callers, so the deterministic backstop's 0.839
+recall is no longer the operative number. D-1 stays open because that backstop is still below
+its own bar when the classifier returns nothing usable.)
+
+Each defect has a file, a line, a reproducing input, and — where possible — a test that goes
+red. **Every open defect still has a red test**; the count of `defect`-marked failures is the
+count of known open defects, and nothing is hidden behind `xfail` or `skip`.
 
 ```
-uv run pytest -m defect                     # deterministic; 5 red at HEAD
-uv run pytest -m "not real_call and not defect"   # the green suite
-uv run python -m scripts.caller_independence_probe --repeats 3
-uv run python -m scripts.measure_classifiers --real --repeats 5
+uv run pytest -m defect                            # the open ones, red on purpose
+uv run pytest -m "not real_call and not defect"    # the green suite
+uv run python -m scripts.engine_gate --repeats 5   # the gate (currently FAILS: see §9 of the report)
+uv run python -m scripts.mutation_audit            # 37/38 killed; only the control survives
+uv run python -m scripts.style_calibration         # held-out detector recall
 ```
 
 Severity: **S1** the user gets a wrong or absent answer · **S2** the companion breaks its own
