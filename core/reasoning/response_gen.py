@@ -1461,7 +1461,6 @@ _MIN_REWRITE_WORDS = 4
 
 
 def _is_degenerate_rewrite(original: str, candidate: str) -> bool:
-    return False
     orig_words = len(original.split())
     cand_words = len(candidate.split())
     if orig_words <= _MIN_REWRITE_WORDS:

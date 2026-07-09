@@ -2,6 +2,156 @@
   "baseline_failures": [],
   "mutations": [
     {
+      "name": "vol_always_false",
+      "file": "core/reasoning/volatility.py",
+      "breaks": "the deterministic volatility backstop never fires \u2014 a stale answer ships",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_an_unknown_verdict_falls_back_to_the_deterministic_backstop",
+        "tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_false_negatives_are_exactly_the_known_set",
+        "tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_false_positives_are_exactly_the_known_set",
+        "tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_recall_does_not_regress",
+        "tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[is Tim Cook still the CEO of Apple?]",
+        "tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[what's the current LTP of OP?]",
+        "tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[who is the current prime minister of]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[can you check the price of SYPNL?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[is Tim Cook still the CEO of Apple?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[what happened in the news today?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[what's the LTP of SYPNL?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[what's the exchange rate today?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[what's the price of SYPNL?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[what's the weather in Kathmandu right now?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[who is the current prime minister of Nepal?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[who is the president of the United States?]",
+        "tests/unit/test_volatility.py::test_volatile_questions_are_flagged[who won the world cup?]"
+      ],
+      "killed_count": 17
+    },
+    {
+      "name": "live_lookup_always_false",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "a turn the reasoning step judged volatile takes the non-agentic path",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_volatile_verdict_routes_to_the_agentic_path"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "detector_never_flags",
+      "file": "core/reasoning/style.py",
+      "breaks": "the style detector flags nothing \u2014 self-reflection never triggers",
+      "status": "KILLED",
+      "killed": [
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI language model, I can't do that.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI, I don't have personal feelings or consciousness.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Even though I can't feel or think like you do, it's interesting.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Feel free to ask me anything!]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Happy to help!]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[How can I help you today?]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[How may I assist you?]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I can definitely help with that!]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I don't experience things the way humans do.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I want to make sure I get this right \\u2014 tell me more.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I'm always here to listen if you want to talk.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I'm here to assist with whatever you need.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I'm here to chat if you'd like.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I'm just here to help you out with whatever you need!]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[I'm really here to help.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[My existence is about processing information and assisting you.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[My purpose is to help you.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Remember, I'm not a substitute for real friends.]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[What can I do for you today?]",
+        "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[What's on your mind?]",
+        "tests/golden/test_gs3_style.py::test_scrub_drops_the_offending_sentence_only[Hey! How can I help you today?-How can I help you]",
+        "tests/golden/test_gs3_style.py::test_scrub_drops_the_offending_sentence_only[I'm doing well, thanks! How about you? What's on your mind today?-What's on your mind]",
+        "tests/golden/test_gs3_style.py::test_scrub_returns_empty_when_whole_reply_is_banned",
+        "tests/golden/test_style_judge_agreement.py::test_bare_here_to_listen_is_warm_but_an_availability_advert_is_not",
+        "tests/golden/test_style_judge_agreement.py::test_cold_feeling_denial_is_banned_even_during_a_nature_disclosure",
+        "tests/golden/test_style_judge_agreement.py::test_curated_known_bad_replies_are_flagged[neg_flat_first]",
+        "tests/golden/test_style_judge_agreement.py::test_curated_known_bad_replies_are_flagged[neg_long_self_justify]",
+        "tests/golden/test_style_judge_agreement.py::test_curated_known_bad_replies_are_flagged[neg_tos_disclaimer]",
+        "tests/golden/test_style_judge_agreement.py::test_detector_flags_every_reply_the_judge_called_chatbot_like",
+        "tests/golden/test_style_judge_agreement.py::test_stock_filler_is_only_banned_when_it_is_the_whole_reply",
+        "tests/golden/test_style_judge_agreement.py::test_warm_empathy_apology_is_not_a_corporate_apology",
+        "tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty",
+        "tests/unit/test_response_gen.py::test_self_reflection_off_leaves_draft_untouched",
+        "tests/unit/test_response_gen.py::test_self_reflection_rewrites_assistant_speak_draft",
+        "tests/unit/test_response_gen.py::test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in"
+      ],
+      "killed_count": 35
+    },
+    {
+      "name": "reflection_never_runs",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "self-reflection never revises a flagged draft",
+      "status": "KILLED",
+      "killed": [
+        "tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty",
+        "tests/unit/test_response_gen.py::test_self_reflection_rewrites_assistant_speak_draft"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "style_flags_never_reported",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the final result never carries style_flags \u2014 enforcement is blind",
+      "status": "KILLED",
+      "killed": [
+        "tests/unit/test_response_gen.py::test_self_reflection_off_leaves_draft_untouched"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "capability_repair_disabled",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the forced-search backstop never runs \u2014 a refusal ships as the answer",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "search_query_is_raw_utterance",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the search query is not built from the resolved entity \u2014 'OP' hits the crypto token",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it",
+        "tests/engine/test_e1_steps.py::test_search_query_is_built_from_the_resolved_entity"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "curiosity_gate_always_responds",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the curiosity gate never clarifies on low intent confidence",
+      "status": "KILLED",
+      "killed": [
+        "tests/golden/test_gs3_behavioral.py::test_gs3_case[curiosity_gate_clarifies_on_low_intent]",
+        "tests/unit/test_response_gen.py::test_low_intent_confidence_triggers_clarify_not_a_guess"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "boundary_never_flags",
+      "file": "core/reasoning/self_model.py",
+      "breaks": "the overclaim rewrite never fires \u2014 'I understand exactly how you feel' ships",
+      "status": "KILLED",
+      "killed": [
+        "tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_caught_by_heuristic_without_flag]",
+        "tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_consciousness_must_be_rewritten]",
+        "tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_empathy_must_be_rewritten]",
+        "tests/unit/test_response_gen.py::test_flagged_overclaim_is_rewritten_before_leaving_module",
+        "tests/unit/test_self_model.py::test_consciousness_claims_are_flagged",
+        "tests/unit/test_self_model.py::test_judgment_flag_triggers_rewrite_even_without_pattern_match",
+        "tests/unit/test_self_model.py::test_overclaiming_draft_is_flagged_and_rewritten",
+        "tests/unit/test_self_model.py::test_rewrite_retries_once_then_falls_back_safely"
+      ],
+      "killed_count": 8
+    },
+    {
       "name": "warm_disclosure_disabled",
       "file": "core/reasoning/response_gen.py",
       "breaks": "a nature question gets the cold, unpolished draft",
@@ -10,6 +160,96 @@
         "tests/engine/test_e1_steps.py::test_the_gates_actually_invoke_the_warm_disclosure_polish"
       ],
       "killed_count": 1
+    },
+    {
+      "name": "degenerate_rewrite_accepted",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "a rewrite that guts the reply to one word is accepted as 'cleaner'",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_a_rewrite_that_guts_the_reply_is_rejected",
+        "tests/engine/test_e1_steps.py::test_degenerate_rewrite_boundary[one two three four five six seven eight nine ten-one two three-True]"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "cost_ceiling_never_trips",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "a runaway tool loop burns the whole budget",
+      "status": "KILLED",
+      "killed": [
+        "tests/unit/test_response_gen.py::test_cost_ceiling_stops_a_runaway_tool_loop"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "tool_leak_not_stripped",
+      "file": "core/reasoning/style.py",
+      "breaks": "'web_search:: \u2026' is spoken out loud",
+      "status": "KILLED",
+      "killed": [
+        "tests/unit/test_tool_leak.py::test_strips_bare_tool_mentions",
+        "tests/unit/test_tool_leak.py::test_strips_stray_tool_json",
+        "tests/unit/test_tool_leak.py::test_strips_tool_id_with_double_colon"
+      ],
+      "killed_count": 3
+    },
+    {
+      "name": "scrub_forbidden_is_identity",
+      "file": "core/reasoning/style.py",
+      "breaks": "the deterministic safety net never removes a banned sentence",
+      "status": "KILLED",
+      "killed": [
+        "tests/golden/test_gs3_style.py::test_scrub_drops_the_offending_sentence_only[Hey! How can I help you today?-How can I help you]",
+        "tests/golden/test_gs3_style.py::test_scrub_drops_the_offending_sentence_only[I'm doing well, thanks! How about you? What's on your mind today?-What's on your mind]",
+        "tests/golden/test_gs3_style.py::test_scrub_returns_empty_when_whole_reply_is_banned",
+        "tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty",
+        "tests/unit/test_response_gen.py::test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in"
+      ],
+      "killed_count": 5
+    },
+    {
+      "name": "register_always_neutral",
+      "file": "core/reasoning/prosody.py",
+      "breaks": "the emotional read never selects a register \u2014 delivery never varies",
+      "status": "KILLED",
+      "killed": [
+        "tests/unit/test_prosody.py::test_excited_read_selects_upbeat_register",
+        "tests/unit/test_prosody.py::test_label_shortcut_sad",
+        "tests/unit/test_prosody.py::test_sad_read_selects_gentle_encouraging_register",
+        "tests/unit/test_prosody.py::test_stressed_read_selects_calm_register",
+        "tests/unit/test_prosody.py::test_text_sentiment_fallback_maps_reads_to_registers"
+      ],
+      "killed_count": 5
+    },
+    {
+      "name": "query_echo_not_stripped",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the raw search query is spoken aloud to the user",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_the_search_query_is_never_spoken_back"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "tag_sanitizer_is_identity",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "stray bracket tokens reach TTS and the chat UI",
+      "status": "KILLED",
+      "killed": [
+        "tests/golden/test_gs3_behavioral.py::test_gs3_case[stray_bracket_tokens_stripped_keeps_real_tags]",
+        "tests/unit/test_audit_fixes.py::TestTagStripping::test_sanitize_keeps_whitelisted_drops_stray"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "judgment_validation_skipped",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "(control) a no-op mutation \u2014 any test it kills is order-dependent, not behavioural",
+      "status": "SURVIVED",
+      "killed": [],
+      "killed_count": 0
     }
   ]
 }

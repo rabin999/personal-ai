@@ -37,3 +37,35 @@ baseline: no summary  (41s)
              ↳ tests/unit/test_self_model.py::test_consciousness_claims_are_flagged
              ↳ tests/unit/test_self_model.py::test_judgment_flag_triggers_rewrite_even_without_pattern_match
 [KILLED  ] warm_disclosure_disabled             1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_the_gates_actually_invoke_the_warm_disclosure_polish
+[KILLED  ] degenerate_rewrite_accepted          2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_a_rewrite_that_guts_the_reply_is_rejected
+             ↳ tests/engine/test_e1_steps.py::test_degenerate_rewrite_boundary[one two three four five six seven eight nine ten-one two three-True]
+[KILLED  ] cost_ceiling_never_trips             1 test(s)  |  no summary
+             ↳ tests/unit/test_response_gen.py::test_cost_ceiling_stops_a_runaway_tool_loop
+[KILLED  ] tool_leak_not_stripped               3 test(s)  |  no summary
+             ↳ tests/unit/test_tool_leak.py::test_strips_bare_tool_mentions
+             ↳ tests/unit/test_tool_leak.py::test_strips_stray_tool_json
+             ↳ tests/unit/test_tool_leak.py::test_strips_tool_id_with_double_colon
+[KILLED  ] scrub_forbidden_is_identity          5 test(s)  |  no summary
+             ↳ tests/golden/test_gs3_style.py::test_scrub_drops_the_offending_sentence_only[Hey! How can I help you today?-How can I help you]
+             ↳ tests/golden/test_gs3_style.py::test_scrub_drops_the_offending_sentence_only[I'm doing well, thanks! How about you? What's on your mind today?-What's on your mind]
+             ↳ tests/golden/test_gs3_style.py::test_scrub_returns_empty_when_whole_reply_is_banned
+             ↳ tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty
+             ↳ tests/unit/test_response_gen.py::test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in
+[KILLED  ] register_always_neutral              5 test(s)  |  no summary
+             ↳ tests/unit/test_prosody.py::test_excited_read_selects_upbeat_register
+             ↳ tests/unit/test_prosody.py::test_label_shortcut_sad
+             ↳ tests/unit/test_prosody.py::test_sad_read_selects_gentle_encouraging_register
+             ↳ tests/unit/test_prosody.py::test_stressed_read_selects_calm_register
+             ↳ tests/unit/test_prosody.py::test_text_sentiment_fallback_maps_reads_to_registers
+[KILLED  ] query_echo_not_stripped              1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_the_search_query_is_never_spoken_back
+[KILLED  ] tag_sanitizer_is_identity            2 test(s)  |  no summary
+             ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[stray_bracket_tokens_stripped_keeps_real_tags]
+             ↳ tests/unit/test_audit_fixes.py::TestTagStripping::test_sanitize_keeps_whitelisted_drops_stray
+[SURVIVED] judgment_validation_skipped          0 test(s)  |  no summary
+
+wrote docs/quality/mutation_audit.json
+
+SURVIVED (nothing tests these): ['judgment_validation_skipped']

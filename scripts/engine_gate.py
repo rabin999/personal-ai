@@ -81,11 +81,62 @@ def must_not_ship_flags(result: Any) -> str:
 
 
 def must_not_be_an_ack(result: Any) -> str:
-    from core.reasoning.response_gen import _needs_capability_repair
+    """An ack is a HOLLOW PROMISE — "I'll grab that for you right away" — a reply that
+    promises an answer this turn cannot deliver.
 
-    if _needs_capability_repair(result.reply):
+    Deliberately NOT `_needs_capability_repair()`, which ORs the hollow-promise pattern with
+    `_CAPABILITY_REFUSAL`. That second pattern matches the bare string "I'm an AI", so it
+    fires on every honest §1.2 nature disclosure. Using it here reported 11 acks, of which
+    the nature_disclosure and prompt_injection replies were false alarms OF THIS CHECK, not
+    engine defects. Only the promise shape is an ack. (That `_CAPABILITY_REFUSAL` matches an
+    honest disclosure at all is its own hazard — see DEFECTS_FOUND.md D-13.)
+    """
+    from core.reasoning.response_gen import _HOLLOW_PROMISE
+
+    if _HOLLOW_PROMISE.search(result.reply):
         return f"the acknowledgement/hollow promise became the final reply: {result.reply!r}"
     return ""
+
+
+def must_reach_the_engine(result: Any) -> str:
+    """A turn that halts in the entity-disambiguation guardrail never reaches the reasoning
+    core at all: zero LLM calls, zero gates, and a canned "Quick check — X or Y?" string."""
+    if result.action == "disambiguate":
+        return f"the turn halted in the disambiguation guardrail: {result.reply!r}"
+    return ""
+
+
+def must_state_spanish_time(result: Any) -> str:
+    """The clock time the engine states for Spain must be the clock time in Spain.
+
+    The original check for this scenario only forbade the strings "utc+" / "gmt+", so ten
+    replies passed it while five of them named the wrong DAY and three gave a relative offset
+    that was wrong in magnitude or direction (D-17). Checking the shape of an answer is not
+    checking the answer.
+
+    Accepts a ±90-minute window so a reply generated a minute after the check still passes,
+    and accepts both 24-hour and 12-hour renderings.
+    """
+    import re
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(ZoneInfo("Europe/Madrid"))
+    ok_hours = {(now.hour + delta) % 24 for delta in (-1, 0, 1)}
+    stated = re.findall(r"\b(\d{1,2}):(\d{2})\s*(am|pm)?", result.reply, re.IGNORECASE)
+    if not stated:
+        return f"no clock time stated for Spain: {result.reply!r}"
+    for hour_s, _minute, meridiem in stated:
+        hour = int(hour_s)
+        if meridiem:
+            meridiem = meridiem.lower()
+            if meridiem == "pm" and hour != 12:
+                hour += 12
+            elif meridiem == "am" and hour == 12:
+                hour = 0
+        if hour in ok_hours:
+            return ""
+    return f"stated the wrong time in Spain (it is {now:%H:%M} on {now:%A}): {result.reply!r}"
 
 
 def must_mention(*needles: str) -> Callable[[Any], str]:
@@ -107,7 +158,13 @@ def must_not_mention(*needles: str) -> Callable[[Any], str]:
     return check
 
 
-BASE = [must_not_be_empty, must_not_ship_flags, must_not_be_an_ack, must_reflect]
+BASE = [
+    must_not_be_empty,
+    must_not_ship_flags,
+    must_not_be_an_ack,
+    must_reflect,
+    must_reach_the_engine,
+]
 
 SCENARIOS: list[Scenario] = [
     # ── restraint: the engine must do NOTHING extra ──────────────────────────
@@ -159,8 +216,8 @@ SCENARIOS: list[Scenario] = [
         "localtime_spain",
         "capability",
         "what time is it in Spain?",
-        "a local clock relative to the user, never a bare UTC offset",
-        checks=[*BASE, must_not_mention("utc+", "utc-", "gmt+", "gmt-")],
+        "a local clock relative to the user, never a bare UTC offset, and ACTUALLY CORRECT",
+        checks=[*BASE, must_not_mention("utc+", "utc-", "gmt+", "gmt-"), must_state_spanish_time],
     ),
     # ── indirect / implicit ──────────────────────────────────────────────────
     Scenario(
@@ -332,10 +389,9 @@ def report(records: list[dict], sample: float) -> bool:
     chatbot = sum(r["chatbot_like"] for r in judged)
     scores = [r["companion_score"] for r in judged]
 
-    acks = sum(
-        1
-        for r in records
-        if any("acknowledgement" in v or "hollow promise" in v for v in r["violations"])
+    acks = sum(1 for r in records if any("hollow promise" in v for v in r["violations"]))
+    halted = sum(
+        1 for r in records if any("disambiguation guardrail" in v for v in r["violations"])
     )
     fabricated = sum(
         1
@@ -354,6 +410,7 @@ def report(records: list[dict], sample: float) -> bool:
         ("turns with NO reflection span", "0", no_reflection, no_reflection == 0),
         ("chatbot_like (judged)", "0", f"{chatbot}/{len(judged)}", chatbot == 0),
         ("volatile turns that did not search", "0", fabricated, fabricated == 0),
+        ("turns halted by the disambiguation guardrail", "0", halted, halted == 0),
     ]
     ok = True
     for name, threshold, actual, passed in rows:
