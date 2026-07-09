@@ -1,0 +1,182 @@
+{
+  "seeded_user": "u_demo_001",
+  "n": 15,
+  "accuracy_gate": 0.95,
+  "seeded_accuracy": 1.0,
+  "seeded_accuracy_pass": true,
+  "unseeded_isolation": 1.0,
+  "unseeded_isolation_pass": true,
+  "records": [
+    {
+      "reference": "OP",
+      "expected": "op",
+      "why": "a NEPSE holding; on the open web it is the Optimism crypto token",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "op(holding) score=1.00",
+      "seeded_all": [
+        "op:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "SYPNL",
+      "expected": "sypnl",
+      "why": "a NEPSE holding; the F5 A/B fixture",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "sypnl(holding) score=1.00",
+      "seeded_all": [
+        "sypnl:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "NABIL",
+      "expected": "nabil",
+      "why": "a NEPSE holding",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "nabil(holding) score=1.00",
+      "seeded_all": [
+        "nabil:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "op",
+      "expected": "op",
+      "why": "case-insensitivity must not change the resolution",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "op(holding) score=1.00",
+      "seeded_all": [
+        "op:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "the LTP of OP",
+      "expected": "op",
+      "why": "the ticker is embedded in a question",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "op(holding) score=1.00",
+      "seeded_all": [
+        "op:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "how's OP doing",
+      "expected": "op",
+      "why": "conversational phrasing",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "op(holding) score=1.00",
+      "seeded_all": [
+        "op:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "my OP shares",
+      "expected": "op",
+      "why": "possessive phrasing",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "op(holding) score=1.00",
+      "seeded_all": [
+        "op:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "what did I pay for SYPNL",
+      "expected": "sypnl",
+      "why": "past-tense phrasing",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "sypnl(holding) score=1.00",
+      "seeded_all": [
+        "sypnl:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "my portfolio",
+      "expected": "proj",
+      "why": "must prefer the PROJECT over a holding inside it",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "proj_bf3ed7052bf0(project) score=1.00",
+      "seeded_all": [
+        "proj_bf3ed7052bf0:1.00",
+        "op:0.67"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "my trading thing",
+      "expected": "proj",
+      "why": "the design doc's own vague-reference example (\u00a714.2)",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": "proj_bf3ed7052bf0(project) score=1.00",
+      "seeded_all": [
+        "proj_bf3ed7052bf0:1.00"
+      ],
+      "unseeded_all": []
+    },
+    {
+      "reference": "my dog Trishul",
+      "expected": null,
+      "why": "an unrelated entity the user never registered",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": null,
+      "seeded_all": [],
+      "unseeded_all": []
+    },
+    {
+      "reference": "the weather in Kathmandu",
+      "expected": null,
+      "why": "not an entity at all",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": null,
+      "seeded_all": [],
+      "unseeded_all": []
+    },
+    {
+      "reference": "Ethereum",
+      "expected": null,
+      "why": "a real ticker the user does NOT hold \u2014 must not snap to OP",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": null,
+      "seeded_all": [],
+      "unseeded_all": []
+    },
+    {
+      "reference": "Optimism",
+      "expected": null,
+      "why": "the crypto token OP is confused with \u2014 must not resolve",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": null,
+      "seeded_all": [],
+      "unseeded_all": []
+    },
+    {
+      "reference": "hi",
+      "expected": null,
+      "why": "a greeting is not a reference",
+      "seeded_ok": true,
+      "unseeded_ok": true,
+      "seeded_top": null,
+      "seeded_all": [],
+      "unseeded_all": []
+    }
+  ]
+}

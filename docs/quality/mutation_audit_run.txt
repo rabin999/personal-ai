@@ -1,0 +1,39 @@
+=== baseline ===
+baseline: no summary  (41s)
+[KILLED  ] vol_always_false                    17 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_an_unknown_verdict_falls_back_to_the_deterministic_backstop
+             ↳ tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_false_negatives_are_exactly_the_known_set
+             ↳ tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_false_positives_are_exactly_the_known_set
+             ↳ tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_recall_does_not_regress
+             ↳ tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[is Tim Cook still the CEO of Apple?]
+             ↳ tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[what's the current LTP of OP?]
+[KILLED  ] live_lookup_always_false             1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_volatile_verdict_routes_to_the_agentic_path
+[KILLED  ] detector_never_flags                35 test(s)  |  no summary
+             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI language model, I can't do that.]
+             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI, I don't have personal feelings or consciousness.]
+             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Even though I can't feel or think like you do, it's interesting.]
+             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Feel free to ask me anything!]
+             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Happy to help!]
+             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[How can I help you today?]
+[KILLED  ] reflection_never_runs                2 test(s)  |  no summary
+             ↳ tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty
+             ↳ tests/unit/test_response_gen.py::test_self_reflection_rewrites_assistant_speak_draft
+[KILLED  ] style_flags_never_reported           1 test(s)  |  no summary
+             ↳ tests/unit/test_response_gen.py::test_self_reflection_off_leaves_draft_untouched
+[KILLED  ] capability_repair_disabled           1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it
+[KILLED  ] search_query_is_raw_utterance        2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it
+             ↳ tests/engine/test_e1_steps.py::test_search_query_is_built_from_the_resolved_entity
+[KILLED  ] curiosity_gate_always_responds       2 test(s)  |  no summary
+             ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[curiosity_gate_clarifies_on_low_intent]
+             ↳ tests/unit/test_response_gen.py::test_low_intent_confidence_triggers_clarify_not_a_guess
+[KILLED  ] boundary_never_flags                 8 test(s)  |  no summary
+             ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_caught_by_heuristic_without_flag]
+             ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_consciousness_must_be_rewritten]
+             ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_empathy_must_be_rewritten]
+             ↳ tests/unit/test_response_gen.py::test_flagged_overclaim_is_rewritten_before_leaving_module
+             ↳ tests/unit/test_self_model.py::test_consciousness_claims_are_flagged
+             ↳ tests/unit/test_self_model.py::test_judgment_flag_triggers_rewrite_even_without_pattern_match
+[KILLED  ] warm_disclosure_disabled             1 test(s)  |  no summary

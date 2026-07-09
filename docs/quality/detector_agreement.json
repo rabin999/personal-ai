@@ -1,0 +1,58 @@
+[
+  {
+    "name": "A. current engine-gate run (real replies, judged)",
+    "n": 6,
+    "tp": 0,
+    "fp": 0,
+    "fn": 0,
+    "tn": 6,
+    "agreement": 1.0,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "misses": [],
+    "false_alarms": []
+  },
+  {
+    "name": "B. baseline_live.json (22 live voice turns, judged)",
+    "n": 17,
+    "tp": 4,
+    "fp": 0,
+    "fn": 0,
+    "tn": 13,
+    "agreement": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "misses": [],
+    "false_alarms": []
+  },
+  {
+    "name": "C. curated gs3 negatives/positives",
+    "n": 6,
+    "tp": 3,
+    "fp": 0,
+    "fn": 0,
+    "tn": 3,
+    "agreement": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "misses": [],
+    "false_alarms": []
+  },
+  {
+    "name": "D. ALL SOURCES POOLED",
+    "n": 29,
+    "tp": 7,
+    "fp": 0,
+    "fn": 0,
+    "tn": 22,
+    "agreement": 1.0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "f1": 1.0,
+    "misses": [],
+    "false_alarms": []
+  }
+]

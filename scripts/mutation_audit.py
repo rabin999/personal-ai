@@ -301,11 +301,15 @@ def main() -> int:
             }
         )
 
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(
+    # A `--only` run is a spot check, not an audit. Writing it to the audit file would
+    # silently replace the full matrix with a single row — which is how the per-file
+    # coverage table came out empty the first time it was generated.
+    out = OUT if not args.only else OUT.with_name("mutation_audit_partial.json")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
         json.dumps({"baseline_failures": sorted(base_failed), "mutations": results}, indent=2)
     )
-    print(f"\nwrote {OUT.relative_to(ROOT)}")
+    print(f"\nwrote {out.relative_to(ROOT)}")
     survived = [r["name"] for r in results if r["status"] == "SURVIVED"]
     if survived:
         print(f"\nSURVIVED (nothing tests these): {survived}")

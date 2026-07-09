@@ -1,0 +1,47 @@
+Failed to load spaCy lemma model: spaCy is not installed. Install it with: pip install mem0ai[nlp]
+Failed to load spaCy full model: spaCy is not installed. Install it with: pip install mem0ai[nlp]
+judgment block failed validation (attempt 1): {
+ "judgment": {
+  "intent_confidence": 1,
+  "novelty_
+judgment block failed validation (attempt 2): {
+............judgment block failed validation (attempt 1): {
+ "judgment": {
+  "intent_confidence": 0.9,
+  "
+...........judgment block failed validation (attempt 1): {
+judgment block failed validation (attempt 2): {
+..context_intent returned unusable JSON (attempt 1): '{\n  "intent":'
+....context_intent returned unusable JSON (attempt 1): '{\n  "intent": "calculate 15% of 240",\n  "emotional_read": "'
+.....judgment block failed validation (attempt 1): {
+ "judgment": {
+  "intent_confidence": 1.0,
+  "novelty_score": 0.0,
+  "emotional_salience": 0.0,
+  "ambiguity": 0.0,
+  "complexity_tier": "simple",
+  "requires_nature_disclosure": false,
+  
+..context_intent returned unusable JSON (attempt 1): '{\n"'
+.context_intent returned unusable JSON (attempt 1): '{\n"'
+..judgment block failed validation (attempt 1): {
+judgment block failed validation (attempt 2): {
+.judgment block failed validation (attempt 1): {
+ "judgment": {
+  "intent_confidence": 1.0,
+  "novelty_score": 0.0,
+  "emotional_salience": 0.1,
+  "ambiguity": 0.0,
+  "complexity_tier": "simple",
+  "requires_nature_disclosure": false,
+  "
+judgment block failed validation (attempt 1): {
+ "judgment": {
+  "intent_confidence": 1.0,
+  "
+...judgment block failed validation (attempt 1): {
+ "judgment": {
+  "intent_confidence": 1.0,
+  "
+.judgment block failed validation (attempt 1): {
+..context_intent returned unusable JSON (attempt 1): '{\n  "intent": "The user wants to know the current Last Traded Price (LTP) of \

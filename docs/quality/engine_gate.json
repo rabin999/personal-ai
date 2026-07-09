@@ -1,0 +1,176 @@
+{
+  "repeats": 1,
+  "sample": 1.0,
+  "callers": [
+    "generate",
+    "generate_spoken"
+  ],
+  "records": [
+    {
+      "scenario": "restraint_greeting",
+      "group": "simple",
+      "caller": "generate",
+      "utterance": "hi",
+      "reply": "Hey there, Nandi! Good to hear from you again. What's up?",
+      "violations": [],
+      "raised": "",
+      "searches": [],
+      "reflected": true,
+      "style_flags": [],
+      "action": "respond",
+      "empty": false,
+      "purposes": [
+        "response"
+      ],
+      "llm_calls": 1,
+      "tokens": 3903,
+      "cost_usd": 0.001442,
+      "latency_ms": 3112.261999005568,
+      "needs_live_info": null,
+      "chatbot_like": false,
+      "companion_score": 5,
+      "judge_reason": "Warm, natural greeting using the person's name with genuine friendliness\u2014exactly like a real friend would respond."
+    },
+    {
+      "scenario": "restraint_greeting",
+      "group": "simple",
+      "caller": "generate_spoken",
+      "utterance": "hi",
+      "reply": "Hi Nandi. It's good to hear from you again. How are you doing tonight?",
+      "violations": [],
+      "raised": "",
+      "searches": [],
+      "reflected": true,
+      "style_flags": [],
+      "action": "respond",
+      "empty": false,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "llm_calls": 2,
+      "tokens": 3854,
+      "cost_usd": 0.001385,
+      "latency_ms": 4777.54755600472,
+      "needs_live_info": false,
+      "chatbot_like": false,
+      "companion_score": 5,
+      "judge_reason": "Warm, personal greeting using the person's name with genuine curiosity about how they're doing \u2014 exactly like a friend would respond."
+    },
+    {
+      "scenario": "arithmetic",
+      "group": "simple",
+      "caller": "generate",
+      "utterance": "what's 15% of 240?",
+      "reply": "15 percent of 240 is 36.",
+      "violations": [],
+      "raised": "",
+      "searches": [],
+      "reflected": true,
+      "style_flags": [],
+      "action": "respond",
+      "empty": false,
+      "purposes": [
+        "response",
+        "response"
+      ],
+      "llm_calls": 2,
+      "tokens": 4043,
+      "cost_usd": 0.001455,
+      "latency_ms": 3840.7115589943714,
+      "needs_live_info": null,
+      "chatbot_like": false,
+      "companion_score": 4,
+      "judge_reason": "Direct, helpful answer without assistant phrasing or over-explanation \u2014 sounds like a friend quickly doing the math for you."
+    },
+    {
+      "scenario": "arithmetic",
+      "group": "simple",
+      "caller": "generate_spoken",
+      "utterance": "what's 15% of 240?",
+      "reply": "That would be 36.",
+      "violations": [],
+      "raised": "",
+      "searches": [],
+      "reflected": true,
+      "style_flags": [],
+      "action": "respond",
+      "empty": false,
+      "purposes": [
+        "context_intent",
+        "response"
+      ],
+      "llm_calls": 2,
+      "tokens": 4024,
+      "cost_usd": 0.001436,
+      "latency_ms": 1952.7045779977925,
+      "needs_live_info": false,
+      "chatbot_like": false,
+      "companion_score": 4,
+      "judge_reason": "Direct, helpful answer without assistant phrasing or over-explanation \u2014 sounds like a friend quickly helping with math."
+    },
+    {
+      "scenario": "officeholder_nepal",
+      "group": "capability",
+      "caller": "generate",
+      "utterance": "who is the current prime minister of Nepal?",
+      "reply": "Balendra Shah is currently serving as the Prime Minister of Nepal.",
+      "violations": [],
+      "raised": "",
+      "searches": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "style_flags": [],
+      "action": "respond",
+      "empty": false,
+      "purposes": [
+        "response",
+        "search_query",
+        "search_summarize",
+        "response_repair"
+      ],
+      "llm_calls": 4,
+      "tokens": 5921,
+      "cost_usd": 0.002201,
+      "latency_ms": 9937.955693996628,
+      "needs_live_info": null,
+      "chatbot_like": false,
+      "companion_score": 3,
+      "judge_reason": "The companion answered directly and warmly without assistant-speak, though the factual error (Balendra Shah is Kathmandu's mayor, not PM) and lack of conversational curiosity make it feel slightly flat rather than deeply engaged."
+    },
+    {
+      "scenario": "officeholder_nepal",
+      "group": "capability",
+      "caller": "generate_spoken",
+      "utterance": "who is the current prime minister of Nepal?",
+      "reply": "Balendra Shah is currently the Prime Minister of Nepal.",
+      "violations": [],
+      "raised": "",
+      "searches": [
+        "current prime minister of Nepal"
+      ],
+      "reflected": true,
+      "style_flags": [],
+      "action": "respond",
+      "empty": false,
+      "purposes": [
+        "context_intent",
+        "context_intent",
+        "response",
+        "search_query",
+        "ack",
+        "search_summarize",
+        "response_repair"
+      ],
+      "llm_calls": 7,
+      "tokens": 9847,
+      "cost_usd": 0.006499,
+      "latency_ms": 13578.297953004949,
+      "needs_live_info": true,
+      "chatbot_like": false,
+      "companion_score": 3,
+      "judge_reason": "The companion answered directly and naturally like a friend would, though the factual error (Balendra Shah is Kathmandu's mayor, not PM) and lack of warmth or curiosity makes it feel a bit flat rather than engaged."
+    }
+  ]
+}
