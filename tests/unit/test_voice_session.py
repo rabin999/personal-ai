@@ -125,7 +125,7 @@ def _session(  # type: ignore[no-untyped-def]
         stt=stt,
         endpointer=SemanticEndpointer(short_pause_ms=48, long_pause_ms=160),
         assembler=FakeAssembler(),  # type: ignore[arg-type]
-        generator=FakeGenerator(),  # type: ignore[arg-type]
+        generator=FakeGenerator(),
         tts=FakeTTS(),
         working=working,
         trace=trace,
@@ -337,7 +337,7 @@ async def test_barge_in_stops_reply_cancels_generation_and_answers_new_input() -
         stt=FakeSTT("wait, actually listen to this"),
         endpointer=SemanticEndpointer(short_pause_ms=48, long_pause_ms=160),
         assembler=FakeAssembler(),  # type: ignore[arg-type]
-        generator=generator,  # type: ignore[arg-type]
+        generator=generator,
         tts=FakeTTS(),
         working=working,
         trace=trace,

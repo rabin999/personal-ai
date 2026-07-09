@@ -29,8 +29,9 @@ from core.memory.extraction import MemoryExtractor
 from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
 from core.observability.logger import StructuredLogger
+from core.reasoning.orchestrator import Orchestrator
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
-from core.reasoning.response_gen import GenerationResult, ResponseGenerator, ToolDispatch
+from core.reasoning.response_gen import GenerationResult, ToolDispatch
 from core.tools.registry import ToolContext
 from ports.stt import STT
 from ports.tts import TTS, StreamingTTS
@@ -118,7 +119,10 @@ class VoiceSession:
         stt: STT,
         endpointer: SemanticEndpointer,
         assembler: PromptAssembler,
-        generator: ResponseGenerator,
+        # The turn engine behind the Orchestrator port (A1.5) — the edge is handed
+        # `pipeline.orchestrator`, so it must be typed as the PORT, not one concrete
+        # engine. Typing it as the engine hid a live TypeError behind duck-typing.
+        generator: Orchestrator,
         tts: TTS,
         working: WorkingMemory,
         trace: TraceEmitter,

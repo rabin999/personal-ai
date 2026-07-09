@@ -129,17 +129,23 @@ class LangGraphOrchestrator:
         dispatcher: ToolDispatch | None,
         context: ToolContext | None,
         speak: Callable[[str], Awaitable[None]],
+        *,
+        temperature: float | None = None,
     ) -> GenerationResult:
         """Voice turn: run the context-resolution step, then delegate to the proven
         STREAMING generator so TTS starts on the first sentence (low TTFT) — the
         graph adds context-connection without losing streaming latency."""
         if isinstance(prompt, DisambiguationRequest):
-            return await self._generator.generate_spoken(prompt, dispatcher, context, speak)
+            return await self._generator.generate_spoken(
+                prompt, dispatcher, context, speak, temperature=temperature
+            )
         self._perceive_span(prompt)
         note, suppress = await self._resolve_note(prompt)
         turn_prompt = _augment(prompt, note, suppress) if note else prompt
         self._span("reasoning", node="respond", streaming=True, context_used=bool(note))
-        result = await self._generator.generate_spoken(turn_prompt, dispatcher, context, speak)
+        result = await self._generator.generate_spoken(
+            turn_prompt, dispatcher, context, speak, temperature=temperature
+        )
         self._reflect_span(prompt, result, dispatcher, context)
         return result
 

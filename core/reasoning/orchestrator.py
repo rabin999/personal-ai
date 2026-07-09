@@ -43,6 +43,14 @@ class Orchestrator(Protocol):
         dispatcher: ToolDispatch | None,
         context: ToolContext | None,
         speak: Callable[[str], Awaitable[None]],
+        *,
+        temperature: float | None = None,
     ) -> GenerationResult:
-        """Voice turn: same reasoning, streamed to ``speak`` for TTS."""
+        """Voice turn: same reasoning, streamed to ``speak`` for TTS.
+
+        ``temperature`` overrides the reply temperature for this turn (the open
+        greeting and the lull check-in run hotter so they vary session to session).
+        It is part of the PORT because the voice edge sets it on every turn — an
+        engine that omitted it broke the live path while the text path stayed green.
+        """
         ...
