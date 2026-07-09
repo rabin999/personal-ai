@@ -147,14 +147,20 @@ class LangfuseScoreSink:
     ) -> None:
         try:
             trace_id = self._lf.create_trace_id(seed=f"{session_id}:{turn}")
+            # Langfuse 4.x rejects a score that targets BOTH a trace and a session with a
+            # 400. Verified against the live API: `trace_id` alone and `session_id` alone
+            # each succeed; together they fail. We attach to the TRACE — it already carries
+            # the session — so the score lands next to the turn that produced it.
+            #
+            # The SDK reports this on a background thread, and this method swallowed it to
+            # `logger.debug`, so every judge score was silently discarded.
             self._lf.create_score(
                 name=name,
                 value=value,
                 trace_id=trace_id,
-                session_id=session_id,
                 comment=comment or None,
                 data_type="NUMERIC",
             )
             self._lf.flush()
         except Exception:
-            logger.debug("langfuse score submit failed", exc_info=True)
+            logger.warning("langfuse score submit failed (%s)", name, exc_info=True)
