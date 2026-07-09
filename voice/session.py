@@ -17,11 +17,13 @@ import logging
 import random
 import re
 import time
+import traceback
 from collections import deque
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
 from core.audio.awareness import HealthCheckin, HealthMonitor
+from core.errors import PROGRAMMING_ERRORS
 from core.memory.compaction import SessionCompactor
 from core.memory.conversation_store import ConversationStore
 from core.memory.episodic import EpisodicMemory
@@ -106,6 +108,12 @@ _FAREWELL = re.compile(
 
 def _is_farewell(text: str) -> bool:
     return bool(_FAREWELL.search(text or ""))
+
+
+# F3: when a dependency (LLM/STT/search/store) fails mid-turn the companion says so
+# honestly and keeps the conversation alive — it never fabricates and never goes
+# silent. In-voice, not a service-desk apology.
+_DEPENDENCY_FAILURE_LINE = "Sorry — something on my end just dropped. Say that again?"
 
 
 class VoiceSession:
@@ -229,8 +237,14 @@ class VoiceSession:
                 dur = len(chunk) / (TTS_SAMPLE_RATE * 2)
                 self._playback_until = max(self._playback_until, time.monotonic()) + dur
                 yield chunk
+            # F3: the None sentinel is written by _consume's `finally`, so the consumer
+            # has finished. Await it so a programming error it raised SURFACES here —
+            # the `gather(..., return_exceptions=True)` below would otherwise silently
+            # discard it, which is exactly how a dead turn path went unnoticed.
+            await consumer
         finally:
-            consumer.cancel()
+            if not consumer.done():
+                consumer.cancel()
             await asyncio.gather(consumer, return_exceptions=True)
 
     # ── continuous state machine ─────────────────────────────────────────
@@ -272,6 +286,11 @@ class VoiceSession:
                 frame_ms = len(frame.pcm) * _MS_PER_BYTE
 
                 if turn is not None and turn.done():
+                    # F3: never drop a finished turn task on the floor. A programming
+                    # error inside it must propagate out of the conversation instead of
+                    # being lost to "Task exception was never retrieved".
+                    if not turn.cancelled() and (exc := turn.exception()) is not None:
+                        raise exc
                     turn = None  # reply finished; back to listening
 
                 # Barge-in: user speaks while the companion is talking (§24). "Talking"
@@ -375,7 +394,18 @@ class VoiceSession:
                 # incomplete→long-pause re-check adds only silence, so its transcript is
                 # identical — reuse it instead of transcribing the same audio twice.
                 if speech_since_transcribe or not last_transcript:
-                    last_transcript = await self._transcribe(buffer)
+                    # F3: STT runs HERE, outside _run_turn_inner's guard. An adapter
+                    # outage must degrade (say so, keep listening); a bug must not hide.
+                    try:
+                        last_transcript = await self._transcribe(buffer)
+                    except PROGRAMMING_ERRORS:
+                        self._fail_loudly("speech-to-text", "the STT path")
+                        raise
+                    except Exception as exc:
+                        self._degrade("speech-to-text", exc)
+                        await self._say_step_failed(out)
+                        capturing, buffer, silence_ms = False, [], 0.0
+                        continue
                     speech_since_transcribe = False
                 transcript = last_transcript
                 if not transcript.strip():
@@ -424,6 +454,12 @@ class VoiceSession:
                 self._prev_endpoint = (transcript, now_ms)
                 self._turn_spoke = False
                 turn = asyncio.create_task(self._run_turn(transcript, utterance, out))
+            # The frame stream ended (client stopped). Drain the in-flight turn with a
+            # plain `await` so a programming error it raised propagates (F3) instead of
+            # being discarded by the `return_exceptions=True` gather below.
+            if turn is not None:
+                pending, turn = turn, None
+                await pending
         except asyncio.CancelledError:
             if turn is not None:
                 turn.cancel()
@@ -579,9 +615,59 @@ class VoiceSession:
         except asyncio.CancelledError:
             self._trace.emit("barge_in", "reply cancelled", phase="cancelled")
             raise
-        except Exception as exc:  # never let one turn kill the conversation
-            logger.exception("voice turn failed")
-            self._trace.emit("error", f"{type(exc).__name__}: {exc}", level="error")
+        except PROGRAMMING_ERRORS:
+            # F3: a defect in OUR code (wrong signature, missing attribute, broken
+            # internal contract). Absorbing it is what made the companion answer every
+            # turn with silence. Fail loudly and let it propagate.
+            self._fail_loudly("voice turn", "the turn path")
+            raise
+        except Exception as exc:  # a dependency failed — degrade, don't die
+            self._degrade("voice turn", exc)
+            await self._say_step_failed(out)
+
+    def _fail_loudly(self, what: str, where: str) -> None:
+        """A bug in our own code: full traceback to the structured logger AND a failed
+        step in the trace, so it can never be silent again (F3)."""
+        logger.exception("%s failed with a PROGRAMMING ERROR in %s", what, where)
+        detail = traceback.format_exc()
+        if self._logs is not None:
+            self._logs.log("error", "programming_error", stage="error", what=what, traceback=detail)
+        self._trace.emit(
+            "error",
+            f"BUG in {where}: {detail.strip().splitlines()[-1]}",
+            level="error",
+            programming_error=True,
+            traceback=detail,
+        )
+
+    def _degrade(self, what: str, exc: BaseException) -> None:
+        """An external dependency failed: log with traceback, mark the step failed in
+        the trace, and let the conversation continue (F3)."""
+        logger.exception("%s failed on a dependency", what)
+        if self._logs is not None:
+            self._logs.log(
+                "warn",
+                "dependency_failure",
+                stage="error",
+                what=what,
+                error=f"{type(exc).__name__}: {exc}",
+                traceback=traceback.format_exc(),
+            )
+        self._trace.emit(
+            "error",
+            f"{type(exc).__name__}: {exc}",
+            level="error",
+            programming_error=False,
+            degraded=True,
+        )
+
+    async def _say_step_failed(self, out: asyncio.Queue[bytes | None]) -> None:
+        """Tell the user honestly that this turn failed, in-voice (§16: never fabricate,
+        never go silent). Best-effort — if TTS is itself the failure, stay quiet."""
+        try:
+            await self._synthesize(_DEPENDENCY_FAILURE_LINE, out)
+        except Exception:  # TTS itself is down; silence is all that's left
+            logger.warning("could not speak the degraded-turn line", exc_info=True)
 
     async def _transcribe(self, speech: list[bytes]) -> str:
         async def _frames() -> AsyncIterator[bytes]:
@@ -642,6 +728,8 @@ class VoiceSession:
                 stream = await self._tts.open_stream(
                     self._voice, user_id=self._user_id, session_id=self._session_id
                 )
+            except PROGRAMMING_ERRORS:
+                raise  # F3: a wiring bug in the TTS adapter, not a flaky handshake
             except Exception:  # network/handshake — never fail the turn on TTS setup
                 logger.warning("tts stream open failed; using per-call synthesis", exc_info=True)
                 stream = None
@@ -717,8 +805,11 @@ class VoiceSession:
             self._trace.emit("response", text, voice_text=text, greeting=True)
             self._working.append(self._session_id, Turn(role="assistant", text=text))
             self._log_conversation("", text, None)  # the greeting is part of the log (§6)
-        except Exception:  # a greeting must never break the session
-            logger.exception("open greeting failed")
+        except PROGRAMMING_ERRORS:
+            self._fail_loudly("open greeting", "the greeting path")  # F3: never silent
+            raise
+        except Exception as exc:  # a dependency hiccup must never break the session
+            self._degrade("open greeting", exc)
 
     async def _lull_check_in(self, out: asyncio.Queue[bytes | None]) -> None:
         """After a long silence, gently check in ONCE — dynamic, in-voice, streamed to
@@ -747,8 +838,11 @@ class VoiceSession:
             self._trace.emit("response", text, voice_text=text, lull_check_in=True)
             self._working.append(self._session_id, Turn(role="assistant", text=text))
             self._log_conversation("", text, None)
-        except Exception:  # a check-in must never break the session
-            logger.exception("lull check-in failed")
+        except PROGRAMMING_ERRORS:
+            self._fail_loudly("lull check-in", "the check-in path")  # F3: never silent
+            raise
+        except Exception as exc:  # a dependency hiccup must never break the session
+            self._degrade("lull check-in", exc)
 
     async def _last_seen_note(self) -> str:
         """A short note on how long since the user's last conversation, for the greeting
@@ -842,8 +936,11 @@ class VoiceSession:
                         self._user_id, self._session_id
                     )
                     deliveries = [*carried, *deliveries]
-            except Exception:  # delivery is best-effort; never break the turn
-                logger.exception("background delivery failed")
+            except PROGRAMMING_ERRORS:
+                self._fail_loudly("background delivery", "the delivery path")  # F3
+                raise
+            except Exception as exc:  # delivery is best-effort; never break the turn
+                self._degrade("background delivery", exc)
                 return
             for item in deliveries:
                 line = getattr(item, "line", "")

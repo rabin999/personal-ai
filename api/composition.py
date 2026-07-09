@@ -55,7 +55,7 @@ from core.projects.service import ProjectService
 from core.psych.consolidation import Consolidator
 from core.psych.persona import PersonaStore
 from core.psych.user_model import PsychUserModel
-from core.reasoning.orchestrator import Orchestrator
+from core.reasoning.orchestrator import Orchestrator, assert_orchestrator_contract
 from core.reasoning.prompt_assembly import PromptAssembler
 from core.reasoning.recall import ConversationRecall
 from core.reasoning.response_gen import ResponseGenerator
@@ -303,6 +303,10 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         orchestrator = LangGraphOrchestrator(llm, generator, logs=logs, prompts=prompts)
     else:
         orchestrator = generator
+    # F3: fail FAST if the wired engine can't accept the call the voice edge makes.
+    # This exact mismatch previously reached production and was absorbed by a broad
+    # `except Exception` as silence on every voice turn.
+    assert_orchestrator_contract(orchestrator)
     consolidator = Consolidator(semantic, procedural, psych, docs, llm, episodic=episodic)
 
     return Pipeline(

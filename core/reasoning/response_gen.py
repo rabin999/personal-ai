@@ -15,7 +15,6 @@ defaults — final feel is tuned by a human (contract §7).
 """
 
 import asyncio
-import contextlib
 import json
 import logging
 import re
@@ -24,6 +23,7 @@ from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
 
+from core.errors import PROGRAMMING_ERRORS
 from core.observability.logger import StructuredLogger
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
@@ -524,6 +524,8 @@ class ResponseGenerator:
                 streamed = await self._stream_reply(prompt, speak, temperature=temperature)
                 if streamed is not None:
                     return streamed
+            except PROGRAMMING_ERRORS:
+                raise  # F3: a bug here must not hide behind the non-streamed fallback
             except Exception:  # any streaming hiccup → safe fallback (never worse)
                 logger.exception("streaming reply failed; falling back to non-streamed")
 
@@ -538,8 +540,13 @@ class ResponseGenerator:
             and prompt.session_id not in self._pending
         ):
             gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
-            with contextlib.suppress(Exception):
+            try:
                 await self._dynamic_ack(prompt, speak)
+            except PROGRAMMING_ERRORS:
+                gen_task.cancel()
+                raise  # F3: a bug in the ack path was previously swallowed silently
+            except Exception:  # the filler is optional — the answer is not
+                logger.warning("dynamic ack failed; continuing to the answer", exc_info=True)
             result = await gen_task
         else:
             result = await self.generate(prompt, dispatcher, context)

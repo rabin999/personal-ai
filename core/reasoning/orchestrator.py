@@ -16,8 +16,9 @@ the LangGraph library is imported ONLY inside its adapter.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
@@ -54,3 +55,34 @@ class Orchestrator(Protocol):
         engine that omitted it broke the live path while the text path stayed green.
         """
         ...
+
+
+class OrchestratorContractError(TypeError):
+    """A wired engine cannot accept the call the serving edge makes."""
+
+
+def assert_orchestrator_contract(engine: Any) -> None:
+    """Fail FAST (at wiring time) if ``engine`` can't accept the exact call the voice
+    edge makes on every turn — ``voice/session.py::_speak_turn``.
+
+    This exists because that mismatch previously surfaced only at runtime, inside a
+    broad ``except Exception``, as silence on every voice turn (F1). Binding the real
+    call shape against the real signature turns that into a startup crash.
+    """
+    for name in ("generate", "generate_spoken"):
+        if not callable(getattr(engine, name, None)):
+            raise OrchestratorContractError(
+                f"{type(engine).__name__} does not implement Orchestrator.{name}()"
+            )
+    sentinel = object()
+    try:
+        # The literal call shape of VoiceSession._speak_turn: four positional args
+        # (prompt, dispatcher, context, speak) plus the temperature keyword.
+        inspect.signature(engine.generate_spoken).bind(
+            sentinel, sentinel, sentinel, sentinel, temperature=None
+        )
+    except TypeError as exc:
+        raise OrchestratorContractError(
+            f"{type(engine).__name__}.generate_spoken() cannot accept the call the voice "
+            f"edge makes (prompt, dispatcher, context, speak, temperature=...): {exc}"
+        ) from exc
