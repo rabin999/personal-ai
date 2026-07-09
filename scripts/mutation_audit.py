@@ -284,9 +284,9 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="style_flags_never_reported",
         file="core/reasoning/response_gen.py",
-        old="        style_flags = find_forbidden(clean_text, allow_disclosure=allow_disc)",
-        new="        style_flags = []",
-        breaks="the final result never carries style_flags — enforcement is blind",
+        old="        caught = list(caught or []) + enforced_here",
+        new="        caught = []",
+        breaks="the trace never records what enforcement removed — the gate row goes vacuous",
     ),
     Mutation(
         name="capability_repair_disabled",

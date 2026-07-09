@@ -305,7 +305,7 @@ async def test_the_gates_actually_invoke_the_warm_disclosure_polish() -> None:
     llm = FakeLLM([warm])
     gen = _generator(llm)
 
-    text, action = await gen._apply_gates(
+    text, action, _caught = await gen._apply_gates(
         _prompt("do you actually care about me?"),
         "I don't feel emotions like a person does.",
         Judgment(requires_nature_disclosure=True),
@@ -326,7 +326,9 @@ async def test_a_normal_turn_never_pays_for_the_disclosure_polish() -> None:
     llm = FakeLLM([])
     gen = _generator(llm)
 
-    text, _ = await gen._apply_gates(_prompt("hey"), "Hey, good to hear from you.", Judgment())
+    text, _action, _caught = await gen._apply_gates(
+        _prompt("hey"), "Hey, good to hear from you.", Judgment()
+    )
 
     assert text == "Hey, good to hear from you."
     assert llm.calls == [], f"an unnecessary LLM call ran on a plain turn: {llm.calls}"

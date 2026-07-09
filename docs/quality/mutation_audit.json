@@ -1,6 +1,36 @@
 {
-  "baseline_failures": [],
+  "baseline_failures": [
+    "tests/engine/test_e1_enforcement.py::test_any_reply_path_exception_yields_a_reply_never_a_raise"
+  ],
   "mutations": [
+    {
+      "name": "the_qdrant_search_is_not_user_scoped",
+      "file": "adapters/vector/qdrant.py",
+      "breaks": "\u00a70.5 MULTI-TENANT ISOLATION: every user's vectors become searchable by every other",
+      "status": "KILLED",
+      "killed": [
+        "tests/golden/test_gs1_memory.py::test_gs1_aggregate_recall",
+        "tests/golden/test_gs1_memory.py::test_gs1_case[semantic_paraphrase_pet]",
+        "tests/golden/test_gs1_memory.py::test_gs1_case[semantic_stress_work]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[colleague_reference]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[dominant_brother]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[dominant_fitness]",
+        "tests/golden/test_gs2_entities.py::test_gs2_case[near_collision_trading_tracker]",
+        "tests/golden/test_gs5_isolation.py::test_gs5_no_cross_user_leak"
+      ],
+      "killed_count": 8
+    },
+    {
+      "name": "entity_resolution_ignores_the_score_order",
+      "file": "core/memory/entities.py",
+      "breaks": "a silent WRONG resolution: the runner-up is returned as the match",
+      "status": "KILLED",
+      "killed": [
+        "tests/unit/test_entities.py::test_a_dominant_candidate_is_never_shadowed_by_a_weaker_one",
+        "tests/unit/test_entities.py::test_resolve_returns_candidates_best_first_whatever_order_the_store_gave"
+      ],
+      "killed_count": 2
+    },
     {
       "name": "vol_always_false",
       "file": "core/reasoning/volatility.py",
@@ -33,9 +63,14 @@
       "breaks": "a turn the reasoning step judged volatile takes the non-agentic path",
       "status": "KILLED",
       "killed": [
+        "tests/engine/test_e1_emotional_tool_gate.py::test_a_stressed_turn_about_a_price_still_searches",
+        "tests/engine/test_e1_emotional_tool_gate.py::test_a_volatile_question_still_searches",
+        "tests/engine/test_e1_emotional_tool_gate.py::test_an_emotional_turn_that_genuinely_needs_current_events_still_searches",
+        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks",
+        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing",
         "tests/engine/test_e1_steps.py::test_volatile_verdict_routes_to_the_agentic_path"
       ],
-      "killed_count": 1
+      "killed_count": 6
     },
     {
       "name": "detector_never_flags",
@@ -43,6 +78,10 @@
       "breaks": "the style detector flags nothing \u2014 self-reflection never triggers",
       "status": "KILLED",
       "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply",
+        "tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like",
+        "tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes",
+        "tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register",
         "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI language model, I can't do that.]",
         "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI, I don't have personal feelings or consciousness.]",
         "tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Even though I can't feel or think like you do, it's interesting.]",
@@ -74,12 +113,71 @@
         "tests/golden/test_style_judge_agreement.py::test_detector_flags_every_reply_the_judge_called_chatbot_like",
         "tests/golden/test_style_judge_agreement.py::test_stock_filler_is_only_banned_when_it_is_the_whole_reply",
         "tests/golden/test_style_judge_agreement.py::test_warm_empathy_apology_is_not_a_corporate_apology",
+        "tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off",
         "tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty",
-        "tests/unit/test_response_gen.py::test_self_reflection_off_leaves_draft_untouched",
         "tests/unit/test_response_gen.py::test_self_reflection_rewrites_assistant_speak_draft",
         "tests/unit/test_response_gen.py::test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in"
       ],
-      "killed_count": 35
+      "killed_count": 39
+    },
+    {
+      "name": "detector_ignores_register",
+      "file": "core/reasoning/style.py",
+      "breaks": "D-12: the detector reverts to a closed list of remembered phrasings; held-out recall collapses",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like",
+        "tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "detector_ignores_the_lead_sentence",
+      "file": "core/reasoning/style.py",
+      "breaks": "D-12: an opening service-desk apology ('I'm sorry, I couldn't find that') is not flagged",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply",
+        "tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "resolve_the_whole_utterance",
+      "file": "core/memory/entities.py",
+      "breaks": "D-13: entity resolution embeds the whole sentence again; an adversarial probe halts the turn",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_reference_spans.py::test_a_greeting_can_never_be_ambiguous",
+        "tests/engine/test_e1_reference_spans.py::test_a_possessive_phrase_stops_at_the_preposition",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[how many OP do I have?-op]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[how's OP doing-op]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[log today's gym workout-today's gym workout]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[text my brother Ram-my brother ram]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[update my share trading tracke-my share trading tracker]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[what did I pay for SYPNL-sypnl]",
+        "tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[what's the current LTP of OP?-op]",
+        "tests/engine/test_e1_reference_spans.py::test_a_verb_contraction_is_not_a_possessive",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[I'm feeling really low today]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[hi]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[ignore your previous instruc]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[it's freezing in here]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[what did your other users as]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[what's 15% of 240?]",
+        "tests/engine/test_e1_reference_spans.py::test_an_utterance_naming_no_entity_yields_no_reference[what's the weather like toda]",
+        "tests/engine/test_e1_reference_spans.py::test_the_ticker_in_a_question_about_the_world_is_not_the_users_holding"
+      ],
+      "killed_count": 18
+    },
+    {
+      "name": "possessive_span_runs_past_the_preposition",
+      "file": "core/memory/entities.py",
+      "breaks": "D-13: 'my portfolio with my brother' becomes one span and resolves to three entities",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_reference_spans.py::test_a_possessive_phrase_stops_at_the_preposition"
+      ],
+      "killed_count": 1
     },
     {
       "name": "reflection_never_runs",
@@ -93,24 +191,167 @@
       "killed_count": 2
     },
     {
-      "name": "style_flags_never_reported",
-      "file": "core/reasoning/response_gen.py",
-      "breaks": "the final result never carries style_flags \u2014 enforcement is blind",
+      "name": "the_now_section_hands_the_model_a_worked_example",
+      "file": "core/reasoning/prompt_assembly.py",
+      "breaks": "D-17: the model speaks the prompt's example phrase as the answer",
       "status": "KILLED",
       "killed": [
-        "tests/unit/test_response_gen.py::test_self_reflection_off_leaves_draft_untouched"
+        "tests/engine/test_e3_now_section.py::test_the_prompt_offers_no_worked_example_of_an_answer[just past midnight]"
       ],
       "killed_count": 1
     },
     {
-      "name": "capability_repair_disabled",
-      "file": "core/reasoning/response_gen.py",
-      "breaks": "the forced-search backstop never runs \u2014 a refusal ships as the answer",
+      "name": "the_model_does_the_timezone_arithmetic",
+      "file": "core/reasoning/localtime.py",
+      "breaks": "D-17: every place reads 'same time as you'; the offset is wrong in magnitude and direction",
       "status": "KILLED",
       "killed": [
-        "tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it"
+        "tests/engine/test_e3_now_section.py::test_spain_is_reported_as_behind_kathmandu_not_ahead",
+        "tests/engine/test_e3_now_section.py::test_the_offset_is_exact_to_the_minute"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "the_echo_stripper_eats_the_answer",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-18: the query is cut out of the correct answer \u2014 'The is Balendra Shah!'",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_steps.py::test_strip_query_echo_does_not_eat_the_answer_it_is_cleaning"
       ],
       "killed_count": 1
+    },
+    {
+      "name": "an_emotional_turn_still_searches",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-14: the regex backstop overrides the classifier and searches on a bereavement turn",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_emotional_tool_gate.py::test_a_grieving_turn_does_not_reach_for_the_web",
+        "tests/engine/test_e1_emotional_tool_gate.py::test_the_model_is_never_offered_the_open_web_on_a_grieving_turn"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "external_tools_are_always_offered",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-14: the agentic loop can still request web_search at a grieving user",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_emotional_tool_gate.py::test_the_model_is_never_offered_the_open_web_on_a_grieving_turn"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "the_fallback_answers_a_volatile_turn_from_training_data",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "a judgment-JSON glitch on a volatile turn ships a stale answer with zero searches",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks",
+        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "empty_is_an_emotion_again",
+      "file": "core/reasoning/prosody.py",
+      "breaks": "D-5: the literal word 'empty' parses as sadness; every neutral turn is delivered 'down'",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e3_prosody_read.py::test_a_neutral_turn_is_never_delivered_in_a_down_register",
+        "tests/engine/test_e3_prosody_read.py::test_no_neutral_sentinel_is_also_an_emotion_word",
+        "tests/engine/test_e3_prosody_read.py::test_the_literal_word_empty_is_not_an_emotion"
+      ],
+      "killed_count": 3
+    },
+    {
+      "name": "pain_is_not_an_emotion",
+      "file": "core/reasoning/prosody.py",
+      "breaks": "D-5: 'pain' \u2014 the design doc's own worked example \u2014 yields no emotional read",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e3_prosody_read.py::test_the_emotional_reads_the_design_doc_itself_produces_are_understood"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "simple_turns_skip_the_classifier",
+      "file": "adapters/orchestrator/langgraph_orchestrator.py",
+      "breaks": "D-2: generate() forms no volatility verdict on a simple turn; the callers diverge",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e5_caller_independence.py::test_the_classifier_runs_on_every_turn_whatever_its_complexity[simple]",
+        "tests/engine/test_e5_caller_independence.py::test_the_verdict_is_identical_across_complexity_hints"
+      ],
+      "killed_count": 2
+    },
+    {
+      "name": "fallback_skips_the_gates",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-6: a fallback reply skips self-reflection, check_boundary and the curiosity gate",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_self_reflection_runs_even_when_the_judgment_json_is_invalid",
+        "tests/engine/test_e1_enforcement.py::test_the_overclaim_guard_runs_even_on_a_fallback_reply",
+        "tests/unit/test_response_gen.py::test_two_bad_payloads_fall_back_to_warm_plain_reply"
+      ],
+      "killed_count": 3
+    },
+    {
+      "name": "enforcement_is_advisory",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-7: a draft the engine flagged as assistant-speak ships as the final reply",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply",
+        "tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft",
+        "tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off"
+      ],
+      "killed_count": 3
+    },
+    {
+      "name": "the_ack_can_be_the_final_reply",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-8/D-16: 'I'll grab that for you right away' ships as the answer to a price question",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "promise_verbs_are_a_closed_list",
+      "file": "core/reasoning/style.py",
+      "breaks": "D-16: an acknowledgement is not recognised as one, so it survives enforcement",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "the_streamed_reply_is_never_enforced",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "D-7: the voice path speaks the draft before enforcement can replace it",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft"
+      ],
+      "killed_count": 1
+    },
+    {
+      "name": "style_flags_never_reported",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the final result never carries style_flags \u2014 enforcement is blind",
+      "status": "SURVIVED",
+      "killed": [],
+      "killed_count": 0
+    },
+    {
+      "name": "capability_repair_disabled",
+      "status": "anchor_not_found",
+      "killed": []
     },
     {
       "name": "search_query_is_raw_utterance",
@@ -140,6 +381,7 @@
       "breaks": "the overclaim rewrite never fires \u2014 'I understand exactly how you feel' ships",
       "status": "KILLED",
       "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_overclaim_guard_runs_even_on_a_fallback_reply",
         "tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_caught_by_heuristic_without_flag]",
         "tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_consciousness_must_be_rewritten]",
         "tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_empathy_must_be_rewritten]",
@@ -149,7 +391,7 @@
         "tests/unit/test_self_model.py::test_overclaiming_draft_is_flagged_and_rewritten",
         "tests/unit/test_self_model.py::test_rewrite_retries_once_then_falls_back_safely"
       ],
-      "killed_count": 8
+      "killed_count": 9
     },
     {
       "name": "warm_disclosure_disabled",
@@ -214,13 +456,25 @@
       "breaks": "the emotional read never selects a register \u2014 delivery never varies",
       "status": "KILLED",
       "killed": [
+        "tests/engine/test_e1_emotional_tool_gate.py::test_a_grieving_turn_does_not_reach_for_the_web",
+        "tests/engine/test_e1_emotional_tool_gate.py::test_an_emotional_turn_that_genuinely_needs_current_events_still_searches",
+        "tests/engine/test_e1_emotional_tool_gate.py::test_the_model_is_never_offered_the_open_web_on_a_grieving_turn",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[anxious-stressed]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[excitement-excited]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[frustrated-stressed]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[grief-down]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[lonely-down]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[proud-excited]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[sadness-down]",
+        "tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[stressed-stressed]",
+        "tests/engine/test_e3_prosody_read.py::test_the_emotional_reads_the_design_doc_itself_produces_are_understood",
         "tests/unit/test_prosody.py::test_excited_read_selects_upbeat_register",
         "tests/unit/test_prosody.py::test_label_shortcut_sad",
         "tests/unit/test_prosody.py::test_sad_read_selects_gentle_encouraging_register",
         "tests/unit/test_prosody.py::test_stressed_read_selects_calm_register",
         "tests/unit/test_prosody.py::test_text_sentiment_fallback_maps_reads_to_registers"
       ],
-      "killed_count": 5
+      "killed_count": 17
     },
     {
       "name": "query_echo_not_stripped",

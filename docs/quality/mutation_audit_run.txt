@@ -1,5 +1,16 @@
 === baseline ===
-baseline: no summary  (41s)
+baseline: no summary  (22s)
+  pre-existing failures (excluded from every mutation): ['tests/engine/test_e1_enforcement.py::test_any_reply_path_exception_yields_a_reply_never_a_raise']
+[KILLED  ] the_qdrant_search_is_not_user_scoped   8 test(s)  |  no summary
+             ↳ tests/golden/test_gs1_memory.py::test_gs1_aggregate_recall
+             ↳ tests/golden/test_gs1_memory.py::test_gs1_case[semantic_paraphrase_pet]
+             ↳ tests/golden/test_gs1_memory.py::test_gs1_case[semantic_stress_work]
+             ↳ tests/golden/test_gs2_entities.py::test_gs2_case[colleague_reference]
+             ↳ tests/golden/test_gs2_entities.py::test_gs2_case[dominant_brother]
+             ↳ tests/golden/test_gs2_entities.py::test_gs2_case[dominant_fitness]
+[KILLED  ] entity_resolution_ignores_the_score_order   2 test(s)  |  no summary
+             ↳ tests/unit/test_entities.py::test_a_dominant_candidate_is_never_shadowed_by_a_weaker_one
+             ↳ tests/unit/test_entities.py::test_resolve_returns_candidates_best_first_whatever_order_the_store_gave
 [KILLED  ] vol_always_false                    17 test(s)  |  no summary
              ↳ tests/engine/test_e1_steps.py::test_an_unknown_verdict_falls_back_to_the_deterministic_backstop
              ↳ tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_false_negatives_are_exactly_the_known_set
@@ -7,35 +18,91 @@ baseline: no summary  (41s)
              ↳ tests/engine/test_e2_volatility_classifier.py::test_deterministic_gate_recall_does_not_regress
              ↳ tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[is Tim Cook still the CEO of Apple?]
              ↳ tests/engine/test_e2_volatility_classifier.py::test_the_headline_volatile_questions_are_always_caught[what's the current LTP of OP?]
-[KILLED  ] live_lookup_always_false             1 test(s)  |  no summary
+[KILLED  ] live_lookup_always_false             6 test(s)  |  no summary
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_a_stressed_turn_about_a_price_still_searches
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_a_volatile_question_still_searches
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_an_emotional_turn_that_genuinely_needs_current_events_still_searches
+             ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks
+             ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing
              ↳ tests/engine/test_e1_steps.py::test_volatile_verdict_routes_to_the_agentic_path
-[KILLED  ] detector_never_flags                35 test(s)  |  no summary
+[KILLED  ] detector_never_flags                39 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply
+             ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like
+             ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes
+             ↳ tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register
              ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI language model, I can't do that.]
              ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI, I don't have personal feelings or consciousness.]
-             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Even though I can't feel or think like you do, it's interesting.]
-             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Feel free to ask me anything!]
-             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[Happy to help!]
-             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[How can I help you today?]
+[KILLED  ] detector_ignores_register            2 test(s)  |  no summary
+             ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like
+             ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes
+[KILLED  ] detector_ignores_the_lead_sentence   2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply
+             ↳ tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register
+[KILLED  ] resolve_the_whole_utterance         18 test(s)  |  no summary
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_greeting_can_never_be_ambiguous
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_possessive_phrase_stops_at_the_preposition
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[how many OP do I have?-op]
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[how's OP doing-op]
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[log today's gym workout-today's gym workout]
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_real_reference_is_extracted[text my brother Ram-my brother ram]
+[KILLED  ] possessive_span_runs_past_the_preposition   1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_reference_spans.py::test_a_possessive_phrase_stops_at_the_preposition
 [KILLED  ] reflection_never_runs                2 test(s)  |  no summary
              ↳ tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty
              ↳ tests/unit/test_response_gen.py::test_self_reflection_rewrites_assistant_speak_draft
-[KILLED  ] style_flags_never_reported           1 test(s)  |  no summary
-             ↳ tests/unit/test_response_gen.py::test_self_reflection_off_leaves_draft_untouched
-[KILLED  ] capability_repair_disabled           1 test(s)  |  no summary
-             ↳ tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it
+[KILLED  ] the_now_section_hands_the_model_a_worked_example   1 test(s)  |  no summary
+             ↳ tests/engine/test_e3_now_section.py::test_the_prompt_offers_no_worked_example_of_an_answer[just past midnight]
+[KILLED  ] the_model_does_the_timezone_arithmetic   2 test(s)  |  no summary
+             ↳ tests/engine/test_e3_now_section.py::test_spain_is_reported_as_behind_kathmandu_not_ahead
+             ↳ tests/engine/test_e3_now_section.py::test_the_offset_is_exact_to_the_minute
+[KILLED  ] the_echo_stripper_eats_the_answer    1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_steps.py::test_strip_query_echo_does_not_eat_the_answer_it_is_cleaning
+[KILLED  ] an_emotional_turn_still_searches     2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_a_grieving_turn_does_not_reach_for_the_web
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_the_model_is_never_offered_the_open_web_on_a_grieving_turn
+[KILLED  ] external_tools_are_always_offered    1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_the_model_is_never_offered_the_open_web_on_a_grieving_turn
+[KILLED  ] the_fallback_answers_a_volatile_turn_from_training_data   2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks
+             ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing
+[KILLED  ] empty_is_an_emotion_again            3 test(s)  |  no summary
+             ↳ tests/engine/test_e3_prosody_read.py::test_a_neutral_turn_is_never_delivered_in_a_down_register
+             ↳ tests/engine/test_e3_prosody_read.py::test_no_neutral_sentinel_is_also_an_emotion_word
+             ↳ tests/engine/test_e3_prosody_read.py::test_the_literal_word_empty_is_not_an_emotion
+[KILLED  ] pain_is_not_an_emotion               1 test(s)  |  no summary
+             ↳ tests/engine/test_e3_prosody_read.py::test_the_emotional_reads_the_design_doc_itself_produces_are_understood
+[KILLED  ] simple_turns_skip_the_classifier     2 test(s)  |  no summary
+             ↳ tests/engine/test_e5_caller_independence.py::test_the_classifier_runs_on_every_turn_whatever_its_complexity[simple]
+             ↳ tests/engine/test_e5_caller_independence.py::test_the_verdict_is_identical_across_complexity_hints
+[KILLED  ] fallback_skips_the_gates             3 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_self_reflection_runs_even_when_the_judgment_json_is_invalid
+             ↳ tests/engine/test_e1_enforcement.py::test_the_overclaim_guard_runs_even_on_a_fallback_reply
+             ↳ tests/unit/test_response_gen.py::test_two_bad_payloads_fall_back_to_warm_plain_reply
+[KILLED  ] enforcement_is_advisory              3 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply
+             ↳ tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft
+             ↳ tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off
+[KILLED  ] the_ack_can_be_the_final_reply       1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply
+[KILLED  ] promise_verbs_are_a_closed_list      1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply
+[KILLED  ] the_streamed_reply_is_never_enforced   1 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft
+[SURVIVED] style_flags_never_reported           0 test(s)  |  no summary
+[SKIP] capability_repair_disabled: anchor not found in core/reasoning/response_gen.py
 [KILLED  ] search_query_is_raw_utterance        2 test(s)  |  no summary
              ↳ tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it
              ↳ tests/engine/test_e1_steps.py::test_search_query_is_built_from_the_resolved_entity
 [KILLED  ] curiosity_gate_always_responds       2 test(s)  |  no summary
              ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[curiosity_gate_clarifies_on_low_intent]
              ↳ tests/unit/test_response_gen.py::test_low_intent_confidence_triggers_clarify_not_a_guess
-[KILLED  ] boundary_never_flags                 8 test(s)  |  no summary
+[KILLED  ] boundary_never_flags                 9 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_overclaim_guard_runs_even_on_a_fallback_reply
              ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_caught_by_heuristic_without_flag]
              ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_consciousness_must_be_rewritten]
              ↳ tests/golden/test_gs3_behavioral.py::test_gs3_case[overclaim_empathy_must_be_rewritten]
              ↳ tests/unit/test_response_gen.py::test_flagged_overclaim_is_rewritten_before_leaving_module
              ↳ tests/unit/test_self_model.py::test_consciousness_claims_are_flagged
-             ↳ tests/unit/test_self_model.py::test_judgment_flag_triggers_rewrite_even_without_pattern_match
 [KILLED  ] warm_disclosure_disabled             1 test(s)  |  no summary
              ↳ tests/engine/test_e1_steps.py::test_the_gates_actually_invoke_the_warm_disclosure_polish
 [KILLED  ] degenerate_rewrite_accepted          2 test(s)  |  no summary
@@ -53,12 +120,13 @@ baseline: no summary  (41s)
              ↳ tests/golden/test_gs3_style.py::test_scrub_returns_empty_when_whole_reply_is_banned
              ↳ tests/unit/test_response_gen.py::test_reflection_scrubs_when_rewrite_still_dirty
              ↳ tests/unit/test_response_gen.py::test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in
-[KILLED  ] register_always_neutral              5 test(s)  |  no summary
-             ↳ tests/unit/test_prosody.py::test_excited_read_selects_upbeat_register
-             ↳ tests/unit/test_prosody.py::test_label_shortcut_sad
-             ↳ tests/unit/test_prosody.py::test_sad_read_selects_gentle_encouraging_register
-             ↳ tests/unit/test_prosody.py::test_stressed_read_selects_calm_register
-             ↳ tests/unit/test_prosody.py::test_text_sentiment_fallback_maps_reads_to_registers
+[KILLED  ] register_always_neutral             17 test(s)  |  no summary
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_a_grieving_turn_does_not_reach_for_the_web
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_an_emotional_turn_that_genuinely_needs_current_events_still_searches
+             ↳ tests/engine/test_e1_emotional_tool_gate.py::test_the_model_is_never_offered_the_open_web_on_a_grieving_turn
+             ↳ tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[anxious-stressed]
+             ↳ tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[excitement-excited]
+             ↳ tests/engine/test_e3_prosody_read.py::test_a_felt_read_selects_the_register_that_feeling_implies[frustrated-stressed]
 [KILLED  ] query_echo_not_stripped              1 test(s)  |  no summary
              ↳ tests/engine/test_e1_steps.py::test_the_search_query_is_never_spoken_back
 [KILLED  ] tag_sanitizer_is_identity            2 test(s)  |  no summary
@@ -68,4 +136,4 @@ baseline: no summary  (41s)
 
 wrote docs/quality/mutation_audit.json
 
-SURVIVED (nothing tests these): ['judgment_validation_skipped']
+SURVIVED (nothing tests these): ['style_flags_never_reported', 'judgment_validation_skipped']

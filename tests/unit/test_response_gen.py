@@ -287,8 +287,11 @@ async def test_enforcement_is_absolute_even_with_self_reflection_off() -> None:
     h = await Harness([_turn_json(draft=draft)], self_reflect=False).seed()
     result = await h.generator.generate(_prompt("hi"))
     assert result.final_text != draft
-    assert result.style_flags == []
-    assert find_forbidden(result.final_text) == []
+    assert find_forbidden(result.final_text) == [], "a flagged draft became the final reply"
+    # `style_flags` records what enforcement CAUGHT on the draft, not what survived. Holding
+    # "flags on the final text" would make the field empty by construction, and the gate row
+    # `flagged drafts that became the reply = 0` vacuous — see GenerationResult.style_flags.
+    assert result.style_flags == ["service-desk opener"]
 
 
 async def test_duplicate_action_tool_call_runs_once_per_turn() -> None:

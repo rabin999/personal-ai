@@ -4,21 +4,15 @@
   ],
   "mutations": [
     {
-      "name": "the_qdrant_search_is_not_user_scoped",
-      "file": "adapters/vector/qdrant.py",
-      "breaks": "\u00a70.5 MULTI-TENANT ISOLATION: every user's vectors become searchable by every other",
+      "name": "style_flags_never_reported",
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the trace never records what enforcement removed \u2014 the gate row goes vacuous",
       "status": "KILLED",
       "killed": [
-        "tests/golden/test_gs1_memory.py::test_gs1_aggregate_recall",
-        "tests/golden/test_gs1_memory.py::test_gs1_case[semantic_paraphrase_pet]",
-        "tests/golden/test_gs1_memory.py::test_gs1_case[semantic_stress_work]",
-        "tests/golden/test_gs2_entities.py::test_gs2_case[colleague_reference]",
-        "tests/golden/test_gs2_entities.py::test_gs2_case[dominant_brother]",
-        "tests/golden/test_gs2_entities.py::test_gs2_case[dominant_fitness]",
-        "tests/golden/test_gs2_entities.py::test_gs2_case[near_collision_trading_tracker]",
-        "tests/golden/test_gs5_isolation.py::test_gs5_no_cross_user_leak"
+        "tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply",
+        "tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off"
       ],
-      "killed_count": 8
+      "killed_count": 2
     }
   ]
 }

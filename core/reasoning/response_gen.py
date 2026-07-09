@@ -291,9 +291,19 @@ class GenerationResult(BaseModel):
     action: Action
     judgment: Judgment | None = None
     turn_id: str | None = None
-    # Labels for any forbidden assistant-speak found in the final text (§7). The
-    # mechanism only FLAGS (wording is human-tuned); the runtime logs it to the
-    # trace so a tone regression is visible instead of shipping silently.
+    # What the style detector CAUGHT on the draft, before `_enforce` acted on it (§7).
+    #
+    # This used to hold the flags found on the FINAL text — and the engine returned that text
+    # regardless, which is D-7. Now that enforcement guarantees the final text is clean, a
+    # field holding "flags on the final text" is empty by construction, and the gate row
+    # `flagged drafts that became the reply = 0` would read PASS for the same reason an
+    # unplugged smoke alarm never sounds. The mutation `style_flags_never_reported` proved
+    # exactly that: after the D-7 fix, setting this field to `[]` became an *equivalent*
+    # mutation that no test could kill.
+    #
+    # So it now records what enforcement caught. It is observability, not a verdict. The
+    # verdict is `find_forbidden(final_text)`, which every caller computes for itself and
+    # which must always be empty.
     style_flags: list[str] = []
 
 
@@ -842,7 +852,7 @@ class ResponseGenerator:
             ambiguity=0.1,
             requires_nature_disclosure=_asks_about_nature(prompt.utterance),
         )
-        gated, action = await self._apply_gates(prompt, text, judgment)
+        gated, action, caught = await self._apply_gates(prompt, text, judgment)
 
         spoken = 0
         while (b := _sentence_end(gated, spoken)) is not None:
@@ -851,7 +861,7 @@ class ResponseGenerator:
         if spoken < len(gated):  # flush the final (unterminated) sentence
             await self._speak_clean(gated[spoken:], speak)
 
-        return await self._finish_spoken(prompt, gated, judgment, action)
+        return await self._finish_spoken(prompt, gated, judgment, action, caught)
 
     async def _speak_clean(self, sentence: str, speak: "Callable[[str], Awaitable[None]]") -> None:
         """Sanitize a sentence (keep whitelisted voice tags, drop assistant-speak)
@@ -875,6 +885,7 @@ class ResponseGenerator:
         decoded_draft: str,
         judgment: Judgment,
         action: Action = "respond",
+        caught: list[str] | None = None,
     ) -> GenerationResult:
         """Build the result for an already-spoken streamed reply (trace/memory)."""
         self._span(
@@ -889,7 +900,7 @@ class ResponseGenerator:
             streamed=True,
         )
         voice_text = _sanitize_tags(decoded_draft)
-        return await self._finish(prompt, voice_text, action, judgment)
+        return await self._finish(prompt, voice_text, action, judgment, caught)
 
     async def _resolve_confirmation(
         self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
@@ -936,8 +947,8 @@ class ResponseGenerator:
             complexity=turn.judgment.complexity_tier,
             boundary_flag=turn.judgment.capability_boundary_flag,
         )
-        text, action = await self._apply_gates(prompt, turn.draft_response, turn.judgment)
-        return await self._finish(prompt, text, action, turn.judgment)
+        text, action, caught = await self._apply_gates(prompt, turn.draft_response, turn.judgment)
+        return await self._finish(prompt, text, action, turn.judgment, caught)
 
     async def _fallback(
         self,
@@ -1001,12 +1012,12 @@ class ResponseGenerator:
             requires_nature_disclosure=_asks_about_nature(prompt.utterance),
         )
         self._span("reasoning", node="fallback_reply", gated=True)
-        gated, action = await self._apply_gates(prompt, text, judgment)
-        return await self._finish(prompt, gated, action, judgment)
+        gated, action, caught = await self._apply_gates(prompt, text, judgment)
+        return await self._finish(prompt, gated, action, judgment, caught)
 
     async def _apply_gates(
         self, prompt: AssembledPrompt, draft: str, judgment: Judgment
-    ) -> tuple[str, Action]:
+    ) -> tuple[str, Action, list[str]]:
         """The §12 behaviour gates — curiosity, overclaim, disclosure, self-reflection.
 
         C1: this is the companion's CHARACTER machinery, and it used to live inline in
@@ -1079,7 +1090,8 @@ class ResponseGenerator:
         # text this method returns. A reply enforced after it has been spoken is a companion
         # that audibly walks back its own words. `_finish` enforces again as a backstop for
         # any future caller; on an already-clean reply that second pass is a no-op.
-        return self._enforce(prompt, text, allow_disclosure=allow_disc), action
+        text, caught = self._enforce(prompt, text, allow_disclosure=allow_disc)
+        return text, action, caught
 
     def _span(self, event: str, *, level: str = "info", **fields: Any) -> None:
         """Emit a reasoning span into the current turn's trace (via the logger)."""
@@ -1394,15 +1406,15 @@ class ResponseGenerator:
         text: str,
         action: Action,
         judgment: Judgment | None,
+        caught: list[str] | None = None,
     ) -> GenerationResult:
-        # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
-        # and stored memory get the tag-free version (brief §1.4).
-        # U8: deterministic prosody backstop — never laugh on a down/stressed turn,
-        # even if the model slipped a levity tag in. Register is from the emotional
-        # read; recorded in the trace as proof prosody was selected per emotion.
+        """The single door out of the engine. `caught` is what `_apply_gates` already found on
+        the draft; when it is None this text has not been enforced yet (the `_disambiguate`
+        path) and `_enforce` both cleans it and reports what it removed."""
         # A required nature disclosure is not a style violation (§1.2 rule 4).
         allow_disc = bool(judgment and judgment.requires_nature_disclosure)
-        text = self._enforce(prompt, text, allow_disclosure=allow_disc)
+        text, enforced_here = self._enforce(prompt, text, allow_disclosure=allow_disc)
+        caught = list(caught or []) + enforced_here
 
         # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
         # and stored memory get the tag-free version (brief §1.4).
@@ -1424,19 +1436,22 @@ class ResponseGenerator:
             capability_boundary_flag=judgment.capability_boundary_flag if judgment else None,
         )
         await self._self_model.log(record, statement_text=clean_text)
-        style_flags = find_forbidden(clean_text, allow_disclosure=allow_disc)
-        if style_flags:  # the enforcement above should have made this unreachable
-            logger.error("ENFORCEMENT ESCAPE: shipping a flagged reply: %s", style_flags)
+        escaped = find_forbidden(clean_text, allow_disclosure=allow_disc)
+        if escaped:  # `_enforce` should have made this unreachable; never fail silently
+            logger.error("ENFORCEMENT ESCAPE: shipping a flagged reply: %s", escaped)
+            self._span("enforcement", level="error", rule="escape", flags=escaped)
         return GenerationResult(
             final_text=clean_text,
             voice_text=voice_text,
             action=action,
             judgment=judgment,
             turn_id=record.turn_id,
-            style_flags=style_flags,
+            style_flags=caught,
         )
 
-    def _enforce(self, prompt: AssembledPrompt, text: str, *, allow_disclosure: bool) -> str:
+    def _enforce(
+        self, prompt: AssembledPrompt, text: str, *, allow_disclosure: bool
+    ) -> tuple[str, list[str]]:
         """The last gate before the reply leaves the engine (D-7, D-8, D-16).
 
         `_finish` used to compute `style_flags`, log a warning, and return the reply anyway.
@@ -1467,11 +1482,14 @@ class ResponseGenerator:
             self._span(
                 "enforcement", level="warn", rule="acknowledgement_never_final", draft=text[:200]
             )
-            return _SEARCH_FAILED_TEXT if prompt.needs_live_info else _NOT_FOUND_TEXT
+            return (
+                _SEARCH_FAILED_TEXT if prompt.needs_live_info else _NOT_FOUND_TEXT,
+                ["bare acknowledgement"],
+            )
 
         flags = find_forbidden(text, allow_disclosure=allow_disclosure)
         if not flags:
-            return text
+            return text, []
 
         scrubbed = scrub_forbidden(text, allow_disclosure=allow_disclosure)
         # A scrub that guts the reply is not a cleaner reply, it is a broken one — the same
@@ -1491,7 +1509,7 @@ class ResponseGenerator:
             salvaged=bool(salvaged),
             draft=text[:200],
         )
-        return scrubbed if salvaged else _SAFE_FALLBACK_TEXT
+        return (scrubbed if salvaged else _SAFE_FALLBACK_TEXT), flags
 
 
 # Whitelisted inline delivery tags (§23) — anything else in [...]/<...> is a

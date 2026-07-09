@@ -180,9 +180,12 @@ async def test_the_streaming_path_never_speaks_an_unenforced_draft() -> None:
     """
     gen = _generator(FakeLLM(["How may I assist you today?"]), _SpanLog())
 
-    text, _action = await gen._apply_gates(_prompt("hi"), "How can I help you today?", Judgment())
+    text, _action, caught = await gen._apply_gates(
+        _prompt("hi"), "How can I help you today?", Judgment()
+    )
 
     assert find_forbidden(text) == [], f"_apply_gates returned a flagged draft: {text!r}"
+    assert caught == ["service-desk opener"], "enforcement did not report what it removed"
 
 
 async def test_enforcement_leaves_a_clean_reply_exactly_as_it_was() -> None:
@@ -191,10 +194,11 @@ async def test_enforcement_leaves_a_clean_reply_exactly_as_it_was() -> None:
     good = "Oh Nandi, I am so sorry. Losing your dad is a lot to carry."
     gen = _generator(FakeLLM([]), _SpanLog())
 
-    text, action = await gen._apply_gates(_prompt("my dad died"), good, Judgment())
+    text, action, caught = await gen._apply_gates(_prompt("my dad died"), good, Judgment())
 
     assert text == good
     assert action == "respond"
+    assert caught == [], "enforcement reported a catch on a clean reply"
 
 
 # ── the fallback must not answer a volatile turn from training data ──────────
@@ -287,12 +291,12 @@ async def test_a_draft_carrying_style_flags_never_becomes_the_final_reply() -> N
 
     result = await _generator(llm, logs).generate(_prompt("hi"))
 
-    assert result.style_flags == [], (
-        f"the engine shipped a reply it had flagged {result.style_flags} as assistant-speak: "
-        f"{result.final_text!r}. The detector detects; nothing enforces. "
-        "See DEFECTS_FOUND.md D-7."
+    assert find_forbidden(result.final_text) == [], (
+        f"the engine shipped a reply the detector flags: {result.final_text!r}. "
+        "The detector detects; nothing enforces. See DEFECTS_FOUND.md D-7."
     )
-    assert find_forbidden(result.final_text) == []
+    # And it says so: `style_flags` records what enforcement had to remove.
+    assert result.style_flags, "enforcement fired but reported nothing to the trace"
 
 
 # ── D-9: an exception on the reply path must never yield silence ─────────────

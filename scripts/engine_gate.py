@@ -77,7 +77,17 @@ def must_not_be_empty(result: Any) -> str:
 
 
 def must_not_ship_flags(result: Any) -> str:
-    return "" if not result.style_flags else f"shipped a draft it flagged {result.style_flags}"
+    """Run the detector over the reply the user actually received.
+
+    NOT `result.style_flags`. That field now records what enforcement CAUGHT on the draft, so
+    reading it here would measure how often the engine had to intervene, not whether it
+    succeeded — and before the D-7 fix it measured nothing at all, because the detector flagged
+    nothing (D-12). Ask the question directly: is the reply clean?
+    """
+    from core.reasoning.style import find_forbidden
+
+    flags = find_forbidden(result.reply)
+    return "" if not flags else f"shipped a reply the detector flags {flags}: {result.reply!r}"
 
 
 def must_not_be_an_ack(result: Any) -> str:
@@ -383,7 +393,10 @@ def report(records: list[dict], sample: float) -> bool:
     n = len(records)
 
     empty = sum(r["empty"] for r in records)
-    flagged_shipped = sum(bool(r.get("style_flags")) for r in records)
+    # Non-vacuously: a violation string exists only when `find_forbidden(reply)` was non-empty.
+    marker = "shipped a reply the detector flags"
+    flagged_shipped = sum(1 for r in records if any(marker in v for v in r["violations"]))
+    enforcement_fired = sum(1 for r in records if r.get("style_flags"))
     raised = sum(bool(r.get("raised")) for r in records)
     no_reflection = sum(not r.get("reflected") for r in records)
     chatbot = sum(r["chatbot_like"] for r in judged)
@@ -424,6 +437,8 @@ def report(records: list[dict], sample: float) -> bool:
         print(f"{label:52s} {'>= 3':>12s} {median:>14.1f}  {verdict}")
         ok &= median >= 3
 
+    fired = f"enforcement fired on {enforcement_fired}/{n} turns"
+    print(f"\n{fired} (the draft was flagged; the reply was not)")
     lat = sorted(r["latency_ms"] for r in records)
     if lat:
         p95 = lat[min(len(lat) - 1, int(0.95 * len(lat)))]
