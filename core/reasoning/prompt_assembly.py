@@ -28,7 +28,7 @@ from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn, WorkingMemory
 from core.profile import ProfileService, TraitDef, TraitRegistry
 from core.profile.models import LocaleProfile
-from core.reasoning.localtime import day_part, local_now, resolve_timezone
+from core.reasoning.localtime import day_part, local_now, resolve_timezone, world_clock
 from core.reasoning.recall import (
     ConversationRecall,
     classify_recall,
@@ -561,27 +561,35 @@ def _now_section(locale: "LocaleProfile | None" = None) -> tuple[str, str | None
     Returns ``(section_text, user_local_signal)`` — the signal (e.g.
     'localtime=2026-07-08 18:12 evening Asia/Kathmandu') is recorded in the trace as
     proof the user-local time was used (U5)."""
+    # D-17. This block used to carry WORKED EXAMPLES of how to phrase a time — "e.g. 'just past
+    # midnight', 'about half four in the afternoon'" — and of a relative offset, "('~3 hours
+    # ahead of you')". Models completed the illustration instead of the task: asked the time in
+    # Spain at 3:04 PM Thursday, 4 of 10 replies said "just past midnight" verbatim and one
+    # said "about 3 hours ahead of you", pointing the wrong way. The examples are gone, and the
+    # timezone arithmetic is done in `world_clock()` with `zoneinfo` rather than asked of the
+    # model. Hand it answers, not a puzzle.
     now = datetime.now(UTC)
     base = (
         f"\n\n## Right now\nThe current time is {now.strftime('%Y-%m-%d %H:%M')} UTC "
-        f"({now.strftime('%A')}). Convert to whatever timezone the user asks about — "
-        "e.g. Tokyo = UTC+9, Kathmandu = UTC+5:45, New York = UTC-4/-5, London = UTC+0/+1. "
-        "When asked the time or date somewhere, STATE the actual clock time in a natural "
-        "human way (e.g. 'just past midnight', 'about half four in the afternoon'), never a "
-        "UTC offset; don't deflect."
+        f"({now.strftime('%A')}). When asked the time or date anywhere, state the actual clock "
+        "time and day in plain spoken language — never a UTC offset, and never deflect."
     )
     local = local_now(locale, now)
     if local is not None:
         tz = resolve_timezone(locale)
         part = day_part(local)
+        clock = "\n".join(world_clock(local, now))
         base += (
             f"\n**FOR THE USER it is currently {local.strftime('%H:%M')} on "
             f"{local.strftime('%A, %d %b')} — it is {part} where they are** ({tz}). "
             "Anchor EVERY time-of-day reference to THIS: greet and refer to the time of day "
             f"by their clock (it is {part} for them, not whatever it is on the server), and "
             "resolve 'tonight', 'tomorrow', 'in 2 hours', 'earlier today' against their local "
-            "time. When they ask the time elsewhere, also say it relative to them ('~3 hours "
-            "ahead of you')."
+            "time."
+            f"\n\nCurrent local time elsewhere, already converted — read these off, do not "
+            f"calculate:\n{clock}\n"
+            "If they ask about a place not on this list, say plainly that you're not sure of "
+            "the exact time there rather than guessing."
         )
         return base, f"localtime={local.strftime('%Y-%m-%d %H:%M')} {part} {tz}"
     # No resolvable timezone → never guess a time of day (the U5 bug: "good morning"

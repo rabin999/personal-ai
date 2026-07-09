@@ -13,7 +13,7 @@ time-of-day (no "good morning" guessing) — that's the exact bug this fixes.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from core.profile.models import LocaleProfile
@@ -114,3 +114,55 @@ def local_now(locale: LocaleProfile | None, now: datetime | None = None) -> date
         return None
     base = now or datetime.now(UTC)
     return base.astimezone(ZoneInfo(tz))
+
+
+# The places a person actually asks the time in. Each is resolved from the maps above, so
+# adding a city to `_CITY_TZ` adds it to the world clock too.
+_WORLD_CLOCK_PLACES: tuple[tuple[str, str], ...] = (
+    ("Nepal", "Asia/Kathmandu"),
+    ("India", "Asia/Kolkata"),
+    ("UK", "Europe/London"),
+    ("Spain", "Europe/Madrid"),
+    ("France", "Europe/Paris"),
+    ("Germany", "Europe/Berlin"),
+    ("UAE", "Asia/Dubai"),
+    ("Singapore", "Asia/Singapore"),
+    ("Japan", "Asia/Tokyo"),
+    ("China", "Asia/Shanghai"),
+    ("Australia (Sydney)", "Australia/Sydney"),
+    ("US East (New York)", "America/New_York"),
+    ("US West (Los Angeles)", "America/Los_Angeles"),
+)
+
+
+def _relative(delta_minutes: int) -> str:
+    """ "3h45m behind you" — computed, never asked of the model."""
+    if delta_minutes == 0:
+        return "same time as you"
+    direction = "ahead of" if delta_minutes > 0 else "behind"
+    minutes = abs(delta_minutes)
+    hours, mins = divmod(minutes, 60)
+    span = f"{hours}h{mins:02d}m" if mins else f"{hours}h"
+    return f"{span} {direction} you"
+
+
+def world_clock(user_local: datetime, now: datetime | None = None) -> list[str]:
+    """The current local time in each common place, and its offset from the USER (D-17).
+
+    Timezone arithmetic is done here, in code, with `zoneinfo`. The model is handed answers,
+    not a puzzle. Asked "what time is it in Spain?" at 3:04 PM Thursday, it previously replied
+    "It's still just past midnight on Wednesday" (5 of 10 runs) and gave the relative offset as
+    "six hours behind", "three hours behind" and "3 hours ahead" for one true value of
+    3h45m behind. It was completing the prompt's worked examples, not computing.
+    """
+    base = now or datetime.now(UTC)
+    user_offset = int((user_local.utcoffset() or timedelta()).total_seconds() // 60)
+    lines = []
+    for name, tz in _WORLD_CLOCK_PLACES:
+        there = base.astimezone(ZoneInfo(tz))
+        offset = int((there.utcoffset() or timedelta()).total_seconds() // 60)
+        lines.append(
+            f"- {name}: {there.strftime('%H:%M')} on {there.strftime('%A')} "
+            f"({_relative(offset - user_offset)})"
+        )
+    return lines

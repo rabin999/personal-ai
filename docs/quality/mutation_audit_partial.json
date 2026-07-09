@@ -1,17 +1,16 @@
 {
   "baseline_failures": [
-    "tests/engine/test_e1_enforcement.py::test_any_reply_path_exception_yields_a_reply_never_a_raise",
-    "tests/engine/test_e1_steps.py::test_strip_query_echo_does_not_eat_the_answer_it_is_cleaning"
+    "tests/engine/test_e1_enforcement.py::test_any_reply_path_exception_yields_a_reply_never_a_raise"
   ],
   "mutations": [
     {
-      "name": "the_fallback_answers_a_volatile_turn_from_training_data",
-      "file": "core/reasoning/response_gen.py",
-      "breaks": "a judgment-JSON glitch on a volatile turn ships a stale answer with zero searches",
+      "name": "the_model_does_the_timezone_arithmetic",
+      "file": "core/reasoning/localtime.py",
+      "breaks": "D-17: every place reads 'same time as you'; the offset is wrong in magnitude and direction",
       "status": "KILLED",
       "killed": [
-        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks",
-        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing"
+        "tests/engine/test_e3_now_section.py::test_spain_is_reported_as_behind_kathmandu_not_ahead",
+        "tests/engine/test_e3_now_section.py::test_the_offset_is_exact_to_the_minute"
       ],
       "killed_count": 2
     }

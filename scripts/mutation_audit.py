@@ -80,6 +80,7 @@ ENGINE_TESTS = [
     "tests/engine/test_e2_detector_agreement.py",
     "tests/engine/test_e1_enforcement.py",
     "tests/engine/test_e3_prosody_read.py",
+    "tests/engine/test_e3_now_section.py",
     "tests/engine/test_e5_caller_independence.py",
 ]
 
@@ -153,6 +154,27 @@ MUTATIONS: list[Mutation] = [
         old="        if self._self_reflect and flags_before:",
         new="        if False and self._self_reflect and flags_before:",
         breaks="self-reflection never revises a flagged draft",
+    ),
+    Mutation(
+        name="the_now_section_hands_the_model_a_worked_example",
+        file="core/reasoning/prompt_assembly.py",
+        old='        "time and day in plain spoken language — never a UTC offset, and never deflect."',
+        new="        \"time and day in a natural human way (e.g. 'just past midnight'), never a UTC offset.\"",
+        breaks="D-17: the model speaks the prompt's example phrase as the answer",
+    ),
+    Mutation(
+        name="the_model_does_the_timezone_arithmetic",
+        file="core/reasoning/localtime.py",
+        old="        offset = int((there.utcoffset() or timedelta()).total_seconds() // 60)",
+        new="        offset = user_offset",
+        breaks="D-17: every place reads 'same time as you'; the offset is wrong in magnitude and direction",
+    ),
+    Mutation(
+        name="the_echo_stripper_eats_the_answer",
+        file="core/reasoning/response_gen.py",
+        old='    echo = re.compile(\n        rf"(?:(?<=^)|(?<=[.!?…])\\s+){re.escape(q)}\\s*(?=[A-Z(\\"\']|$)",\n        re.IGNORECASE,\n    )',
+        new="    echo = re.compile(re.escape(q), re.IGNORECASE)",
+        breaks="D-18: the query is cut out of the correct answer — 'The is Balendra Shah!'",
     ),
     Mutation(
         name="an_emotional_turn_still_searches",
@@ -311,8 +333,8 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="query_echo_not_stripped",
         file="core/reasoning/response_gen.py",
-        old='def _strip_query_echo(text: str, query: str) -> str:\n    """Remove a verbatim echo of the search query from a spoken draft."""',
-        new='def _strip_query_echo(text: str, query: str) -> str:\n    """Remove a verbatim echo of the search query from a spoken draft."""\n    return text',
+        old="def _strip_query_echo(text: str, query: str) -> str:",
+        new="def _strip_query_echo(text: str, query: str) -> str:\n    return text",
         breaks="the raw search query is spoken aloud to the user",
     ),
     Mutation(

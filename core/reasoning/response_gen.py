@@ -1617,14 +1617,40 @@ def _is_degenerate_rewrite(original: str, candidate: str) -> bool:
 
 
 def _strip_query_echo(text: str, query: str) -> str:
-    """Remove a verbatim echo of the search query from a spoken draft."""
+    """Remove a search query the model read ALOUD, without touching the answer (D-18).
+
+    The model sometimes dictates its own query before answering:
+
+        "I'll check that right now. OP NEPSE LTP current price  The current LTP of OP is 308.90."
+                                    └────────── the echo ─────┘
+
+    This used to delete the query string wherever it occurred. `_build_search_query` produces
+    ordinary noun phrases, and an ordinary noun phrase is exactly what a correct answer
+    contains, so asking "who is the current prime minister of Nepal?" produced:
+
+        query : "current prime minister of Nepal"
+        reply : "The is Balendra Shah! He's also the youngest person to ever hold that…"
+
+    The engine searched, found the right answer, and mutilated it on the way out.
+
+    An echo is a **standalone fragment**: it starts the reply or follows a sentence end, and
+    is followed by the start of a new sentence or the end of the text. The same words flowing
+    through a sentence — preceded by "The", followed by "is" — are the answer, and are left
+    exactly where they are.
+    """
     q = query.strip()
-    if not q or q.lower() not in text.lower():
+    if not q:
         return text
-    idx = text.lower().index(q.lower())
-    cleaned = (text[:idx] + " " + text[idx + len(q) :]).strip()
-    cleaned = re.sub(r"\s{2,}", " ", cleaned)
-    return re.sub(r"\s+([.,!?])", r"\1", cleaned).strip(" .,-—:")
+    # (start-of-text | end-of-sentence) QUERY (start-of-sentence | end-of-text)
+    echo = re.compile(
+        rf"(?:(?<=^)|(?<=[.!?…])\s+){re.escape(q)}\s*(?=[A-Z(\"']|$)",
+        re.IGNORECASE,
+    )
+    cleaned, count = echo.subn(" ", text)
+    if not count:
+        return text
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return re.sub(r"\s+([.,!?])", r"\1", cleaned)
 
 
 def _needs_capability_repair(draft: str) -> bool:

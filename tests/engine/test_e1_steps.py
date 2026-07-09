@@ -152,7 +152,6 @@ def test_strip_query_echo_leaves_an_unrelated_reply_alone() -> None:
     assert _strip_query_echo(text, "some other query") == text
 
 
-@pytest.mark.defect
 def test_strip_query_echo_does_not_eat_the_answer_it_is_cleaning() -> None:
     """D-18. `_strip_query_echo` removes the query VERBATIM wherever it appears. When the
     query is an ordinary noun phrase — which is what `_build_search_query` produces — it also
