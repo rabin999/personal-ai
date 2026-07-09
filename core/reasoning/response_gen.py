@@ -598,6 +598,10 @@ class ResponseGenerator:
         except LLMUnavailable:
             return summary  # at least hand them the real facts
         answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        # The model sometimes writes the search query itself into the draft ("I'll check
+        # that for you right now. OP NEPSE LTP current price Nepal stock exchange The
+        # current LTP of OP is NPR 308.90..."). The user must never hear the query.
+        answer = _strip_query_echo(answer, query)
         return answer or summary
 
     async def _build_search_query(self, prompt: AssembledPrompt) -> str:
@@ -1462,6 +1466,17 @@ def _is_degenerate_rewrite(original: str, candidate: str) -> bool:
     if orig_words <= _MIN_REWRITE_WORDS:
         return False  # the original was already terse; nothing to gut
     return cand_words < _MIN_REWRITE_WORDS or cand_words < _MIN_REWRITE_WORD_RATIO * orig_words
+
+
+def _strip_query_echo(text: str, query: str) -> str:
+    """Remove a verbatim echo of the search query from a spoken draft."""
+    q = query.strip()
+    if not q or q.lower() not in text.lower():
+        return text
+    idx = text.lower().index(q.lower())
+    cleaned = (text[:idx] + " " + text[idx + len(q) :]).strip()
+    cleaned = re.sub(r"\s{2,}", " ", cleaned)
+    return re.sub(r"\s+([.,!?])", r"\1", cleaned).strip(" .,-—:")
 
 
 def _needs_capability_repair(draft: str) -> bool:

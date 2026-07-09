@@ -95,6 +95,11 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
     (r"to give you the (correct|right|accurate) (information|answer)", "service framing"),
     (r"\b(too|very) ambiguous\b", "service framing"),
     (r"i need to know what\b", "clarifier"),
+    # Offering to go and do a task for the user, like a support agent taking a ticket.
+    (r"i'?ll (check|look|get|find|pull) (that|it|this)( up)? for you", "assistant offer"),
+    (r"let me (check|look|get|find|pull) (that|it|this)( up)? for you", "assistant offer"),
+    (r"(want|happy) to help (you )?(sort|figure|work) (things? |this |it )?out", "assistant offer"),
+    (r"help (you )?sort (things?|it|this) out", "assistant offer"),
     # ── Clarifying an obviously-clear message instead of engaging. (The ambiguity
     # guardrail's own "Quick check — do you mean X or Y?" never passes through here:
     # `_disambiguate` builds its GenerationResult directly.)

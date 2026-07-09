@@ -1,0 +1,74 @@
+[
+  {
+    "question": "who is the current prime minister of Nepal?",
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "Balendra Shah is the current Prime Minister of Nepal."
+  },
+  {
+    "question": "who is the president of the United States?",
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "Joe Biden is still the President of the United States."
+  },
+  {
+    "question": "what's the LTP of SYPNL?",
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "I'm not familiar with \"LT p\" or \"s y p n l\" as a stock symbol, Nandi. Could you clarify what you mean by that?"
+  },
+  {
+    "question": "what's the price of SYPNL?",
+    "heuristic": true,
+    "searches": 2,
+    "queries": [
+      "SYPNL stock price",
+      "SYPNL stock price"
+    ],
+    "reply": "SYPNL is currently trading at about 1,373 Nepalese Rupees. The last traded price was just a little lower, around 1,367.50."
+  },
+  {
+    "question": "what's the weather in Kathmandu right now?",
+    "heuristic": true,
+    "searches": 2,
+    "queries": [
+      "current weather in Kathmandu",
+      "current weather in Kathmandu"
+    ],
+    "reply": "It's a bit hazy and humid in Kathmandu right now, Nandi, with a temperature of 28 degrees Celsius. They're expecting some light to moderate rain or even snow, with thunder and lightning, and it looks like that rain will continue in some areas."
+  },
+  {
+    "question": "is Tim Cook still the CEO of Apple?",
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "Yep, Tim Cook is still the CEO of Apple."
+  },
+  {
+    "question": "what happened in the news today?",
+    "heuristic": true,
+    "searches": 2,
+    "queries": [
+      "top news headlines today",
+      "top news headlines today"
+    ],
+    "reply": "The biggest news today, Nandi, is about the US striking Iran again. There are reports of multiple explosions in Iran's Hormozgan, and oil prices have jumped because of the ongoing tensions. Donald Trump also stated that a ceasefire with Iran is over."
+  },
+  {
+    "question": "what's 15% of 240?",
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "That's 36."
+  },
+  {
+    "question": "I'm feeling low today",
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "Oh, Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or would you rather just sit quietly for a bit?"
+  }
+]

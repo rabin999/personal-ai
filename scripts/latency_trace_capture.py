@@ -101,7 +101,7 @@ def _record(shape: str, idx: int, cap: TurnCapture) -> dict[str, Any]:
         },
         "graph_nodes": cap.graph_nodes,
         "llm_purposes": cap.purposes,
-        "searches": [t.get("args") for t in cap.searches],
+        "searches": cap.searches,  # TurnCapture.searches is now a list of query strings
         "exceptions": cap.exceptions,
         "waterfall": _waterfall(cap),
     }

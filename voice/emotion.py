@@ -4,7 +4,9 @@ Acoustic emotion analysis is slow, so it must never sit on the live response
 path. This provider kicks off analysis of the just-finished utterance in the
 background and hands the *next* turn whatever read has completed so far —
 ``current()`` is always non-blocking. The first turn simply has no acoustic
-read yet (returns None); the pipeline falls back to text-sentiment.
+read yet (returns None). When no acoustic read is available at all — the SER service is
+optional and often unconfigured — the orchestrator supplies a TEXT-SENTIMENT read instead
+(``core.reasoning.prosody.emotion_from_text``), so prosody is still driven per turn.
 
 The read is a probabilistic signal, not ground truth (rule 4). Feeds Prompt
 Assembly (§10 emotion signal) and the mood model (§17).

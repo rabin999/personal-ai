@@ -1,0 +1,160 @@
+[
+  {
+    "question": "who is the current prime minister of Nepal?",
+    "must_search": true,
+    "heuristic": false,
+    "searches": 1,
+    "queries": [
+      "current prime minister of Nepal"
+    ],
+    "reply": "Balendra Shah has been serving as the prime minister of Nepal since March 27, 2024.",
+    "purposes": [
+      "context_intent",
+      "response",
+      "response",
+      "search_query",
+      "ack",
+      "search_summarize",
+      "response_repair"
+    ],
+    "ok": true
+  },
+  {
+    "question": "who is the president of the United States?",
+    "must_search": true,
+    "heuristic": false,
+    "searches": 1,
+    "queries": [
+      "Who is the current president of the United States?"
+    ],
+    "reply": "According to some recent information, the current Vice President is JD Vance, and President Trump is participating in current press conferences and meetings. However, other results are conflicting or unclear about who the current president is.",
+    "purposes": [
+      "context_intent",
+      "ack",
+      "response",
+      "search_query",
+      "search_summarize",
+      "response_repair"
+    ],
+    "ok": true
+  },
+  {
+    "question": "what's the LTP of SYPNL?",
+    "must_search": true,
+    "heuristic": false,
+    "searches": 1,
+    "queries": [
+      "LTP SYPNL stock price Nepal"
+    ],
+    "reply": "The Last Traded Price for SYPNL is 1,367.50, Nandi. It's up 16.5, which is about 1.22%.",
+    "purposes": [
+      "context_intent",
+      "ack",
+      "response",
+      "response",
+      "search_summarize",
+      "response",
+      "response"
+    ],
+    "ok": true
+  },
+  {
+    "question": "what's the price of SYPNL?",
+    "must_search": true,
+    "heuristic": true,
+    "searches": 0,
+    "queries": [],
+    "reply": "The last traded price for SYPNL is 1,373 rupees, Nandi. That's up a bit from when you bought in at 230 \u2014 quite a jump.",
+    "purposes": [
+      "context_intent",
+      "ack",
+      "response",
+      "response",
+      "response_plain"
+    ],
+    "ok": false
+  },
+  {
+    "question": "what's the weather in Kathmandu right now?",
+    "must_search": true,
+    "heuristic": true,
+    "searches": 1,
+    "queries": [
+      "weather in Kathmandu right now"
+    ],
+    "reply": "It's about 26 degrees Celsius in Kathmandu right now, Nandi, feeling like 29 degrees. There's a 40% chance of rain, and they're expecting it to reach about 29 degrees Celsius by 3 PM with a similar chance of rain. There's a much higher chance of rain overnight, around 90%.",
+    "purposes": [
+      "context_intent",
+      "ack",
+      "response",
+      "search_summarize",
+      "response"
+    ],
+    "ok": true
+  },
+  {
+    "question": "is Tim Cook still the CEO of Apple?",
+    "must_search": true,
+    "heuristic": false,
+    "searches": 1,
+    "queries": [
+      "Is Tim Cook still CEO of Apple"
+    ],
+    "reply": "Yes, Tim Cook is still the CEO of Apple, but he's stepping down on September 1, 2026. After that, he'll be the Executive Chairman, and John Ternus will take over as CEO.",
+    "purposes": [
+      "context_intent",
+      "ack",
+      "response",
+      "search_query",
+      "response_repair"
+    ],
+    "ok": true
+  },
+  {
+    "question": "what happened in the news today?",
+    "must_search": true,
+    "heuristic": true,
+    "searches": 1,
+    "queries": [
+      "top news headlines today"
+    ],
+    "reply": "Well, Nandi, the biggest news is still about the US and Iran. The US President is apparently threatening more strikes, and Iran is talking about major attacks on US military bases. This is causing oil prices to go up.",
+    "purposes": [
+      "context_intent",
+      "ack",
+      "response",
+      "search_summarize",
+      "response",
+      "response"
+    ],
+    "ok": true
+  },
+  {
+    "question": "what's 15% of 240?",
+    "must_search": false,
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "That would be 36.",
+    "purposes": [
+      "context_intent",
+      "context_intent",
+      "response"
+    ],
+    "ok": true
+  },
+  {
+    "question": "I'm feeling low today",
+    "must_search": false,
+    "heuristic": false,
+    "searches": 0,
+    "queries": [],
+    "reply": "Oh, Nandi, I'm really sorry to hear that you're feeling low again today. Is there anything you want to talk about, or would you rather just sit quietly for a bit?",
+    "purposes": [
+      "context_intent",
+      "context_intent",
+      "response"
+    ],
+    "ok": true
+  }
+]

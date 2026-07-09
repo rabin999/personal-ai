@@ -166,8 +166,13 @@ async def _run(pipeline: Any, sc: Scenario, run: int) -> dict[str, Any]:
         "reply": cap.reply_text,
         "action": cap.action,
         "style_flags": cap.style_flags,
-        # Hard rule: banned assistant-speak absent from what the user HEARS.
-        "banned_in_reply": find_forbidden(cap.reply_text),
+        # Hard rule: banned assistant-speak absent from what the user HEARS. A nature
+        # question legitimately permits the warm one-line disclosure (§1.2 rule 4), so it
+        # must be measured with `allow_disclosure` — otherwise the harness flags the reply
+        # the design ASKS for. (The engine's own `style_flags` already gets this right.)
+        "banned_in_reply": find_forbidden(
+            cap.reply_text, allow_disclosure=sc.id == "nature_disclosure"
+        ),
         "empty_reply": not cap.reply_text.strip(),
         "audio_chunks": cap.audio_chunks,
         "first_audio_ms": cap.first_audio_ms,

@@ -50,6 +50,13 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 >    with the crypto token even with a correct fixture.
 >
 > Not deployed yet: run `sudo bash /opt/companion/deploy/update.sh` on the server.
+>
+> ## 2026-07-09 (later) — SRC1 + tone. **Quality gate FAILED (2/11); NOT deployed.**
+> Read `docs/HANDOVER.md` first, then `docs/SRC1_AND_TONE_REPORT.md`.
+> S1 (current-affairs questions never searched) is FIXED and proven 9/9. S2 (OP resolved as a
+> crypto token) FIXED. S3 fixture seeded. S5 judge enabled — and it turned out Langfuse was
+> silently 400-ing every score. S4 (tone) moved 3/11 -> 2/11 `chatbot_like` but the bar is 0/11.
+> Two mechanical fixes are committed and UNVERIFIED: re-run `scripts/quality_eval.py` first.
 
 > **Latency + UX pass (2026-07-09):** shipped the three follow-ups (prompt caching #17,
 > Grok STT adapter #18, 26-voice roster + natural default #19), the interactive
