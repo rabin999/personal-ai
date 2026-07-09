@@ -1,10 +1,10 @@
 # HANDOVER — resume here
 
-**Last session:** 2026-07-09. **Branch:** `main`, pushed. **Deployed:** NO (server still on `7e779c7`).
+**Last session:** 2026-07-09 (later). **Branch:** `main`. **Deployed:** NO (server still on `7e779c7`).
 
-> **The quality gate FAILED (2/11, target 0/11), so nothing was deployed.** Two mechanical fixes
-> for those two failures are committed but **NOT yet verified by a gate run**. That re-run is the
-> single next action.
+> **The quality gate was re-run and FAILED AGAIN: `chatbot_like` 2/11 (target 0/11),
+> `tone min_fit` 2 (target ≥3), and one turn produced NO AUDIO AT ALL.** Nothing deployed.
+> The three "unverified fixes" from last session are now verified: two landed, one didn't.
 
 Read first: `docs/SRC1_AND_TONE_REPORT.md`, then this file.
 
@@ -15,41 +15,61 @@ Read first: `docs/SRC1_AND_TONE_REPORT.md`, then this file.
 | Item | State | Evidence |
 |---|---|---|
 | **S1** — current-affairs questions never searched | ✅ **9/9 probes** | `docs/quality/live_info_{before,after}.json` |
-| **S2** — search query built from resolved entity | ✅ `OP` → `OP NEPSE LTP` → **NPR 308.90** (the NEPSE share, not the crypto token) | §3 of the report |
+| **S2** — search query built from resolved entity | ✅ `OP` → `OP NEPSE LTP` → **NPR 308.90** | §3 of the report |
 | **S3** — sample-user fixture | ✅ seeded | `scripts/seed_demo_user.py` |
-| **S4** — tone / `chatbot_like` | ❌ **FAILED: 2/11** (was 3/11; target **0/11**) | `docs/quality/after_character2.json` |
-| **S5** — judge on the live path | ✅ enabled + own connection pool; scores land in Langfuse | §5 of the report |
+| **S4** — tone / `chatbot_like` | ❌ **FAILED: 2/11**, tone `min_fit=2`, tone variants **not distinct** | `docs/quality/after_character3.json` |
+| **S5** — judge on the live path | ✅ enabled; scores land in Langfuse | §5 of the report |
+| **§10 new-user first turn** | ✅ **FIXED this session** (`6829504`) — was a hard crash | 7 red tests now green |
 | **Deploy** | ⬜ **blocked on S4** | — |
 
-`ruff` clean · `mypy` 204 (the standing baseline) · `lint-imports` 2/2 · **513 tests pass**.
+`ruff` clean · `mypy` 204 (standing baseline) · `lint-imports` 2/2 ·
+**594 passed, 2 failed** (both known SMTP-credential env failures).
+
+> ⚠️ The previous handover claimed "**513 tests pass**". That was **false**. Seven tests were
+> red at that commit — 5 `core_engine_e2e`, `test_full_text_conversation_turn`, and
+> `test_full_assembly_over_real_stores` — all from the `ProfileNotFound` regression below.
+> Re-run the suite yourself; do not trust a pass count you did not watch.
 
 ---
 
-## 2. NEXT ACTION (do this first)
+## 2. What this session found and fixed
 
-```bash
-uv run python -m scripts.quality_eval --label after_character3 --repeats 2
-```
+**A real production crash, unrelated to S4.** `629a500` (the L1 latency commit) moved
+`first_run_sync` and `enabled_traits` into the same `asyncio.gather`. `first_run_sync` *creates*
+the profile; `enabled_traits` *reads* it. As siblings they race, the trait read loses, and
+`assemble()` raises `ProfileNotFound` — **every brand-new user's first turn crashed**. The quality
+gate never caught it because it only ever speaks as the seeded demo user, who already has a
+profile. Fixed in `6829504`.
 
-Then read the two numbers that decide everything:
+---
 
-- `chatbot_like` count across the 11 scenarios — **must be 0/11**
-- `tone gate: min_fit` — **must be ≥ 3**
+## 3. NEXT ACTION — three real defects, in priority order
 
-Three fixes landed after the last gate run and are **unverified**:
+Gate artifact: `docs/quality/after_character3.json`.
 
-1. **Detector learned the service-offer shapes** it missed — `"I'll check that for you right now"`,
-   `"I really want to help sort things out for you"`. Those were the exact two `chatbot_like`
-   replies (`live_search`, `blunt_frustrated`).
-2. **`_strip_query_echo`** — the raw search query was being spoken aloud:
-   *"I'll check that for you right now. **OP NEPSE LTP current price Nepal stock exchange** The
-   current LTP of OP is NPR 308.90."*
-3. **Harness bug of mine:** `quality_eval` called `find_forbidden()` without `allow_disclosure`,
-   so it flagged the *desired* pull-based disclosure on `nature_disclosure` as banned. The engine's
-   own `style_flags` was correctly `[]`. Fixed — that "failure" was never real.
+**1. `indirect_intent[1]` returned an EMPTY reply** (`ReadTimeout`, `llm_calls=0`, `first_audio=None`).
+The user heard **nothing**. A silent turn is worse than a chatbot-like one and there is no
+fallback. This is the highest-severity item and it is *new* — it was not in the last run.
 
-If the gate passes: run `scripts/judge_contention.py` (S5's last unmeasured claim), fill in
-§7 of `docs/SRC1_AND_TONE_REPORT.md`, update `docs/TEST_REPORT.md`, then
+**2. `live_search` — the engine ships a reply it has already flagged as bad.** Final spoken text
+was exactly *"Oh, you're looking for the current Last Traded Price for OP again. I'll check that
+for you right now."* — the search **ack**, with no answer, after `searches=3`, `llm_calls=11`,
+`discarded_drafts=5`. Its own `style_flags` was `['assistant offer']`. So the detector fix from
+last session **works** (it detects), and `_strip_query_echo` **works** (no query echo), but
+nothing *enforces* the flag: when the repair loop exhausts, the ack is emitted as the final reply.
+Two bugs to separate: (a) a flagged draft must never be spoken; (b) the ack must never become the
+final reply. Note `live_search[0]` was clean — this is intermittent.
+
+**3. Tone gate: `distinct=False`, `min_fit=2`.** The `excited` and `neutral` variants produced a
+*byte-identical* reply, and `sad` differed only in its opening word. Dynamic prosody still does not
+change delivery. Consistent with the standing U8 finding (`ser_service_url` is empty in prod).
+
+`blunt_frustrated` **is fixed** (was `chatbot_like`, now `False`, score 4.5). `followup_reference[1]`
+is newly flagged, but for *over-explaining*, not service-desk speak — likely judge noise on a
+borderline reply; check before treating it as a code defect.
+
+**When the gate passes:** run `scripts/judge_contention.py`, fill §7 of
+`docs/SRC1_AND_TONE_REPORT.md`, update `docs/TEST_REPORT.md`, then
 `sudo bash /opt/companion/deploy/update.sh` on `root@202.58.120.93`.
 
 **If it still fails, report it as failed.** A green checkmark with an unchanged `chatbot_like`

@@ -58,6 +58,19 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 > silently 400-ing every score. S4 (tone) moved 3/11 -> 2/11 `chatbot_like` but the bar is 0/11.
 > Two mechanical fixes are committed and UNVERIFIED: re-run `scripts/quality_eval.py` first.
 
+> ## 2026-07-09 (gate re-run) — **gate FAILED again (2/11, tone min_fit=2); still NOT deployed.**
+> `docs/quality/after_character3.json`. `blunt_frustrated` is fixed; `live_search` still ships a
+> reply its OWN `style_flags` marked `assistant offer` (the search ack, no answer, after 5 discarded
+> drafts) — the detector detects but nothing enforces. `indirect_intent` produced an **empty reply**
+> on a `ReadTimeout` (user heard silence, no fallback) — new, and the top-priority defect. Tone
+> variants were byte-identical (`distinct=False`).
+>
+> **Also fixed a real production crash found by the suite, not the gate:** `629a500` raced
+> `first_run_sync` (creates the profile) against `enabled_traits` (reads it) inside one
+> `asyncio.gather`, so **every new user's first turn raised `ProfileNotFound`** (`6829504`).
+> The prior handover's "**513 tests pass**" was false — 7 tests were red at that commit.
+> True suite state now: **594 passed, 2 failed** (known SMTP-credential env failures).
+
 > **Latency + UX pass (2026-07-09):** shipped the three follow-ups (prompt caching #17,
 > Grok STT adapter #18, 26-voice roster + natural default #19), the interactive
 > knowledge-graph, and a full latency program: profiled the turn (L0), right-sized the
