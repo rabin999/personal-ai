@@ -4,13 +4,13 @@
   ],
   "mutations": [
     {
-      "name": "style_flags_never_reported",
+      "name": "capability_repair_disabled",
       "file": "core/reasoning/response_gen.py",
-      "breaks": "the trace never records what enforcement removed \u2014 the gate row goes vacuous",
+      "breaks": "the forced-search backstop never runs \u2014 a refusal ships as the answer",
       "status": "KILLED",
       "killed": [
-        "tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply",
-        "tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off"
+        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks",
+        "tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it"
       ],
       "killed_count": 2
     }

@@ -98,6 +98,11 @@ class Mutation:
     tests: list[str] = field(default_factory=lambda: list(ENGINE_TESTS))
 
 
+# The no-op control. It must SURVIVE: a mutation that changes nothing must kill nothing. If it
+# ever starts killing tests, the harness is measuring test ordering, not behaviour, and every
+# other row in the matrix is worthless.
+CONTROL_MUTATION = "judgment_validation_skipped"
+
 MUTATIONS: list[Mutation] = [
     # ── The two mutations `docs/TEST_AUDIT.md` §6 names as missing. Multi-tenant isolation is
     # a HARD invariant (§0.5), and a silent wrong-resolution is a critical failure; neither was
@@ -256,8 +261,8 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="enforcement_is_advisory",
         file="core/reasoning/response_gen.py",
-        old="        return scrubbed if salvaged else _SAFE_FALLBACK_TEXT",
-        new="        return text",
+        old="        return (scrubbed if salvaged else _SAFE_FALLBACK_TEXT), flags",
+        new="        return text, flags",
         breaks="D-7: a draft the engine flagged as assistant-speak ships as the final reply",
     ),
     Mutation(
@@ -277,8 +282,8 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="the_streamed_reply_is_never_enforced",
         file="core/reasoning/response_gen.py",
-        old="        return self._enforce(prompt, text, allow_disclosure=allow_disc), action",
-        new="        return text, action",
+        old="        text, caught = self._enforce(prompt, text, allow_disclosure=allow_disc)\n        return text, action, caught",
+        new="        return text, action, []",
         breaks="D-7: the voice path speaks the draft before enforcement can replace it",
     ),
     Mutation(
@@ -291,7 +296,7 @@ MUTATIONS: list[Mutation] = [
     Mutation(
         name="capability_repair_disabled",
         file="core/reasoning/response_gen.py",
-        old='        if not any(t.id == "web_search" for t in dispatcher.tools_for(context)):\n            return None',
+        old='        available = offered_tools(prompt, dispatcher.tools_for(context))\n        if not any(t.id == "web_search" for t in available):\n            return None',
         new="        return None",
         breaks="the forced-search backstop never runs — a refusal ships as the answer",
     ),
@@ -438,7 +443,11 @@ def main() -> int:
         path = ROOT / m.file
         original = path.read_text()
         if m.old not in original:
-            print(f"[SKIP] {m.name}: anchor not found in {m.file}", flush=True)
+            # A silently skipped mutation is an unproven claim wearing a green tick. Three of
+            # them appeared the moment `_enforce` changed shape, and the matrix still printed
+            # "34 killed" — which is how an unproven claim hides. Refactoring the code the
+            # mutation anchors on is a normal thing to do; ignoring the consequence is not.
+            print(f"[SKIP] {m.name}: ANCHOR NOT FOUND in {m.file} — re-anchor it", flush=True)
             results.append({"name": m.name, "status": "anchor_not_found", "killed": []})
             continue
         path.write_text(original.replace(m.old, m.new, 1))
@@ -472,9 +481,18 @@ def main() -> int:
     )
     print(f"\nwrote {out.relative_to(ROOT)}")
     survived = [r["name"] for r in results if r["status"] == "SURVIVED"]
+    stale = [r["name"] for r in results if r["status"] == "anchor_not_found"]
     if survived:
         print(f"\nSURVIVED (nothing tests these): {survived}")
-    return 0
+    if stale:
+        print(f"\nSTALE ANCHORS (the claim is unproven, not verified): {stale}")
+    # `judgment_validation_skipped` is the deliberate no-op control: it MUST survive, and if it
+    # ever stops surviving the harness is measuring test ordering rather than behaviour.
+    real_survivors = [n for n in survived if n != CONTROL_MUTATION]
+    if CONTROL_MUTATION not in survived and not args.only:
+        print(f"\nCONTROL FAILURE: {CONTROL_MUTATION} was killed — the harness is unsound")
+        return 2
+    return 1 if (real_survivors or stale) else 0
 
 
 if __name__ == "__main__":

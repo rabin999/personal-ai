@@ -1,5 +1,5 @@
 === baseline ===
-baseline: no summary  (22s)
+baseline: no summary  (20s)
   pre-existing failures (excluded from every mutation): ['tests/engine/test_e1_enforcement.py::test_any_reply_path_exception_yields_a_reply_never_a_raise']
 [KILLED  ] the_qdrant_search_is_not_user_scoped   8 test(s)  |  no summary
              ↳ tests/golden/test_gs1_memory.py::test_gs1_aggregate_recall
@@ -25,13 +25,13 @@ baseline: no summary  (22s)
              ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks
              ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_whose_search_fails_says_so_rather_than_guessing
              ↳ tests/engine/test_e1_steps.py::test_volatile_verdict_routes_to_the_agentic_path
-[KILLED  ] detector_never_flags                39 test(s)  |  no summary
+[KILLED  ] detector_never_flags                41 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply
              ↳ tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply
+             ↳ tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft
              ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like
              ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes
              ↳ tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register
-             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI language model, I can't do that.]
-             ↳ tests/golden/test_gs3_style.py::test_detector_flags_every_forbidden_phrasing[As an AI, I don't have personal feelings or consciousness.]
 [KILLED  ] detector_ignores_register            2 test(s)  |  no summary
              ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like
              ↳ tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes
@@ -88,8 +88,12 @@ baseline: no summary  (22s)
              ↳ tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply
 [KILLED  ] the_streamed_reply_is_never_enforced   1 test(s)  |  no summary
              ↳ tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft
-[SURVIVED] style_flags_never_reported           0 test(s)  |  no summary
-[SKIP] capability_repair_disabled: anchor not found in core/reasoning/response_gen.py
+[KILLED  ] style_flags_never_reported           2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply
+             ↳ tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off
+[KILLED  ] capability_repair_disabled           2 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks
+             ↳ tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it
 [KILLED  ] search_query_is_raw_utterance        2 test(s)  |  no summary
              ↳ tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it
              ↳ tests/engine/test_e1_steps.py::test_search_query_is_built_from_the_resolved_entity
@@ -105,7 +109,8 @@ baseline: no summary  (22s)
              ↳ tests/unit/test_self_model.py::test_consciousness_claims_are_flagged
 [KILLED  ] warm_disclosure_disabled             1 test(s)  |  no summary
              ↳ tests/engine/test_e1_steps.py::test_the_gates_actually_invoke_the_warm_disclosure_polish
-[KILLED  ] degenerate_rewrite_accepted          2 test(s)  |  no summary
+[KILLED  ] degenerate_rewrite_accepted          3 test(s)  |  no summary
+             ↳ tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft
              ↳ tests/engine/test_e1_steps.py::test_a_rewrite_that_guts_the_reply_is_rejected
              ↳ tests/engine/test_e1_steps.py::test_degenerate_rewrite_boundary[one two three four five six seven eight nine ten-one two three-True]
 [KILLED  ] cost_ceiling_never_trips             1 test(s)  |  no summary
@@ -136,4 +141,4 @@ baseline: no summary  (22s)
 
 wrote docs/quality/mutation_audit.json
 
-SURVIVED (nothing tests these): ['style_flags_never_reported', 'judgment_validation_skipped']
+SURVIVED (nothing tests these): ['judgment_validation_skipped']

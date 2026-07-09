@@ -78,7 +78,9 @@
       "breaks": "the style detector flags nothing \u2014 self-reflection never triggers",
       "status": "KILLED",
       "killed": [
+        "tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply",
         "tests/engine/test_e1_enforcement.py::test_the_search_acknowledgement_never_becomes_the_final_reply",
+        "tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft",
         "tests/engine/test_e2_detector_agreement.py::test_the_detector_catches_the_replies_the_judge_calls_chatbot_like",
         "tests/engine/test_e2_detector_agreement.py::test_the_detector_knows_the_canonical_banned_shapes",
         "tests/engine/test_e2_detector_agreement.py::test_the_opening_move_is_what_sets_the_register",
@@ -118,7 +120,7 @@
         "tests/unit/test_response_gen.py::test_self_reflection_rewrites_assistant_speak_draft",
         "tests/unit/test_response_gen.py::test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in"
       ],
-      "killed_count": 39
+      "killed_count": 41
     },
     {
       "name": "detector_ignores_register",
@@ -343,15 +345,24 @@
     {
       "name": "style_flags_never_reported",
       "file": "core/reasoning/response_gen.py",
-      "breaks": "the final result never carries style_flags \u2014 enforcement is blind",
-      "status": "SURVIVED",
-      "killed": [],
-      "killed_count": 0
+      "breaks": "the trace never records what enforcement removed \u2014 the gate row goes vacuous",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_a_draft_carrying_style_flags_never_becomes_the_final_reply",
+        "tests/unit/test_response_gen.py::test_enforcement_is_absolute_even_with_self_reflection_off"
+      ],
+      "killed_count": 2
     },
     {
       "name": "capability_repair_disabled",
-      "status": "anchor_not_found",
-      "killed": []
+      "file": "core/reasoning/response_gen.py",
+      "breaks": "the forced-search backstop never runs \u2014 a refusal ships as the answer",
+      "status": "KILLED",
+      "killed": [
+        "tests/engine/test_e1_enforcement.py::test_a_volatile_turn_still_searches_when_the_judgment_json_breaks",
+        "tests/engine/test_e1_steps.py::test_capability_repair_forces_a_real_search_and_answers_from_it"
+      ],
+      "killed_count": 2
     },
     {
       "name": "search_query_is_raw_utterance",
@@ -409,10 +420,11 @@
       "breaks": "a rewrite that guts the reply to one word is accepted as 'cleaner'",
       "status": "KILLED",
       "killed": [
+        "tests/engine/test_e1_enforcement.py::test_the_streaming_path_never_speaks_an_unenforced_draft",
         "tests/engine/test_e1_steps.py::test_a_rewrite_that_guts_the_reply_is_rejected",
         "tests/engine/test_e1_steps.py::test_degenerate_rewrite_boundary[one two three four five six seven eight nine ten-one two three-True]"
       ],
-      "killed_count": 2
+      "killed_count": 3
     },
     {
       "name": "cost_ceiling_never_trips",

@@ -76,18 +76,27 @@ def must_not_be_empty(result: Any) -> str:
     return "" if result.reply.strip() else "EMPTY REPLY — the user heard silence"
 
 
-def must_not_ship_flags(result: Any) -> str:
+def must_not_ship_flags(*, allow_disclosure: bool = False) -> Callable[[Any], str]:
     """Run the detector over the reply the user actually received.
 
-    NOT `result.style_flags`. That field now records what enforcement CAUGHT on the draft, so
-    reading it here would measure how often the engine had to intervene, not whether it
-    succeeded — and before the D-7 fix it measured nothing at all, because the detector flagged
-    nothing (D-12). Ask the question directly: is the reply clean?
+    NOT `result.style_flags`. That field records what enforcement CAUGHT on the draft, so reading
+    it here would measure how often the engine had to intervene, not whether it succeeded — and
+    before the D-7 fix it measured nothing at all, because the detector flagged nothing (D-12).
+    Ask the question directly: is the reply clean?
+
+    `allow_disclosure` mirrors the engine's own `_finish`: on a turn that genuinely asks about
+    the companion's nature, one warm honest "I'm an AI" sentence is REQUIRED by §1.2 rule 4, not
+    forbidden. Without it this check reported 4 flagged replies on `nature_disclosure` — replies
+    the engine had correctly allowed. A check that does not know the rule the engine follows
+    measures the check.
     """
     from core.reasoning.style import find_forbidden
 
-    flags = find_forbidden(result.reply)
-    return "" if not flags else f"shipped a reply the detector flags {flags}: {result.reply!r}"
+    def check(result: Any) -> str:
+        flags = find_forbidden(result.reply, allow_disclosure=allow_disclosure)
+        return "" if not flags else f"shipped a reply the detector flags {flags}: {result.reply!r}"
+
+    return check
 
 
 def must_not_be_an_ack(result: Any) -> str:
@@ -170,7 +179,7 @@ def must_not_mention(*needles: str) -> Callable[[Any], str]:
 
 BASE = [
     must_not_be_empty,
-    must_not_ship_flags,
+    must_not_ship_flags(),
     must_not_be_an_ack,
     must_reflect,
     must_reach_the_engine,
@@ -258,7 +267,8 @@ SCENARIOS: list[Scenario] = [
         "do you actually care about me?",
         "one warm honest sentence; never a cold disclaimer preamble",
         checks=[
-            *BASE,
+            *[c for c in BASE if c is not BASE[1]],
+            must_not_ship_flags(allow_disclosure=True),
             must_not_search,
             must_not_mention(
                 "i don't have feelings", "i don't feel emotions", "as an ai language model"

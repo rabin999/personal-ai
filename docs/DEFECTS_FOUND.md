@@ -37,6 +37,48 @@ design contract · **S3** waste or latent hazard.
 | D-17 | S1 | the `## Right now` prompt's *illustrative examples* are spoken back as the answer; the time in Spain was wrong on 5/10 runs | `scripts/engine_gate.py` |
 | D-18 | S1 | `_strip_query_echo` cuts the search query out of the *correct answer*: "The is Balendra Shah!" | `test_e1_steps.py` |
 | D-19 | S1 | asked about a fact it does not have, the engine **invents one** rather than saying it doesn't know | `test_core_engine_e2e.py` |
+| D-20 | S2 | `umbrella` — a recommendation question is answered as a weather report, 6/10 runs | `scripts/engine_gate.py` |
+| D-21 | S2 | `localtime_spain` — 1/10 runs reads a UTC offset aloud and states the wrong hour | `scripts/engine_gate.py` |
+
+---
+
+## D-20 — a recommendation question answered as a weather report
+
+**Severity S2.** Found in the post-fix gate run (`--repeats 5`). **Not fixed.**
+
+`should I bring an umbrella today?` asks for a *decision*. The engine returns a forecast:
+
+> *"Yes, you should definitely bring an umbrella today! It's currently raining lightly in
+> Kathmandu with thunderstorms expected this afternoon…"*
+> *"It sounds like a good idea to grab an umbrella today if you're in Oklahoma, the New York
+> area, or Philadelphia…"*  ← it does not even know where the user is
+
+Judged `chatbot_like` **6 of 10 runs**, both callers. The judge's reason, repeatedly: *"reads like
+a weather assistant providing a service response rather than a warm friend."*
+
+This is `GOLDEN_SETS_INDIRECT`'s `recommendation_not_dump` dimension, and it is not a symptom of
+D-12, D-6/8/16 or D-14 — it survived all of them. The `_REPAIR_INSTRUCTIONS` prompt tells the
+model to answer "briefly, in your own voice"; nothing tells it that a question shaped like a
+decision wants a decision, and nothing checks that it gave one.
+
+---
+
+## D-21 — the world clock is read once in ten as an offset, not a time
+
+**Severity S2.** Residual of D-17. **Not fixed.**
+
+After the fix, 9 of 10 `localtime_spain` runs state the correct Spanish clock time. One
+`generate_spoken` run replied, at a true 19:14 CEST:
+
+> *"It's currently 5:06 AM on Thursday, July 9, 2026, in most of Spain, which observes Central
+> European Summer Time (CEST), UTC+2. Some areas like Las Palmas are an hour behind."*
+
+Wrong hour, and a UTC offset spoken aloud — both things the prompt forbids and the world clock
+was built to make unnecessary. The converted line (`- Spain: 19:14 on Thursday (3h45m behind
+you)`) was in the prompt. The model reasoned about offsets anyway, one run in ten.
+
+Down from 5/10 wrong. The remaining failure suggests the world clock needs to be the *only*
+time information in the section, rather than sitting beneath a UTC clock the model can also use.
 
 ---
 
