@@ -149,9 +149,16 @@ class Settings(BaseSettings):
     langfuse_secret_key: str = ""
     langfuse_project: str = "companion"  # for building trace-detail deep links (A9)
     # §6/§7: run the companion-voice LLM-as-judge on every completed turn (off the
-    # reply path) and post its score to the turn's Langfuse trace. Off by default —
-    # it's an extra judge call per turn (cost) — enable to watch quality live.
-    langfuse_eval_enabled: bool = False
+    # reply path) and post its score to the turn's Langfuse trace.
+    #
+    # S5: this was False in every deployment, so NOTHING has ever scored production
+    # quality — every "quality must not drop" instruction had no baseline to drop from.
+    # It is now ON. The judge gets its own LLM client (its own connection pool) so it
+    # cannot contend with the live turn.
+    langfuse_eval_enabled: bool = True
+    # Fraction of completed turns to judge (1.0 = every turn). Lower it to trade quality
+    # coverage for cost; a sampled judge is weaker monitoring, so say so when reporting.
+    eval_sample_rate: float = 1.0
     # F9: optional LangGraph Studio URL to link out to from the app menu (only when
     # a `langgraph dev` / LangGraph Platform server is running). Empty → hidden.
     langgraph_studio_url: str = ""

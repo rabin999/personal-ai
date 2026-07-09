@@ -204,11 +204,14 @@ class ToolDispatcher:
         """
         spec, handler = self._registry.get(call.tool_id)
         started = time.perf_counter()
+        # A slow tool declares its own inline budget; the flat default timed out a cold
+        # web_search (measured 6021 ms) at exactly 8002 ms.
+        budget = spec.inline_timeout_s or timeout_s
         # Item 5: a broken/slow inline tool becomes a clean failure/timeout
         # envelope (not a raised exception), so the response loop's backstop can
         # fall through to the model's own words instead of the turn crashing.
         result, output = await run_step(
-            f"tool:{spec.id}", handler(call.args, context), timeout_s=timeout_s
+            f"tool:{spec.id}", handler(call.args, context), timeout_s=budget
         )
         elapsed_ms = (time.perf_counter() - started) * 1000
         if not result.ok or output is None:

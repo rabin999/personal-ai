@@ -143,6 +143,19 @@ class AssembledPrompt(BaseModel):
     # answer is already carried in the conversation, so the live-info search
     # backstop does NOT fire a fresh (irrelevant) search over the carried context.
     suppress_live_search: bool = False
+    # S1: the REASONING step's verdict on whether answering well needs CURRENT
+    # real-world info (a role-holder, a price, today's news, "still/current/latest").
+    # Set by the orchestrator's context/intent node. `None` means the classifier did not
+    # produce a usable answer, so the caller must fall back rather than assume "no".
+    #
+    # This exists because routing used to hang off a phrasing regex
+    # (`_is_live_info_query`), which returned False for "who is the current prime
+    # minister of Nepal?" — so the turn took the non-agentic streaming path, could never
+    # search, and answered from stale training data.
+    needs_live_info: bool | None = None
+    # The search the inferred intent implies ("current prime minister of Nepal"), which
+    # is a far better query than the raw transcript.
+    live_query: str = ""
     resolved_entities: list[EntityCandidate] = Field(default_factory=list)
     # F6: the behavioral traits actually composed into THIS prompt (id + version) —
     # recorded in the trace so a turn shows which traits shaped it; the injected

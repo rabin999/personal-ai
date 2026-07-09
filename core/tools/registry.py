@@ -22,6 +22,11 @@ class ToolSpec(BaseModel):
     input_schema: dict[str, Any] = Field(default_factory=dict)
     type: ToolType = "readonly"
     latency_class: LatencyClass = "fast"
+    # Budget when the response loop runs this tool INLINE (the capability backstop).
+    # None → the dispatcher's default. A cold `web_search` measures ~6 s (Serper ~3 s +
+    # the summarize LLM ~3 s), so the old flat 8 s default timed it out at 8002 ms
+    # whenever the query bypassed the cache — e.g. anything phrased "right now".
+    inline_timeout_s: float | None = None
     requires_confirmation: bool = False
     interruptible: bool = True
     scope: str = CORE_SCOPE  # "core" or "project:<project_type_id>"

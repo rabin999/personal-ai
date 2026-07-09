@@ -25,12 +25,15 @@ import asyncio
 import json
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
 from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
+from core.reasoning.prosody import emotion_from_text
 from core.reasoning.response_gen import GenerationResult, ResponseGenerator, ToolDispatch
 from core.tools.registry import ToolContext
 from ports.llm import LLM, LLMUnavailable
@@ -47,13 +50,20 @@ _CONTEXT_INSTRUCTIONS = (
     "weight — not to ask 'what do you mean?'. Infer the underlying want.\n"
     "2. EMOTIONAL READ — the feeling behind it, if any (pain, excitement, stress), or "
     "empty if neutral.\n"
-    "3. LIVE INFO — does answering well need CURRENT, real-world info the model can't "
-    "be sure of (news, scores, weather, prices, 'what's happening', an unfamiliar "
-    "name/term)? If so, give the search query. 'things at the office are rough' needs "
-    "NO search (it's emotional); 'that match last night' DOES (the result). The "
-    "current date, day, and UTC time are ALREADY provided to the responder, so a "
-    "question about today's date / day-of-week / the current time needs NO search "
-    "(needs_live_info=false) — the responder answers it directly.\n"
+    "3. LIVE INFO — would a confident answer risk being STALE? Set needs_live_info=true "
+    "for ANYTHING whose true answer can change over time, even if you believe you know "
+    "it. That includes: who CURRENTLY holds a role or title (prime minister, president, "
+    "CEO, champion, manager) and whether they 'still' hold it; prices, rates, scores, "
+    "standings; the weather; today's news or 'what's happening'; whether something is "
+    "still true/open/alive/available; recent events; any unfamiliar name, ticker or term. "
+    "Your training data is old — a role-holder question is ALWAYS needs_live_info=true. "
+    "'things at the office are rough' needs NO search (it's emotional); 'what's the "
+    "capital of France' needs NO search (stable fact); 'what's 15% of 240' needs NO "
+    "search (arithmetic). When in doubt about volatility, prefer true. If "
+    "needs_live_info is true you MUST give a concrete live_query. The current date, day, "
+    "and UTC time are ALREADY provided to the responder, so a question about today's "
+    "date / day-of-week / the current time needs NO search — the responder answers it "
+    "directly.\n"
     "4. CONNECTION — how the new message connects to what was said: resolve references "
     "('that', 'the temperature you told me') to the specific earlier thing, and label "
     "the relation.\n"
@@ -68,12 +78,25 @@ _CONTEXT_INSTRUCTIONS = (
 )
 
 
+@dataclass(frozen=True)
+class _Resolution:
+    """What the context/intent step concluded about this turn."""
+
+    note: str = ""
+    suppress_search: bool = False
+    # None = the classifier gave no usable answer; the caller falls back (S1).
+    needs_live_info: bool | None = None
+    live_query: str = ""
+    # C3/S4: the reasoning step's read of the feeling behind the message. Used as the
+    # TEXT-SENTIMENT fallback for prosody when acoustic SER is unavailable.
+    emotional_read: str = ""
+
+
 class _TurnState(TypedDict, total=False):
     prompt: AssembledPrompt
     dispatcher: ToolDispatch | None
     context: ToolContext | None
-    context_note: str
-    suppress_search: bool
+    resolution: _Resolution
     result: GenerationResult
 
 
@@ -140,9 +163,18 @@ class LangGraphOrchestrator:
                 prompt, dispatcher, context, speak, temperature=temperature
             )
         self._perceive_span(prompt)
-        note, suppress = await self._resolve_note(prompt)
-        turn_prompt = _augment(prompt, note, suppress) if note else prompt
-        self._span("reasoning", node="respond", streaming=True, context_used=bool(note))
+        res = await self._resolve_note(prompt)
+        # S1: ALWAYS augment — the volatility verdict must reach the reasoning core even
+        # when there is no context note to inject. Previously `if note else prompt` threw
+        # `needs_live_info` away on exactly the turns that had no prior context.
+        turn_prompt = _augment(prompt, res)
+        self._span(
+            "reasoning",
+            node="respond",
+            streaming=True,
+            context_used=bool(res.note),
+            needs_live_info=res.needs_live_info,
+        )
         result = await self._generator.generate_spoken(
             turn_prompt, dispatcher, context, speak, temperature=temperature
         )
@@ -183,31 +215,39 @@ class LangGraphOrchestrator:
         # itself, so quality holds. MODERATE/COMPLEX turns (follow-ups, references,
         # indirect asks) keep the full resolution step.
         if prompt.complexity_hint == "simple":
+            # S1 NOTE: skipping here leaves `needs_live_info=None` (unknown), NOT False.
+            # "who is the current prime minister of Nepal?" is a `simple` turn by the
+            # word-count heuristic, so the text path relies on the reasoning core's own
+            # tool_request + the regex backstop for these. The VOICE path never skips.
             self._span("reasoning", node="resolve_context", skipped="simple_turn_fast_path")
-            return {"context_note": "", "suppress_search": False}
-        note, suppress = await self._resolve_note(prompt)
-        return {"context_note": note, "suppress_search": suppress}
+            return {"resolution": _Resolution()}
+        return {"resolution": await self._resolve_note(prompt)}
 
-    async def _resolve_note(self, prompt: AssembledPrompt) -> tuple[str, bool]:
-        """A3 + F5: reason about how this utterance connects to the conversation AND
-        infer the underlying intent behind indirect phrasing (what they really want,
-        the emotional weight, whether current info is needed). Runs every turn — even
-        the first, so an indirect first message ('what's happening in Nepal gives me
-        pain') gets its intent inferred and logged. Returns (note, suppress_live_search)
-        and logs the inferred intent + why in the trace (F5/F7)."""
+    async def _resolve_note(self, prompt: AssembledPrompt) -> _Resolution:
+        """A3 + F5 + S1: reason about how this utterance connects to the conversation,
+        infer the underlying intent behind indirect phrasing, AND decide whether a
+        confident answer would risk being stale (`needs_live_info` + `live_query`).
+
+        That last verdict used to be computed here, logged to the trace, and then thrown
+        away — routing hung off a phrasing regex instead, which answered "who is the
+        current prime minister of Nepal?" from training data. It is now carried onto the
+        prompt (S1).
+        """
         history = list(prompt.messages[1:-1])  # drop system + current utterance
-        note = ""
         relation = "new_topic"
-        refers_to = ""
-        intent = ""
-        emotional_read = ""
-        needs_live_info = False
+        # `None` = the classifier never gave a usable answer. Distinct from False: the
+        # caller must fall back to the regex backstop rather than assume "no search".
+        # A JSONDecodeError used to be swallowed straight into False.
+        needs_live_info: bool | None = None
         live_query = ""
+        # Anchor "current" to the user's own clock, not the model's training cutoff.
+        now = datetime.now(UTC)
+        anchor = f"(Today is {now.strftime('%A, %d %B %Y')}. 'Current' means THIS date.)"
         if history:
             convo = "\n".join(f"{m['role']}: {m['content']}" for m in history[-6:])
-            user_msg = f"Recent conversation:\n{convo}\n\nNew message: {prompt.utterance}"
+            user_msg = f"{anchor}\nRecent conversation:\n{convo}\n\nNew message: {prompt.utterance}"
         else:  # first turn: no history, but still infer intent from the message alone
-            user_msg = f"New message (start of conversation): {prompt.utterance}"
+            user_msg = f"{anchor}\nNew message (start of conversation): {prompt.utterance}"
         # F13: fetch the CONTEXT+INTENT system prompt from prompt management
         # (Langfuse) at runtime so it's versioned/editable without a code change;
         # falls back to the bundled default if unavailable. Record which version ran.
@@ -229,18 +269,35 @@ class LangGraphOrchestrator:
             {"role": "system", "content": instructions},
             {"role": "user", "content": user_msg},
         ]
-        try:
-            res = await self._llm.complete(
-                prompt.user_id,
-                messages,
-                "moderate",
-                response_format={"type": "json_object"},
-                session_id=prompt.session_id,
-                temperature=0.2,  # P2: routing/intent is a decision → low temp, consistent
-                reasoning={"enabled": False},  # P4: no chain-of-thought for a routing call
-                purpose="context_intent",
-            )
-            parsed = json.loads(_strip(res.text))
+        # S1: the provider intermittently returns a bare "{" with output_tokens=0
+        # (measured: 1 in 12 calls). That used to be swallowed into needs_live_info=False,
+        # i.e. "answer from training data". Retry once, then leave the verdict UNKNOWN.
+        note = refers_to = intent = emotional_read = ""
+        for attempt in range(2):
+            try:
+                res = await self._llm.complete(
+                    prompt.user_id,
+                    messages,
+                    # Retry on a STRONGER tier: the failure is the provider returning a
+                    # bare "{" with output_tokens=0, and re-hitting the same model just
+                    # fails again. Costs nothing on the ~5-in-6 happy path.
+                    "moderate" if attempt == 0 else "complex",
+                    response_format={"type": "json_object"},
+                    session_id=prompt.session_id,
+                    temperature=0.2,  # P2: routing/intent is a decision → low temp
+                    reasoning={"enabled": False},  # P4: no chain-of-thought for routing
+                    purpose="context_intent",
+                )
+                parsed = json.loads(_strip(res.text))
+            except LLMUnavailable:
+                break  # provider down — the regex backstop decides
+            except (json.JSONDecodeError, ValueError, KeyError):
+                logger.warning(
+                    "context_intent returned unusable JSON (attempt %d): %.80r",
+                    attempt + 1,
+                    getattr(locals().get("res"), "text", ""),
+                )
+                continue
             relation = str(parsed.get("relation") or "new_topic")
             note = str(parsed.get("note") or "").strip()
             refers_to = str(parsed.get("refers_to") or "").strip()
@@ -248,8 +305,7 @@ class LangGraphOrchestrator:
             emotional_read = str(parsed.get("emotional_read") or "").strip()
             needs_live_info = bool(parsed.get("needs_live_info"))
             live_query = str(parsed.get("live_query") or "").strip()
-        except (LLMUnavailable, json.JSONDecodeError, ValueError, KeyError):
-            refers_to = ""
+            break
         # A3: a follow-up/continuation/correction whose answer is carried → suppress
         # the live-info search backstop so a fresh, irrelevant search can't override.
         # But NEVER suppress when this turn genuinely needs current info (F5): an
@@ -277,7 +333,13 @@ class LangGraphOrchestrator:
             prompt_managed_version=prompt_version_id,
             prompt_source=prompt_source,
         )
-        return note, carried
+        return _Resolution(
+            note=note,
+            suppress_search=carried,
+            needs_live_info=needs_live_info,
+            live_query=live_query,
+            emotional_read=emotional_read,
+        )
 
     async def _respond(self, state: _TurnState) -> _TurnState:
         """Run the proven reasoning core (judgment → tools → gates → reflection),
@@ -285,15 +347,15 @@ class LangGraphOrchestrator:
         prompt = state["prompt"]
         dispatcher = state.get("dispatcher")
         context = state.get("context")
-        note = state.get("context_note", "")
-        suppress = state.get("suppress_search", False)
-        turn_prompt = _augment(prompt, note, suppress) if note else prompt
+        res = state.get("resolution") or _Resolution()
+        turn_prompt = _augment(prompt, res)
         self._span(
             "reasoning",
             node="respond",
             model_tier=prompt.complexity_hint,
-            context_used=bool(note),
-            live_search_suppressed=suppress,
+            context_used=bool(res.note),
+            live_search_suppressed=res.suppress_search,
+            needs_live_info=res.needs_live_info,
         )
         result = await self._generator.generate(turn_prompt, dispatcher, context)
         return {"result": result}
@@ -346,18 +408,36 @@ class LangGraphOrchestrator:
             self._logs.log("info", "graph.node", stage=stage, **fields)
 
 
-def _augment(prompt: AssembledPrompt, note: str, suppress_search: bool = False) -> AssembledPrompt:
-    """Inject the context-resolution note as a system hint before the utterance, and
-    flag whether the live-info search backstop should be suppressed (A3)."""
-    hint = f"Context: {note}"
-    if suppress_search:
-        hint += " Answer from this and the conversation above — do NOT search the web again."
-    messages = [
-        *prompt.messages[:-1],
-        {"role": "system", "content": hint},
-        prompt.messages[-1],
-    ]
-    return prompt.model_copy(update={"messages": messages, "suppress_live_search": suppress_search})
+def _augment(prompt: AssembledPrompt, res: _Resolution) -> AssembledPrompt:
+    """Carry the context/intent step's conclusions onto the prompt.
+
+    The note becomes a system hint before the utterance (A3). The volatility verdict
+    (`needs_live_info` / `live_query`) rides on the prompt itself so the reasoning core
+    can route on it instead of on a phrasing regex (S1).
+    """
+    update: dict[str, Any] = {
+        "suppress_live_search": res.suppress_search,
+        "needs_live_info": res.needs_live_info,
+        "live_query": res.live_query,
+    }
+    # C3: acoustic SER wins when present; otherwise fall back to the text-sentiment read
+    # the reasoning step already produced. Without this `prompt.emotion` is always None in
+    # every real deployment (`ser_service_url` is empty), so the register is always
+    # "neutral" and the dynamic-prosody system never executes.
+    if not prompt.emotion:
+        derived = emotion_from_text(res.emotional_read)
+        if derived is not None:
+            update["emotion"] = derived
+    if res.note:
+        hint = f"Context: {res.note}"
+        if res.suppress_search:
+            hint += " Answer from this and the conversation above — do NOT search the web again."
+        update["messages"] = [
+            *prompt.messages[:-1],
+            {"role": "system", "content": hint},
+            prompt.messages[-1],
+        ]
+    return prompt.model_copy(update=update)
 
 
 def _strip(text: str) -> str:

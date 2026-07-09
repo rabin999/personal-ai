@@ -1,11 +1,23 @@
 """Dynamic prosody selection (brief U8; design §10.2, §3.6.5).
 
 The companion's voice must not be flat, and must not be MISMATCHED (the reported
-bug: laughing on a sad turn). This maps the per-turn emotional read (SER
-valence/arousal + text sentiment, §22) to (1) an explicit register directive
-injected into generation so the model weaves the RIGHT delivery tags, and (2) a
-deterministic backstop that strips clearly-inappropriate tags (a laugh on a
+bug: laughing on a sad turn). This maps the per-turn emotional read to (1) an explicit
+register directive injected into generation so the model weaves the RIGHT delivery tags,
+and (2) a deterministic backstop that strips clearly-inappropriate tags (a laugh on a
 down/stressed turn) before TTS — the model's guidance plus a safety net.
+
+**Two sources, in precedence order:**
+1. **Acoustic SER** (emotion2vec, §22) — needs a GPU service. When `ser_service_url` is
+   empty it yields nothing.
+2. **Text sentiment** — `emotion_from_text()`, derived from the reasoning step's own
+   `emotional_read` (the context/intent node already infers it from the transcript and
+   the conversation; it used to be logged and discarded).
+
+Source 2 is the FLOOR, not a replacement for source 1. Until it existed, `ser_service_url`
+was empty in every deployment, so `prompt.emotion` was always `None`, `read_register()`
+always returned `"neutral"`, and the whole dynamic-prosody system — marked ✅ — had never
+once executed on a real turn. Three docstrings claimed a "falls back to text-sentiment"
+behaviour that had no implementation behind it.
 
 Emotion is a probabilistic signal, never a diagnosis (§22 rule 4): a low-confidence
 read defaults to a natural register rather than forcing a tone.
@@ -13,6 +25,7 @@ read defaults to a natural register rather than forcing a tone.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -86,6 +99,60 @@ def prosody_directive(emotion: Mapping[str, Any] | None) -> tuple[Register, str]
     """The (register, generation-instruction) pair for this turn's emotional read."""
     register = read_register(emotion)
     return register, _DIRECTIVES[register]
+
+
+# Free-text emotional reads → the categorical labels `read_register` understands, with
+# dimensional values so a downstream consumer sees a complete `EmotionRead`-shaped dict.
+# Ordered: the first family that matches wins, so "frustrated and sad" reads as stressed.
+_TEXT_EMOTIONS: tuple[tuple[re.Pattern[str], dict[str, Any]], ...] = (
+    (
+        re.compile(
+            r"frustrat|angry|anger|annoy|irritat|impatien|stress|anxious|anxiety|worried|"
+            r"worry|nervous|tense|overwhelm|afraid|scared|fear|agitat|urgent|blunt|curt",
+            re.IGNORECASE,
+        ),
+        {"label": "frustrated", "valence": -0.4, "arousal": 0.6},
+    ),
+    (
+        re.compile(
+            r"\bsad\b|sadness|down|low\b|grief|griev|lonely|loneli|hurt|upset|heartbroken|"
+            r"disappoint|despair|depress|tired|exhaust|weary|numb|empty|mourning|loss",
+            re.IGNORECASE,
+        ),
+        {"label": "sad", "valence": -0.5, "arousal": 0.2},
+    ),
+    (
+        re.compile(
+            r"excit|thrill|elat|ecstat|overjoy|delight|euphor|pumped|buzz|proud|celebrat",
+            re.IGNORECASE,
+        ),
+        {"label": "excited", "valence": 0.6, "arousal": 0.7},
+    ),
+    (
+        re.compile(r"happy|happi|glad|pleased|content|cheer|good mood|positive|warm|hopeful",
+                   re.IGNORECASE),
+        {"label": "happy", "valence": 0.4, "arousal": 0.2},
+    ),
+)  # fmt: skip
+
+# A text-derived read is a weaker signal than an acoustic one, but well above the
+# `_MIN_CONFIDENCE` floor — it comes from a model that read the whole utterance.
+_TEXT_CONFIDENCE = 0.6
+
+
+def emotion_from_text(emotional_read: str | None) -> dict[str, Any] | None:
+    """Turn the reasoning step's free-text emotional read into an `EmotionRead`-shaped
+    dict, or None when it is empty/neutral (never force a tone off a blank signal).
+
+    This is the text-sentiment fallback the docstrings promised and nobody implemented.
+    """
+    text = (emotional_read or "").strip()
+    if not text or text.lower() in ("neutral", "none", "calm", "n/a", "-"):
+        return None
+    for pattern, read in _TEXT_EMOTIONS:
+        if pattern.search(text):
+            return {**read, "confidence": _TEXT_CONFIDENCE, "source": "text"}
+    return None
 
 
 def strip_inappropriate_tags(voice_text: str, register: Register) -> str:

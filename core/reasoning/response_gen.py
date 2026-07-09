@@ -35,6 +35,7 @@ from core.reasoning.style import (
     scrub_forbidden,
     strip_tool_leak,
 )
+from core.reasoning.volatility import is_volatile_question
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
 from core.tools.registry import ToolContext, ToolSpec, UnknownTool
 from ports.llm import LLM, LLMUnavailable, Tier
@@ -109,6 +110,19 @@ DEFAULT_GATE_PARAMS = {"T_intent": 0.3, "T_novel": 0.75, "T_emotion": 0.7, "T_am
 # shape is exactly what a greeting like "hi there" used to fall back to). The real
 # disclosure (rule 4) and background acks are model-generated in-voice, never here.
 _SAFE_FALLBACK_TEXT = "Hey, I'm right here with you — what's going on?"
+
+# S1: the reasoning step judged this answer would go stale without a live lookup, and the
+# lookup failed. Say so honestly rather than shipping a training-data answer as fact (§16).
+_SEARCH_FAILED_TEXT = (
+    "I tried to look that up just now and couldn't get through — "
+    "I don't want to tell you something that's out of date. Want me to try again?"
+)
+# The search RAN but turned up nothing usable, and the model answered with a hollow promise
+# ("I'll do my best to find that for you") instead of saying so. A promise the turn cannot
+# keep is worse than an honest miss (§16).
+_NOT_FOUND_TEXT = (
+    "I had a look and couldn't find anything current on that — I'd rather tell you that than guess."
+)
 
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
 _AFFIRMATIVE = (
@@ -505,15 +519,27 @@ class ResponseGenerator:
             can_use_tools
             and not seen_calls
             and not prompt.suppress_live_search  # A3: answer carried in context → no re-search
-            and (
-                _is_live_info_query(prompt.utterance)
-                or _needs_capability_repair(turn.draft_response)
-            )
+            and (_requires_live_lookup(prompt) or _needs_capability_repair(turn.draft_response))
         )
         if needs_search:
             repaired = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]
             if repaired:
                 turn.draft_response = repaired
+            elif prompt.needs_live_info is True:
+                # S1: the reasoning step said this answer would go stale without a lookup,
+                # and the lookup failed. NEVER ship the model's training-data answer as
+                # fact — say so honestly (§16).
+                self._span("tool", tool="web_search", phase="result", status="required_but_failed")
+                turn.draft_response = _SEARCH_FAILED_TEXT
+        # The searches ran but the model still ended on a promise/refusal ("I'll do my best
+        # to find that for you"). It cannot keep that promise — this turn is the answer.
+        elif (
+            prompt.needs_live_info is True
+            and seen_calls
+            and _needs_capability_repair(turn.draft_response)
+        ):
+            self._span("tool", tool="web_search", phase="result", status="ran_but_nothing_usable")
+            turn.draft_response = _NOT_FOUND_TEXT
         return await self._finalize(prompt, turn)
 
     async def _capability_repair(
@@ -524,9 +550,10 @@ class ResponseGenerator:
         so it answers this turn; the background/waiter path stays for voice latency."""
         if not any(t.id == "web_search" for t in dispatcher.tools_for(context)):
             return None
+        query = await self._build_search_query(prompt)
         try:
             result = await dispatcher.run_inline(
-                ToolCall(tool_id="web_search", args={"query": prompt.utterance}), context
+                ToolCall(tool_id="web_search", args={"query": query}), context
             )
         except Exception as exc:  # degrade gracefully — keep the model's own words
             logger.warning("capability-repair search failed: %s", exc)
@@ -535,7 +562,22 @@ class ResponseGenerator:
         summary = str(output.get("summary") or "").strip()
         if not summary or not output.get("found"):
             return None
-        self._span("tool", tool="web_search", mode="capability_repair", result=summary[:300])
+        # Trace it the same shape a dispatcher-issued call takes, so a search forced by
+        # the backstop is countable and visible alongside the model's own tool calls.
+        self._span(
+            "tool",
+            tool="web_search",
+            phase="request",
+            mode="capability_repair",
+            args={"query": query},
+        )
+        self._span(
+            "tool",
+            tool="web_search",
+            phase="result",
+            mode="capability_repair",
+            result=summary[:300],
+        )
         try:
             completion = await self._llm.complete(
                 prompt.user_id,
@@ -551,6 +593,63 @@ class ResponseGenerator:
             return summary  # at least hand them the real facts
         answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
         return answer or summary
+
+    async def _build_search_query(self, prompt: AssembledPrompt) -> str:
+        """Construct the web query from the RESOLVED INTENT + the user's own context (S2).
+
+        Sending the raw transcript to a search engine is why "what's the current LTP of
+        OP?" came back with the price of the *Optimism crypto token* even when `OP` was
+        correctly resolved to a NEPSE share in the user's portfolio: the resolved entity
+        never reached the query, so the engine disambiguated "OP" against the open web.
+
+        Falls back to the intent-derived `live_query`, then the raw utterance, if the
+        provider is down — never worse than before.
+        """
+        fallback = prompt.live_query.strip() or prompt.utterance
+        entities = [f"{c.name} ({c.entity_type})" for c in prompt.resolved_entities]
+        # The user's own data, already assembled into this turn's prompt.
+        context_bits = [
+            prompt.sections.get(name, "").strip()
+            for name in ("entities", "facts", "project", "episodic")
+        ]
+        user_context = "\n".join(b for b in context_bits if b)[:1200]
+        if not entities and not user_context:
+            return fallback  # nothing to disambiguate with
+        instr = (
+            "Turn the user's question into ONE precise web-search query.\n"
+            "Their question may name something that is AMBIGUOUS on the open web (a "
+            "ticker, an abbreviation, a nickname). Use the USER CONTEXT below to qualify "
+            "it so the search finds THEIR thing, not the most popular match. E.g. if they "
+            "ask about 'OP' and their portfolio holds OP as a NEPSE share, the query is "
+            "about the NEPSE share, never a crypto token.\n"
+            "Reply with ONLY the query text — no quotes, no explanation."
+        )
+        user = (
+            f"USER CONTEXT:\n{user_context}\n"
+            f"RESOLVED ENTITIES: {', '.join(entities) or 'none'}\n"
+            f"INFERRED INTENT: {prompt.live_query or '(none)'}\n"
+            f"QUESTION: {prompt.utterance}"
+        )
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [{"role": "system", "content": instr}, {"role": "user", "content": user}],
+                "simple",
+                session_id=prompt.session_id,
+                temperature=0.0,  # a query is a decision, not a creative act
+                max_tokens=48,
+                reasoning={"enabled": False},
+                purpose="search_query",
+            )
+        except LLMUnavailable:
+            return fallback
+        query = _strip_fences(completion.text).strip().strip('"').splitlines()[0].strip()
+        if not query:
+            return fallback
+        self._span(
+            "tool", tool="web_search", phase="query_built", query=query, raw=prompt.utterance
+        )
+        return query
 
     async def generate_spoken(
         self,
@@ -575,17 +674,21 @@ class ResponseGenerator:
             return result
 
         can_use_tools = dispatcher is not None and context is not None
-        # Stream only a plain reply: no pending confirmation, and not a live-info
-        # query (those need a tool/search first). Tool turns and refusals go the
-        # full path so we never speak a holding line then re-answer.
+        # Stream only a plain reply: no pending confirmation, and nothing the REASONING
+        # step judged volatile (those need a tool/search first). Tool turns and refusals
+        # go the full path so we never speak a holding line then re-answer.
         streamable = not (
             can_use_tools and prompt.session_id in self._pending
-        ) and not _is_live_info_query(prompt.utterance)
+        ) and not _requires_live_lookup(prompt)
         if streamable:
             try:
                 streamed = await self._stream_reply(prompt, speak, temperature=temperature)
                 if streamed is not None:
                     return streamed
+                # S1: `None` means the streamed draft turned out to need a tool after all
+                # (a refusal / hollow promise), or the stream was empty. Fall through to
+                # the agentic path so the streaming route can NEVER permanently block a
+                # search. Nothing has been spoken yet — the draft is gated before TTS.
             except PROGRAMMING_ERRORS:
                 raise  # F3: a bug here must not hide behind the non-streamed fallback
             except Exception:  # any streaming hiccup → safe fallback (never worse)
@@ -597,7 +700,7 @@ class ResponseGenerator:
         # The ack is generated fresh every time (never a canned line) and fully overlaps
         # the lookup, so it adds no wall-clock (user feedback: dynamic, chunked, no static).
         if (
-            _is_live_info_query(prompt.utterance)
+            _requires_live_lookup(prompt)
             and can_use_tools
             and prompt.session_id not in self._pending
         ):
@@ -710,6 +813,15 @@ class ResponseGenerator:
 
         if not text.strip():
             return None  # empty stream → fall back to the full path
+
+        # S1: the streaming route has no tool loop. If the draft is a refusal ("I don't
+        # have access to real-time data") or a hollow promise ("let me look that up"), the
+        # turn genuinely needed a tool and the volatility classifier under-called it.
+        # Hand the turn to the agentic path instead of speaking a dead end. Safe because
+        # C1 buffers the draft — nothing has been spoken, so there is nothing to retract.
+        if _needs_capability_repair(text):
+            self._span("reasoning", node="stream_reply", handoff="needs_tool", draft=text[:200])
+            return None
 
         # A streamed plain reply is a confident direct response by construction, so the
         # curiosity gate is a formality here. `requires_nature_disclosure` is NOT — there
@@ -1359,6 +1471,29 @@ _LIVE_INFO_QUERY = re.compile(
 
 def _is_live_info_query(utterance: str) -> bool:
     return bool(_LIVE_INFO_QUERY.search(utterance))
+
+
+def _requires_live_lookup(prompt: AssembledPrompt) -> bool:
+    """Does this turn need CURRENT real-world info to answer without going stale? (S1)
+
+    The REASONING step decides (`prompt.needs_live_info`, produced by the context/intent
+    node, which sees the user's local date and is told that role-holders, prices, scores
+    and "still/current/latest" are always volatile). The phrasing regex is kept only as a
+    cheap OR-backstop for when the classifier gave no usable answer (`None`) — it is never
+    the sole gate again.
+
+    It used to be: `_is_live_info_query(utterance)` and nothing else. That returns False
+    for "who is the current prime minister of Nepal?", so the turn took the non-agentic
+    streaming path, could never reach a tool, and answered from training data.
+    """
+    if prompt.needs_live_info is True:
+        return True
+    # The classifier's JUDGEMENT is good (4-5 of 5 on the probe set) but its DELIVERY is
+    # not: ~1 call in 6 returns unusable JSON, which used to be swallowed into "don't
+    # search". So a False/unknown verdict is never trusted alone — the deterministic
+    # question-shape backstop and the topic regex both get a vote. Bias toward searching:
+    # a needless search costs a second, a stale answer costs the user's trust.
+    return is_volatile_question(prompt.utterance) or _is_live_info_query(prompt.utterance)
 
 
 _REPAIR_INSTRUCTIONS = (

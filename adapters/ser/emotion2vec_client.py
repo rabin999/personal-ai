@@ -10,7 +10,8 @@ response, retry once then fall back to the neutral read).
 SER is a self-hosted fixed-cost service (no per-call money cost), so — unlike
 the metered STT/TTS providers (§20/§23) — it writes no Cost Ledger entry.
 When ``ser_service_url`` is unset, SER is disabled and ``analyze`` returns
-None (acoustic emotion deferred; the pipeline falls back to text-sentiment).
+None (acoustic emotion deferred; the orchestrator then derives a TEXT-SENTIMENT
+read via ``core.reasoning.prosody.emotion_from_text`` so prosody still varies).
 """
 
 import logging

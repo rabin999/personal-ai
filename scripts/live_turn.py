@@ -127,8 +127,21 @@ class TurnCapture:
         return [s["data"] for s in self.spans if s.get("stage") == "tool"]
 
     @property
-    def searches(self) -> list[dict[str, Any]]:
-        return [t for t in self.tool_calls if t.get("tool") == "web_search" and t.get("args")]
+    def searches(self) -> list[str]:
+        """DISTINCT search queries actually issued this turn.
+
+        The tool stage emits more than one span per search (a `phase=request` span from
+        the dispatcher, plus a `mode=capability_repair` span from the backstop), so a naive
+        span count double-reports. Dedupe on the query itself.
+        """
+        seen: list[str] = []
+        for t in self.tool_calls:
+            if t.get("tool") != "web_search":
+                continue
+            q = str((t.get("args") or {}).get("query") or "").strip()
+            if q and q not in seen:
+                seen.append(q)
+        return seen
 
     @property
     def graph_nodes(self) -> list[str]:

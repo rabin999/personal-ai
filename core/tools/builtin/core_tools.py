@@ -90,6 +90,12 @@ def register_core_tools(
             ),
             type="background",
             latency_class="slow",
+            # Measured: a cold search is ~6 s (Serper ~3 s + the summarize LLM ~3 s), and
+            # "right now"/"today" queries deliberately bypass the cache, so they are ALWAYS
+            # cold. The dispatcher's flat 8 s inline default timed them out at 8002 ms —
+            # "what's the weather in Kathmandu right now?" returned nothing. It overlaps the
+            # spoken ack, so a longer budget costs the user no extra silence.
+            inline_timeout_s=20.0,
         ),
         web_search_tool,
     )

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
 
 from core.eval.judge import judge_companion_voice
 from ports.llm import LLM
@@ -34,19 +35,34 @@ class TurnEvaluator:
         scores: ScoreSink | None,
         *,
         enabled: bool = False,
+        sample_rate: float = 1.0,
     ) -> None:
+        # S5: this MUST be its own LLM instance (its own HTTP connection pool), not the
+        # one the live turn uses. A judge call sharing the turn's client competes with the
+        # next turn's request for a connection.
         self._llm = llm
         self._scores = scores
         # Only run when explicitly enabled AND there's a backend to post to.
         self._enabled = enabled and scores is not None
+        self._sample_rate = max(0.0, min(1.0, sample_rate))
 
     @property
     def enabled(self) -> bool:
         return self._enabled
 
+    @property
+    def sample_rate(self) -> float:
+        return self._sample_rate
+
     def schedule(self, *, session_id: str, turn: int, user_msg: str, reply: str) -> None:
-        """Fire the evaluation as a background task — never on the reply path."""
+        """Fire the evaluation as a background task — never on the reply path.
+
+        Sampled at ``sample_rate`` (1.0 = every turn). State the rate anywhere the
+        coverage is reported: a sampled judge is weaker quality monitoring, not free.
+        """
         if not self._enabled or not reply.strip():
+            return
+        if self._sample_rate < 1.0 and random.random() > self._sample_rate:
             return
         task = asyncio.create_task(self._evaluate(session_id, turn, user_msg, reply))
         task.add_done_callback(lambda t: t.exception())

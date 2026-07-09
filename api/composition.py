@@ -354,7 +354,14 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         scores=scores,
         compactor=SessionCompactor(llm, working, logs=logs),
         langfuse=langfuse_sink,
-        evaluator=TurnEvaluator(llm, scores, enabled=settings.langfuse_eval_enabled),
+        # S5: a DEDICATED LLM client for the judge — its own AsyncOpenAI connection pool,
+        # and `logs=None` so its background call never lands inside the live turn's trace.
+        evaluator=TurnEvaluator(
+            OpenRouterLLM(settings, ledger=ledger, tiers=tiers),
+            scores,
+            enabled=settings.langfuse_eval_enabled,
+            sample_rate=settings.eval_sample_rate,
+        ),
     )
 
 
