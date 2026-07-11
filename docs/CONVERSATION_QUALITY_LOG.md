@@ -36,3 +36,25 @@ the kept value fallback.
 **Test note:** 2 SMTP failures are standing/env. 3 acceptance failures (project_flow / background_delivery /
 consolidation) are model-judgment brittleness (real-call-ish tests), not logic — the real drive of the
 tool path is correct; router test relaxed to compare provider (OpenRouter returns the dated canonical id).
+
+## PROD HOTFIX + Batch B — DEPLOYED (2026-07-11, commit d6ea731)
+
+**Prod freeze** (user: "let me check on that" then froze on a PM question): root cause = some
+live-info turns escalate to the complex tier; **claude-sonnet-5** returned a response shape our
+parser couldn't read (`response.choices[0]` → 'NoneType' object is not subscriptable), and the
+fallback **gemini-3.5-flash** (reasoning-mandatory, ~23s TTFT) hung → the turn froze and took the
+session with it. Intermittent = only some turns hit complex.
+- Fix: complex tier → **claude-sonnet-4.5** (proven) + **gpt-4.1-mini** fallback; dropped sonnet-5 +
+  gemini-3.5-flash. (provider_config v5 + DEFAULT_TIERS.)
+- RESILIENCE: `_call` now surfaces an empty/None response as `LLMUnavailable` (never crashes), so the
+  fallback chain works and the turn degrades to a safe reply.
+- Verified on PROD with the user's exact query → full grounded reply "…Balendra Shah's the PM. What's
+  going on…", not empty. complex tier routes to sonnet-4.5.
+
+**Batch B** (fresh + trustworthy) shipped in the same deploy: killed the hardcoded stale "Boeing
+cargo plane" example; source-quality preference (official/.gov/.edu + reference + major news first).
+Real drive: "current PM of Nepal" fetches en.wikipedia.org + opmcm.gov.np (official). Unit-tested.
+
+**NEXT (in progress): D-9 turn-level resilience** — guarantee ANY step failure (retrieval, memory,
+non-LLMUnavailable deps) still yields a spoken reply; never silence. (User: "even one or any step
+fails, user must get its response properly.")
