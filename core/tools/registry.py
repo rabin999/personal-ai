@@ -37,6 +37,11 @@ class ToolContext(BaseModel):
     session_id: str
     project_id: str | None = None
     project_type: str | None = None
+    # The user's current utterance, so handlers can validate that an argument the
+    # model supplied actually came from the user (e.g. set_companion_name must not
+    # accept a name the user never said — the "Norsylinder" self-naming bug). Empty
+    # for non-conversational callers (queue worker), which skip the check.
+    utterance: str = ""
 
 
 ToolHandler = Callable[[dict[str, Any], ToolContext], Awaitable[dict[str, Any]]]

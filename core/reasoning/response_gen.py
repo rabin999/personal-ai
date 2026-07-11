@@ -1277,6 +1277,10 @@ class ResponseGenerator:
         back to the background/waiter path (§14).
         """
         call = ToolCall(tool_id=req.tool_id, args=req.args)
+        # Carry the user's utterance so handlers can validate model-supplied args against
+        # what the user actually said (set_companion_name rejecting a name the user never
+        # gave — the "Norsylinder" self-naming bug). See core/tools/registry.py.
+        context = context.model_copy(update={"utterance": prompt.utterance})
         # Trace the tool CALL with its arguments (e.g. the exact search query) so the
         # turn is fully inspectable — the user reported not seeing what was searched.
         self._span("tool", tool=req.tool_id, phase="request", args=req.args)

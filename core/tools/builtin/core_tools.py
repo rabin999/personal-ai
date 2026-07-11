@@ -11,8 +11,9 @@ dispatcher enqueues it (§8.6 — never run search inline) and the worker execut
 this handler, so its result comes back at a pause (§14).
 """
 
-import contextlib
 import logging
+import re
+import unicodedata
 from collections.abc import Callable
 from typing import Any
 
@@ -26,6 +27,27 @@ from core.tools.web_search import WebSearch
 from ports.retrieval import RetrievalPort, VerifiedRetrievalError
 
 logger = logging.getLogger(__name__)
+
+
+def _norm_tokens(text: str) -> set[str]:
+    """Accent-folded, lowercase word tokens — for checking a name against an utterance."""
+    folded = unicodedata.normalize("NFKD", text)
+    folded = "".join(c for c in folded if not unicodedata.combining(c))
+    return {t for t in re.findall(r"[a-z0-9]+", folded.lower()) if len(t) >= 2}
+
+
+def _name_came_from_user(name: str, utterance: str) -> bool:
+    """True if the user actually said this name — every alphabetic token of the name
+    appears in their utterance. Blocks the companion from self-naming with a word the
+    user never uttered (the "Norsylinder" bug). Lenient when the utterance is unknown
+    (empty), so non-conversational callers are unaffected."""
+    if not utterance.strip():
+        return True
+    name_tokens = _norm_tokens(name)
+    if not name_tokens:
+        return False
+    return name_tokens <= _norm_tokens(utterance)
+
 
 # VAD nudge per "you're too sensitive" style request (§11.3); clamped in §2.
 _VAD_STEP = 0.12
@@ -129,18 +151,35 @@ def register_core_tools(
         name = str(args.get("name", "")).strip()[:40]
         if not name:
             return {"error": "no name given"}
+        # Only accept a name the user actually said — never one the model coined itself.
+        # This is the fix for the companion self-naming with a hallucinated word
+        # ("Norsylinder") the user never uttered. The companion doesn't name itself.
+        if not _name_came_from_user(name, ctx.utterance):
+            logger.info("rejected self-assigned companion name %r (not in utterance)", name)
+            return {
+                "error": "not_user_given",
+                "note": (
+                    "Don't name yourself. Only call this when the user gives you a name — "
+                    "use the exact name they said. If they haven't, ask what they'd like to "
+                    "call you instead of inventing one."
+                ),
+            }
+        # The profile is the SINGLE source of truth for the companion's name (read back
+        # in prompt assembly). We deliberately do NOT also write a semantic episode: doing
+        # so let the extractor resolve "the companion is called X" into a phantom PERSON
+        # entity that fragmented the user's own identity in the graph (the Norsylinder /
+        # Cylinder / Marshal tangle). Companion identity lives in the profile, not the
+        # user's memory graph (design doc §3.1 memory correctness).
         await profiles.update(ctx.user_id, {"companion_name": name, "onboarded": True})
-        # Durable semantic fact so the name survives across sessions (§3.1).
-        # Best-effort: the profile name is canonical if the graph write fails.
-        with contextlib.suppress(Exception):
-            await semantic.add_episode(ctx.user_id, f"The user named the companion '{name}'.")
         return {"companion_name": name}
 
     registry.register(
         ToolSpec(
             id="set_companion_name",
-            description="Remember the name the user wants to call you (the companion). "
-            'Call this the first time they give you a name. args: {"name": str}',
+            description="Remember the name the USER gives you (the companion). Call this "
+            "ONLY when the user actually tells you what to call you, using their exact "
+            "word. Never invent or pick a name yourself. If they haven't given one, ask — "
+            'don\'t make one up. args: {"name": str}',
             type="action",
             latency_class="fast",
             requires_confirmation=False,

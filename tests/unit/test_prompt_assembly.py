@@ -258,7 +258,12 @@ async def test_prompt_includes_trait_descriptions_and_promoted_rules(
     assert weak.confidence < 0.6
 
 
-async def test_semantic_facts_carry_validity_markers(harness: Harness) -> None:
+async def test_superseded_facts_are_excluded_not_marked(harness: Harness) -> None:
+    """A superseded fact (valid_to set) must NOT reach the prompt at all — only the
+    current value does. Showing the old value with a "[superseded]" marker was advice
+    the model ignored (it kept using the stale value — the "calls me by the old name"
+    bug). Enforcement over advice: the stale value never enters the context (§3 memory
+    correctness). The current fact still appears."""
     harness.graph.seed_fact(
         USER,
         Fact(fact="the brother of the user is Tom", valid_to="2026-06-01T00:00:00+00:00"),
@@ -269,10 +274,8 @@ async def test_semantic_facts_carry_validity_markers(harness: Harness) -> None:
 
     assert isinstance(result, AssembledPrompt)
     assert "the brother of the user is Max" in result.system_prompt
-    assert (
-        "the brother of the user is Tom [superseded 2026-06-01T00:00:00+00:00]"
-        in result.system_prompt
-    )
+    # The stale value is gone entirely — not even as a marked/annotated line.
+    assert "Tom" not in result.system_prompt
 
 
 async def test_emotion_signal_and_complexity_hint_travel_with_prompt(
