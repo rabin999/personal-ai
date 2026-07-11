@@ -161,7 +161,12 @@ class Crawl4AIRetrieval:
         # ── S2 SELECT: drop junk/dupes, order candidates to fetch ────────────
         with self._tracer.span("select", "filter + de-dupe search hits to fetch list") as sp:
             candidates = select_candidates(results, limit=max_sources)
-            sp["candidates"] = [c.domain for c in candidates]
+            # Persist the ranked shortlist (title + snippet), not just domains, so the
+            # detailed trace can show "considered N results" with what each one was.
+            sp["candidates"] = [
+                {"rank": i, "domain": c.domain, "title": c.title, "snippet": c.snippet}
+                for i, c in enumerate(candidates, start=1)
+            ]
         if not candidates:
             timings.total_ms = _ms(started)
             return _empty("not_found", timings)

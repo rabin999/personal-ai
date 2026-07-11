@@ -15,7 +15,6 @@ import {
   getModels,
   getVoices,
   type VoiceItem,
-  sendFeedback,
   setVoiceEngine as saveVoiceEngine,
 } from "../lib/api";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
@@ -52,7 +51,6 @@ export default function CompanionPage() {
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [level, setLevel] = useState(0);
   const [turns, setTurns] = useState<TurnGroup[]>([]);
-  const [openTurn, setOpenTurn] = useState<number | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
   const [showSetup, setShowSetup] = useState(false); // mobile: collapse config so the orb + Start are the hero
@@ -130,10 +128,18 @@ export default function CompanionPage() {
   const handleTrace = (e: TraceEvent) => {
     upsertTurn(e.turn, (t) => {
       t.events = [...t.events, e];
+      // Live transcript lines, populated the instant their event arrives (no wait
+      // for TTS/delivery): the user's words on STT, the reply on the response event.
+      // The reply text rides in `message` (with `voice_text` as a fallback) — NOT
+      // `data.text` — so read those, or the companion line never streams in.
       if (e.stage === "stt" && typeof e.data.text === "string") t.heard = e.data.text;
-      if (e.stage === "response" && typeof e.data.text === "string") t.reply = e.data.text;
+      if (e.stage === "response") {
+        const txt = (
+          e.message || (typeof e.data.voice_text === "string" ? e.data.voice_text : "")
+        ).trim();
+        if (txt) t.reply = txt;
+      }
     });
-    if (e.turn > 0) setOpenTurn(e.turn); // keep the newest turn expanded
     if (e.stage === "vad") setTurn("listening");
     if (["assembly", "router", "generation"].includes(e.stage)) setTurn("thinking");
     if (e.stage === "tts") {
@@ -562,18 +568,7 @@ export default function CompanionPage() {
 
       <TraceLog
         turns={turns}
-        openTurn={openTurn}
-        onToggle={(i) => setOpenTurn((cur) => (cur === i ? null : i))}
         onReplay={replay}
-        onFeedback={(turn, rating, note) => {
-          if (!sessionIdRef.current) return;
-          void sendFeedback({
-            session_id: sessionIdRef.current,
-            turn_id: String(turn.index),
-            rating,
-            note,
-          });
-        }}
         mobileOpen={traceOpen}
         onCloseMobile={() => setTraceOpen(false)}
       />

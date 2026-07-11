@@ -95,10 +95,11 @@ function TurnDetail({
 
   // Canonical event timeline: EVERYTHING that happened this turn (LLM calls + every
   // pipeline stage), in chronological order, each stamped with its offset from the
-  // turn's first event — so you read the turn as "what happened, when".
+  // turn's first event — so you read the turn as "what happened, when". Search spans
+  // are pulled OUT into their own grouped block (below), so they don't clutter this.
   const timeline = useMemo(() => {
     const evs = spans
-      .filter((e) => !isNoise(e))
+      .filter((e) => !isNoise(e) && !isSearchSpan(e))
       .map((e) => ({ e, t: num(e.data?.start_ts) || e.ts || 0 }))
       .filter((x) => x.t > 0)
       .sort((a, b) => a.t - b.t);
@@ -106,29 +107,27 @@ function TurnDetail({
     return evs.map(({ e, t }) => ({ e, offsetMs: Math.max(0, (t - t0) * 1000) }));
   }, [spans]);
 
+  // Grouped web-search story for this turn (query → results considered → answer),
+  // reconstructed from the retrieval/tool spans. null when the turn didn't search.
+  const search = useMemo(() => searchInfo(spans, reply), [spans, reply]);
+
+  // The card TITLE is the gist of the turn — a snippet of what was said/replied,
+  // never a bare "Turn N".
+  const title = snippet(said || reply) || `Turn ${turn}`;
+
   return (
     <div className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900/40">
-      {/* Collapsible header: turn + headline metrics + the gist */}
+      {/* Collapsible header: the gist (snippet) as the title. */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full flex-wrap items-center gap-x-2 gap-y-1 px-4 py-3.5 text-left hover:bg-neutral-50 sm:px-5 dark:hover:bg-neutral-900/60"
+        className="flex w-full items-center gap-2 px-4 py-3.5 text-left hover:bg-neutral-50 sm:px-5 dark:hover:bg-neutral-900/60"
       >
-        <span className="text-neutral-500 dark:text-neutral-400">{open ? "▾" : "▸"}</span>
-        <span className="text-sm font-semibold">Turn {turn}</span>
-        {totals && <>
-          <span className="mx-1 hidden h-3.5 w-px bg-neutral-300 sm:block dark:bg-neutral-700" />
-          <span className="flex flex-wrap items-center gap-1.5">
-            <Pill>{totals.total_ms ? fmtMs(totals.total_ms) : "—"}</Pill>
-            <Pill>{fmtNum(totals.tokens_in + totals.tokens_out)} tok</Pill>
-            <Pill>${totals.cost_usd.toFixed(4)}</Pill>
-            <Pill>{totals.llm_calls} LLM · {totals.tool_calls} tool</Pill>
-            {calls.length > 1 && <Pill>{anyParallel ? "some parallel" : "sequential"}</Pill>}
-            {totals.reflected && <Pill tone="fuchsia">self-reflected</Pill>}
-            {totals.failures > 0 && <Pill tone="rose">{totals.failures} failed</Pill>}
+        <span className="shrink-0 text-neutral-500 dark:text-neutral-400">{open ? "▾" : "▸"}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+        {search && (
+          <span className="shrink-0 rounded-md bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+            searched
           </span>
-        </>}
-        {!open && said && (
-          <span className="ml-auto hidden max-w-[45%] truncate text-[15px] text-neutral-500 dark:text-neutral-400 md:block">{said}</span>
         )}
       </button>
 
@@ -152,6 +151,13 @@ function TurnDetail({
             </div>
           )}
 
+          {/* Grouped SEARCH block — what it looked up, how many it weighed, the answer. */}
+          {search && (
+            <div className="border-b border-neutral-100 px-4 py-4 sm:px-5 dark:border-neutral-800">
+              <SearchBlock search={search} />
+            </div>
+          )}
+
           {/* Canonical event timeline — everything in chronological order, stamped
               with the offset from the turn start. */}
           <div className="px-4 py-4 sm:px-5">
@@ -169,13 +175,137 @@ function TurnDetail({
             </ol>
           </div>
 
-          <div className="border-t border-neutral-100 px-5 dark:border-neutral-800">
+          {/* FOOTER: one-line summary (cost + time only) on the left, feedback on the right. */}
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-100 px-4 py-2.5 sm:px-5 dark:border-neutral-800">
+            <span className="text-sm text-neutral-500 dark:text-neutral-400">
+              {totals ? (
+                <>
+                  <span className="font-medium text-neutral-700 dark:text-neutral-200">${totals.cost_usd.toFixed(4)}</span>
+                  <span className="mx-1.5 text-neutral-300 dark:text-neutral-600">·</span>
+                  <span className="font-medium text-neutral-700 dark:text-neutral-200">{totals.total_ms ? fmtMs(totals.total_ms) : "—"}</span>
+                </>
+              ) : (
+                "—"
+              )}
+            </span>
             <Feedback sessionId={sessionId} turn={turn} />
           </div>
         </div>
       )}
     </div>
   );
+}
+
+// ── grouped web-search story ───────────────────────────────────────────────
+type SearchResultRow = { rank?: number; domain?: string; title?: string; snippet?: string };
+type SearchInfo = {
+  queries: string[];
+  considered: SearchResultRow[];
+  found: number;
+  answer: string;
+};
+
+function SearchBlock({ search }: { search: SearchInfo }) {
+  const consideredCount = search.considered.length;
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50/50 px-3 py-3 dark:border-amber-900/50 dark:bg-amber-950/20">
+      <div className="mb-2 flex items-center gap-2">
+        <span className="text-amber-600 dark:text-amber-400">🔎</span>
+        <span className="text-sm font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300">Web search</span>
+      </div>
+
+      {/* query */}
+      {search.queries.map((q, i) => (
+        <p key={i} className="text-[15px] leading-relaxed">
+          <span className="text-neutral-500 dark:text-neutral-400">searched </span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">“{q}”</span>
+        </p>
+      ))}
+
+      {/* how many results considered */}
+      <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+        considered {consideredCount || search.found} result{(consideredCount || search.found) === 1 ? "" : "s"}
+        {search.found > consideredCount && consideredCount > 0 ? ` of ${search.found} found` : ""}
+      </p>
+      {consideredCount > 0 && (
+        <ol className="mt-2 space-y-1.5">
+          {search.considered.map((r, i) => (
+            <li key={i} className="flex gap-2 text-sm">
+              <span className="shrink-0 font-mono text-neutral-400">{r.rank ?? i + 1}.</span>
+              <span className="min-w-0">
+                <span className="font-medium text-neutral-700 dark:text-neutral-200">{r.title || r.domain || "—"}</span>
+                {r.domain && <span className="ml-1.5 text-neutral-400">{r.domain}</span>}
+                {r.snippet && <span className="block truncate text-neutral-500 dark:text-neutral-400">{r.snippet}</span>}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* the final answer injected into the reply */}
+      {search.answer && (
+        <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 px-2.5 py-2 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+          <p className="mb-0.5 text-[13px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">answer injected</p>
+          <p className="text-sm leading-relaxed text-neutral-700 dark:text-neutral-200">{search.answer}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A span belongs to the web-search story (retrieval pipeline or the search tool).
+function isSearchSpan(e: TraceEvent): boolean {
+  const stage = str(e.stage);
+  if (stage.startsWith("retrieval")) return true;
+  if (stage === "tool") {
+    const tool = str(e.data?.tool).toLowerCase();
+    return tool.includes("search") || tool.includes("web") || tool.includes("retriev");
+  }
+  return false;
+}
+
+// Reconstruct the search story from this turn's spans. Prefers the rich retrieval
+// pipeline spans (query / ranked candidates / formatted answer); falls back to a
+// plain search-tool span. Returns null when the turn didn't search.
+function searchInfo(spans: TraceEvent[], reply: string): SearchInfo | null {
+  const search = spans.filter(isSearchSpan);
+  if (search.length === 0) return null;
+
+  const queries: string[] = [];
+  const considered: SearchResultRow[] = [];
+  let found = 0;
+  let answer = "";
+
+  for (const e of search) {
+    const d = (e.data ?? {}) as Record<string, unknown>;
+    const stage = str(e.stage);
+    const q = str(d.query) || str((d.args as Record<string, unknown> | undefined)?.query);
+    if (q && !queries.includes(q)) queries.push(q);
+    if (typeof d.results === "number") found = Math.max(found, d.results);
+    if (Array.isArray(d.candidates)) {
+      for (const c of d.candidates as unknown[]) {
+        if (c && typeof c === "object") {
+          const row = c as Record<string, unknown>;
+          considered.push({
+            rank: typeof row.rank === "number" ? row.rank : undefined,
+            domain: str(row.domain) || undefined,
+            title: str(row.title) || undefined,
+            snippet: str(row.snippet) || undefined,
+          });
+        } else if (typeof c === "string") {
+          considered.push({ domain: c });
+        }
+      }
+    }
+    // The formatted, grounded finding (retrieval.format) or the tool's own result.
+    if (stage === "retrieval.format" && str(d.voice)) answer = str(d.voice);
+    if (!answer && stage === "tool" && str(d.result)) answer = str(d.result);
+  }
+  // Last resort: the reply itself carried the looked-up answer.
+  if (!answer) answer = reply;
+
+  if (queries.length === 0 && considered.length === 0 && found === 0) return null;
+  return { queries, considered, found, answer };
 }
 
 // ── one LLM call, as a card ────────────────────────────────────────────────
@@ -446,15 +576,6 @@ function Feedback({ sessionId, turn }: { sessionId: string; turn: number }) {
   );
 }
 
-function Pill({ children, tone }: { children: React.ReactNode; tone?: "fuchsia" | "rose" }) {
-  const c = tone === "fuchsia"
-    ? "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300"
-    : tone === "rose"
-    ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
-    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300";
-  return <span className={`rounded-md px-1.5 py-0.5 text-sm font-medium ${c}`}>{children}</span>;
-}
-
 function purposeBadge(p: string): string {
   if (p === "context_intent") return "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300";
   if (p.startsWith("response")) return "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300";
@@ -476,9 +597,17 @@ function prettyPurpose(p: string): string {
 function shortModel(m: string): string { return m.split("/").pop() ?? m; }
 function fmtMs(v: unknown): string { const n = num(v); return n >= 1000 ? `${(n / 1000).toFixed(1)}s` : `${Math.round(n)}ms`; }
 function fmtOffset(ms: number): string { return ms >= 1000 ? `+${(ms / 1000).toFixed(1)}s` : `+${Math.round(ms)}ms`; }
-function fmtNum(n: number): string { return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n); }
 function fmtCost(v: unknown): string { const n = num(v); return n > 0 ? n.toFixed(4) : "0"; }
 function clean(s: string): string { return s.replace(/^- /, "").trim(); }
+// The card title: a short snippet of the turn's text (first ~N chars, on a word
+// boundary where possible), so you read the turn by what was said, not "Turn N".
+function snippet(s: string, n = 64): string {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (t.length <= n) return t;
+  const cut = t.slice(0, n);
+  const sp = cut.lastIndexOf(" ");
+  return `${(sp > n * 0.6 ? cut.slice(0, sp) : cut).trim()}…`;
+}
 function num(v: unknown): number { return typeof v === "number" ? v : typeof v === "string" ? parseFloat(v) || 0 : 0; }
 function find(spans: TraceEvent[], stage: string): TraceEvent | undefined { return spans.find((e) => e.stage === stage); }
 function str(v: unknown): string { return typeof v === "string" ? v : v === undefined || v === null ? "" : String(v); }

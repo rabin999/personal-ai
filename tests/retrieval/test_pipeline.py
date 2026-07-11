@@ -340,3 +340,55 @@ async def test_every_stage_emits_a_trace_span() -> None:
     assert all("description" in r for r in log.records)
     fetch_span = next(r for r in log.records if r["event"] == "retrieval.fetch")
     assert "duration_ms" in fetch_span  # timing recorded per stage
+
+
+async def test_spans_land_on_the_bound_turn_and_never_orphan_at_turn_zero() -> None:
+    """Regression: retrieval spans used to be DOUBLE-emitted — a correct-turn copy via the
+    logger→sink AND a direct ``store.record`` with no turn, orphaning a duplicate of every
+    span at turn 0. There is now ONE path (the structured logger, whose trace-store sink
+    tags each span with the per-turn ``bind`` contextvar). Prove: every persisted retrieval
+    span lands on the bound turn, NONE at turn 0, and the select span carries the ranked
+    shortlist (rank + title + snippet), not bare domains."""
+    import asyncio
+
+    from adapters.logging.trace_sink import TraceStoreLogSink
+    from adapters.retrieval.crawl4ai_adapter import Crawl4AIRetrieval
+    from adapters.retrieval.trace import RetrievalTracer
+    from core.observability.logger import StructuredLogger
+    from core.observability.trace_store import TraceStore
+    from tests.fakes import FakeDocStore
+    from tests.retrieval.conftest import DeterministicFormatter
+
+    docs = FakeDocStore()
+    store = TraceStore(docs)
+    logs = StructuredLogger([TraceStoreLogSink(store)])
+    tracer = RetrievalTracer(logs=logs, user_id="u1", session_id="s1")
+    search = _search("apnews.com", "reuters.com")
+    fetcher = FixtureFetcher(_pages(("apnews.com", "2026-06-01"), ("reuters.com", "2026-06-02")))
+    extractor = ScriptedExtractor(
+        {"apnews.com": ("Sushila Karki", "text"), "reuters.com": ("Sushila Karki", "text")}
+    )
+    pipe = Crawl4AIRetrieval(
+        search=search,
+        fetcher=fetcher,
+        extractor=extractor,
+        formatter=DeterministicFormatter(),
+        config=RetrievalConfig(word_count_threshold=3),
+        tracer=tracer,
+    )
+
+    with logs.bind(trace_id="s1", turn_id=7, user_id="u1"):
+        await pipe.verify("who is the prime minister of Nepal")
+    for _ in range(5):  # flush the sink's fire-and-forget persistence tasks
+        await asyncio.sleep(0)
+
+    events = await store.traces_for("u1", "s1")
+    retrieval = [e for e in events if str(e["stage"]).startswith("retrieval")]
+    assert retrieval, "retrieval spans must be persisted"
+    assert all(e["turn"] == 7 for e in retrieval)  # tagged to the bound turn…
+    assert not any(e["turn"] == 0 for e in events)  # …and no turn-0 orphan remains
+
+    select = next(e for e in retrieval if e["stage"] == "retrieval.select")
+    candidates = select["data"]["candidates"]
+    assert candidates and isinstance(candidates[0], dict)  # ranked rows, not bare domains
+    assert {"rank", "domain", "title", "snippet"} <= set(candidates[0])

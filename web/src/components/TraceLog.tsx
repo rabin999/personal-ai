@@ -1,29 +1,47 @@
+import { useEffect, useMemo, useRef } from "react";
 import type { TurnGroup } from "../lib/types";
-import { TurnCard } from "./TurnCard";
 
 interface Props {
   turns: TurnGroup[];
-  openTurn: number | null;
-  onToggle: (index: number) => void;
   onReplay: (turn: TurnGroup) => void;
-  onFeedback?: (turn: TurnGroup, rating: "up" | "down", note: string) => void;
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }
 
-// Conversation trace: one collapsible card per turn (newest expanded). On
-// desktop it's a persistent right sidebar (~35% width); on mobile it's a
-// slide-in drawer toggled from the header so the voice UI owns the small screen.
-export function TraceLog({
-  turns,
-  openTurn,
-  onToggle,
-  onReplay,
-  onFeedback,
-  mobileOpen,
-  onCloseMobile,
-}: Props) {
-  const realTurns = turns.filter((t) => t.index > 0).length;
+// A single spoken line in the live transcript: who said it and what was said.
+interface Line {
+  key: string;
+  turn: TurnGroup;
+  role: "user" | "companion";
+  text: string;
+}
+
+// LIVE conversation transcript: nothing but what was SAID, streaming in as it
+// happens — the user's words the moment STT lands, the companion's reply the
+// moment it's generated. No pipeline steps here; the rich per-step trace lives
+// on the dedicated Trace page. Desktop: a persistent right column; mobile: a
+// slide-in drawer toggled from the header.
+export function TraceLog({ turns, onReplay, mobileOpen, onCloseMobile }: Props) {
+  // Flatten grouped turns into an ordered list of spoken lines: the user line
+  // (from STT) then the companion line (from the reply), turn by turn. Each
+  // appears as soon as its source event has arrived — a true live transcript.
+  const lines = useMemo<Line[]>(() => {
+    const out: Line[] = [];
+    for (const t of [...turns].sort((a, b) => a.index - b.index)) {
+      const heard = clean(t.heard);
+      const reply = clean(t.reply);
+      if (heard) out.push({ key: `${t.index}-u`, turn: t, role: "user", text: heard });
+      if (reply) out.push({ key: `${t.index}-c`, turn: t, role: "companion", text: reply });
+    }
+    return out;
+  }, [turns]);
+
+  // Keep the newest line in view as the conversation streams.
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [lines.length]);
+
   return (
     <>
       {/* Mobile scrim (drawer only) */}
@@ -43,55 +61,91 @@ export function TraceLog({
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 dark:border-slate-800">
           <div>
             <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
-              Conversation trace
+              Live transcript
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Each turn, start to finish — tap to expand
+              What's said, as it's said
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {realTurns > 0 && (
-              <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
-                {realTurns} {realTurns === 1 ? "turn" : "turns"}
-              </span>
-            )}
-            <button
-              onClick={onCloseMobile}
-              aria-label="Close trace"
-              className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-            >
-              <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M18 6 6 18M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <button
+            onClick={onCloseMobile}
+            aria-label="Close transcript"
+            className="grid h-8 w-8 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 lg:hidden dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
         </div>
-      <div className="thin-scroll flex-1 overflow-y-auto px-3 py-3">
-        {turns.length === 0 && (
-          <div className="mt-6 flex flex-col items-center gap-2 px-4 text-center">
-            <div className="grid h-11 w-11 place-items-center rounded-full bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
-              <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 6h16M4 12h10M4 18h7" />
-              </svg>
+
+        <div className="thin-scroll flex-1 space-y-3 overflow-y-auto px-4 py-4">
+          {lines.length === 0 && (
+            <div className="mt-6 flex flex-col items-center gap-2 px-4 text-center">
+              <div className="grid h-11 w-11 place-items-center rounded-full bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 12h.01M12 12h.01M16 12h.01M21 12a9 9 0 0 1-13.5 7.8L3 21l1.2-4.5A9 9 0 1 1 21 12z" />
+                </svg>
+              </div>
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Start talking — your words and the reply appear here live.
+              </p>
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              Start a conversation and just talk — each turn's pipeline shows up
-              here.
-            </p>
-          </div>
-        )}
-        {[...turns].reverse().map((turn) => (
-          <TurnCard
-            key={turn.index}
-            turn={turn}
-            open={openTurn === turn.index}
-            onToggle={() => onToggle(turn.index)}
-            onReplay={() => onReplay(turn)}
-            onFeedback={onFeedback ? (r, n) => onFeedback(turn, r, n) : undefined}
-          />
-        ))}
-      </div>
+          )}
+          {lines.map((line) => (
+            <Bubble key={line.key} line={line} onReplay={onReplay} />
+          ))}
+          <div ref={endRef} />
+        </div>
       </aside>
     </>
   );
+}
+
+// One transcript line. User: right-aligned, sky. Companion: left-aligned,
+// neutral, with an unobtrusive replay control when its audio is available.
+function Bubble({ line, onReplay }: { line: Line; onReplay: (turn: TurnGroup) => void }) {
+  const isUser = line.role === "user";
+  const canReplay = !isUser && line.turn.audio.length > 0;
+  return (
+    <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+      <span
+        className={`text-[10px] font-semibold uppercase tracking-wider ${
+          isUser ? "text-sky-600 dark:text-sky-400" : "text-emerald-600 dark:text-emerald-400"
+        }`}
+      >
+        {isUser ? "You" : "Saathi"}
+      </span>
+      <div
+        className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm ${
+          isUser
+            ? "rounded-tr-sm bg-sky-600 text-white"
+            : "rounded-tl-sm bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-100"
+        }`}
+      >
+        {line.text}
+        {canReplay && (
+          <button
+            onClick={() => onReplay(line.turn)}
+            title="Replay reply audio"
+            aria-label="Replay reply audio"
+            className="ml-2 inline-flex translate-y-px items-center text-emerald-600 transition-colors hover:text-emerald-500 dark:text-emerald-400"
+          >
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Strip inline TTS tags ([warm], <angle>) and markdown emphasis so the
+// transcript shows exactly what was said — nothing markup-ish leaks through.
+function clean(text: string): string {
+  return (text ?? "")
+    .replace(/\[[^[\]]*\]|<[^<>]*>/g, "")
+    .replace(/[*_`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

@@ -279,7 +279,6 @@ async def build_pipeline(settings: Settings) -> Pipeline:
             config=retrieval_cfg,
             fetcher=retrieval_fetcher,
             logs=logs,
-            trace_store=traces,
         )
 
     register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act
