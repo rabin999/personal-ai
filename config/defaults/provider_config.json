@@ -31,7 +31,7 @@
   },
   {
     "_id": "llm_router",
-    "version": 3,
+    "version": 4,
     "tiers": {
       "simple": [
         "anthropic/claude-haiku-4.5",

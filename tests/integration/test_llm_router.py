@@ -52,7 +52,10 @@ def router(ledger: CostLedger) -> OpenRouterLLM:
 async def test_simple_tier_resolves_and_answers(router: OpenRouterLLM, user_id: str) -> None:
     result = await router.complete(user_id, MESSAGES, "simple", max_tokens=2000)
     assert "pong" in result.text.lower()
-    assert result.model.startswith(router.route("simple").split(":")[0])
+    # Same provider as the routed model. OpenRouter returns the canonical dated id
+    # (e.g. anthropic/claude-4.5-haiku-20251001 for our anthropic/claude-haiku-4.5 slug),
+    # so compare the provider, not the exact slug ordering.
+    assert result.model.split("/")[0] == router.route("simple").split("/")[0]
     assert result.input_tokens > 0 and result.output_tokens > 0
 
 

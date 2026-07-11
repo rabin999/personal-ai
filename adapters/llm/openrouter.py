@@ -212,7 +212,7 @@ class OpenRouterLLM:
         # the fallback. Any REAL catalog model is honored (not just configured tiers).
         if model and self.is_selectable_model(model):
             chain = [model, *[m for m in chain if m != model]]
-        for model_id in chain:
+        for attempt, model_id in enumerate(chain):
             wall_start = time.time()
             started = time.perf_counter()
             try:
@@ -229,6 +229,21 @@ class OpenRouterLLM:
             except Exception as exc:
                 errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
                 logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
+                # Flag + trace the fallback so a primary-model failure is VISIBLE in the
+                # per-turn trace (not just a server log) — which model failed, why, and
+                # what we fall to next.
+                if self._logs is not None:
+                    self._logs.log(
+                        "warning",
+                        "llm.fallback",
+                        stage="llm",
+                        purpose=purpose or "unlabeled",
+                        tier=tier,
+                        failed_model=model_id,
+                        attempt=attempt,
+                        error=f"{type(exc).__name__}: {exc}"[:300],
+                        next_model=chain[attempt + 1] if attempt + 1 < len(chain) else None,
+                    )
                 continue
             self._log_cost(user_id, result, session_id)
             # Per-LLM-call span (design: tracing / C1): model / tokens / cost / latency +
@@ -243,6 +258,8 @@ class OpenRouterLLM:
                 purpose=purpose,
                 params=self._params(model_id, response_format, max_tokens, temperature, False),
                 wall_start=wall_start,
+                fallback=attempt > 0,
+                failed_models=[e.split(":")[0] for e in errors] or None,
             )
             return result
         raise LLMUnavailable(f"all models failed for tier '{tier}': {'; '.join(errors)}")
@@ -412,6 +429,8 @@ class OpenRouterLLM:
         purpose: str = "",
         params: dict[str, Any] | None = None,
         wall_start: float | None = None,
+        fallback: bool = False,
+        failed_models: list[str] | None = None,
     ) -> None:
         if self._logs is None:
             return
@@ -446,6 +465,10 @@ class OpenRouterLLM:
             # durable trace store lean.
             messages=_trim_messages(messages),
             completion=result.text[:_MAX_TRACE_CHARS],
+            # Fallback observability: this reply was served by a fallback model because the
+            # primary(ies) failed — flagged on the call span, with which models failed.
+            fallback=fallback,
+            failed_models=failed_models,
         )
 
     def _log_cost(self, user_id: str, result: CompletionResult, session_id: str | None) -> None:
