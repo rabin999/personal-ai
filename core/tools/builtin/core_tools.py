@@ -109,7 +109,7 @@ def register_core_tools(
                 "prices, events, 'what's happening'. Write a SELF-CONTAINED, specific "
                 "query with enough context to get the RIGHT result: include the concrete "
                 "subject + any key entities/place from the conversation (resolve pronouns "
-                "— 'that plane' → 'Boeing cargo plane missing near Pakistan'), and add "
+                "into the concrete subject from the conversation), and add "
                 "'latest' or 'today' for unfolding events. Don't send a vague fragment. "
                 'args: {"query": str}'
             ),

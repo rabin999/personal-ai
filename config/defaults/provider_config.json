@@ -31,7 +31,7 @@
   },
   {
     "_id": "llm_router",
-    "version": 4,
+    "version": 5,
     "tiers": {
       "simple": [
         "anthropic/claude-haiku-4.5",
@@ -43,8 +43,8 @@
         "openai/gpt-4.1-mini"
       ],
       "complex": [
-        "anthropic/claude-sonnet-5",
-        "google/gemini-3.5-flash"
+        "anthropic/claude-sonnet-4.5",
+        "openai/gpt-4.1-mini"
       ]
     }
   }

@@ -98,7 +98,7 @@ def _trim_messages(
 DEFAULT_TIERS: dict[str, list[str]] = {
     "simple": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini", "google/gemini-3.1-flash-lite"],
     "moderate": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini"],
-    "complex": ["anthropic/claude-sonnet-5", "google/gemini-3.5-flash"],
+    "complex": ["anthropic/claude-sonnet-4.5", "openai/gpt-4.1-mini"],
 }
 
 
@@ -386,13 +386,24 @@ class OpenRouterLLM:
         if seed is not None:  # P5: reproducible TEST runs only (never set in prod)
             kwargs["seed"] = seed
         response = await self._client.chat.completions.create(**kwargs)
-        choice = response.choices[0]
+        # Resilience: a model can return no choices, or a choice with no message/content
+        # (content filter, reasoning-only output, provider hiccup, sonnet-5's shape). NEVER let
+        # that crash with "'NoneType' object is not subscriptable" — surface it as LLMUnavailable
+        # so the fallback chain tries the next model and the turn always degrades to a safe reply
+        # instead of freezing. (The step-integration/resilience rule: any step may fail; the user
+        # must still get a coherent response.)
+        choices = getattr(response, "choices", None)
+        if not choices:
+            raise LLMUnavailable(f"{model}: empty response (no choices)")
+        choice = choices[0]
+        message = getattr(choice, "message", None)
+        text = getattr(message, "content", None) or "" if message is not None else ""
         usage = response.usage
         cost = 0.0
         if usage is not None and getattr(usage, "model_extra", None):
             cost = float(usage.model_extra.get("cost") or 0.0)
         return CompletionResult(
-            text=choice.message.content or "",
+            text=text,
             model=response.model or model,
             input_tokens=usage.prompt_tokens if usage else 0,
             output_tokens=usage.completion_tokens if usage else 0,

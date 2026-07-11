@@ -150,3 +150,28 @@ def test_mutation_corroboration_threshold_is_the_check(monkeypatch: pytest.Monke
 
     monkeypatch.setattr(crosscheck, "_CORROBORATION_MIN", 1)  # BREAK the check
     assert cross_check(single).status == "corroborated"  # now wrong → the check mattered
+
+
+# ── S2 source-quality preference (user ask: prefer official/authoritative) ──────────
+
+
+def test_select_prefers_authoritative_sources() -> None:
+    """Official/reference/major-news sources rank above an ordinary blog even when the blog
+    was returned first — a PREFERENCE, and nothing eligible is dropped."""
+    results = [
+        sr("Blog take", "https://randomblog.example/post", "..."),
+        sr("Reuters", "https://reuters.com/world/x", "..."),
+        sr("Wikipedia", "https://en.wikipedia.org/wiki/X", "..."),
+        sr("Gov notice", "https://foo.gov/notice", "..."),
+    ]
+    domains = [c.domain for c in select_candidates(results, limit=4)]
+    assert domains[0] in {"en.wikipedia.org", "foo.gov"}  # authority (3) first
+    assert domains.index("reuters.com") < domains.index("randomblog.example")  # news > blog
+    assert domains[-1] == "randomblog.example"  # ordinary source kept, just last
+
+
+def test_select_ranking_is_a_preference_not_a_filter() -> None:
+    """Only ordinary sources → search order preserved, none dropped (guards against the
+    authority sort becoming a filter)."""
+    results = [sr("A", "https://a.example/1", "."), sr("B", "https://b.example/2", ".")]
+    assert [c.domain for c in select_candidates(results, limit=5)] == ["a.example", "b.example"]
