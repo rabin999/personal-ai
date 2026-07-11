@@ -1,4 +1,4 @@
-"""Per-turn response-quality evaluator (CLAUDE.md §6/§7).
+"""Per-turn response-quality evaluator (design doc: response-quality evaluation).
 
 Runs the companion-voice LLM-as-judge on a completed turn OFF the reply path
 (fire-and-forget) and posts its verdict to the eval backend (Langfuse) as scores

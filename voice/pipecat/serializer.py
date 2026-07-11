@@ -1,4 +1,4 @@
-"""Raw PCM16 frame serializer for the browser WebSocket (CLAUDE.md §5).
+"""Raw PCM16 frame serializer for the browser WebSocket (spec §19).
 
 Keeps the existing browser wire protocol: the client sends raw PCM16 mono @16kHz
 binary frames and plays raw PCM16 @24kHz back (the AudioWorklet already does this

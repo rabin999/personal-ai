@@ -1,6 +1,6 @@
 """E1 — enforcement and gate reachability. D-6, D-7, D-8, D-16 (fixed) and D-9 (open).
 
-Every test here asserts what `docs/ai-companion-design-doc.md` and `CLAUDE.md §2` require.
+Every test here asserts what `docs/ai-companion-design-doc.md` §9.3 requires.
 Those still marked `@pytest.mark.defect` are RED at HEAD and name their entry in
 `docs/DEFECTS_FOUND.md`. The marker is deliberately not `xfail`: an `xfail(strict=False)` can
 neither fail nor pass in a way anyone notices, which is how the last tone regression sat in
@@ -110,7 +110,7 @@ async def test_a_valid_turn_runs_self_reflection() -> None:
 
 
 async def test_self_reflection_runs_even_when_the_judgment_json_is_invalid() -> None:
-    """D-6. CLAUDE.md §2: "Self-reflection is a first-class step, not a bolt-on" — it runs
+    """D-6. Design §9.3: "Self-reflection is a first-class step, not a bolt-on" — it runs
     "before the reply goes out", every turn. Two bad JSON responses send `generate()`
     through `_plain_reply()` → `_finish()`, and no gate runs at all."""
     logs = _SpanLog()

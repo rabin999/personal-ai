@@ -1,4 +1,4 @@
-"""Pipecat STT/TTS services wrapping our adapters (CLAUDE.md §5).
+"""Pipecat STT/TTS services wrapping our adapters (spec §20, §23).
 
 Thin bridges so the SAME faster-whisper (§20) and Grok TTS (§23) adapters the
 native runtime uses plug into a Pipecat pipeline: the STT service turns a buffered
@@ -24,7 +24,7 @@ TTS_SAMPLE_RATE = 24_000  # Grok gpt-audio pcm16 output (§23)
 class CompanionSTTService(SegmentedSTTService):
     """faster-whisper (§20) as a Pipecat STT service.
 
-    MUST extend ``SegmentedSTTService``, not the base ``STTService`` (CLAUDE.md §5):
+    MUST extend ``SegmentedSTTService``, not the base ``STTService`` (spec §20):
     the base calls ``run_stt`` on EVERY audio frame (~20 ms), so faster-whisper would
     run on tiny fragments instead of whole utterances — no coherent transcript, and
     the companion never really replies (the reported prod symptom). ``SegmentedSTTService``

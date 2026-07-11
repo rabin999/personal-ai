@@ -1,4 +1,4 @@
-"""Pipecat voice runtime (CLAUDE.md §5): the framework owns VAD, endpointing, barge-in.
+"""Pipecat voice runtime (spec §19-24): the framework owns VAD, endpointing, barge-in.
 
 Assembles the pipeline the design asks for — Pipecat's transport + VAD + interruption
 instead of a hand-rolled loop:

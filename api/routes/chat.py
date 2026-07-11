@@ -198,7 +198,7 @@ async def chat(body: ChatRequest, user: CurrentUser, request: Request) -> ChatRe
     events = [event async for event in trace.events()]
     # Persist every stage span to the durable trace store so the full technical
     # trace (retrieval → prompt → llm.call → judgment → reflection → tool → memory
-    # → response → summary) is inspectable at /debug/traces (CLAUDE.md §5).
+    # → response → summary) is inspectable at /debug/traces (design doc: per-turn tracing).
     for event in events:
         span = event.model_dump()
         span["turn"] = turn_no

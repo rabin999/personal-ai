@@ -231,7 +231,7 @@ class OpenRouterLLM:
                 logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
                 continue
             self._log_cost(user_id, result, session_id)
-            # Per-LLM-call span (CLAUDE.md §5 / C1): model / tokens / cost / latency +
+            # Per-LLM-call span (design: tracing / C1): model / tokens / cost / latency +
             # the actual prompt/reply + the call's PURPOSE + full params + precise
             # start/end wall-clock (so the trace can show ordering AND parallel-vs-
             # sequential concurrency), correlation-bound to the current turn.
@@ -442,7 +442,7 @@ class OpenRouterLLM:
             cache_hit=result.cached_tokens > 0,
             # The ACTUAL prompt (incl. the assembled system prompt) and the reply, so
             # the Langfuse generation shows its input/output instead of an empty span
-            # (CLAUDE.md §5: per-LLM-call trace must be complete). Bounded to keep the
+            # (design doc: per-LLM-call trace must be complete). Bounded to keep the
             # durable trace store lean.
             messages=_trim_messages(messages),
             completion=result.text[:_MAX_TRACE_CHARS],

@@ -1,4 +1,4 @@
-"""Per-turn LLM-as-judge evaluator (CLAUDE.md §6/§7).
+"""Per-turn LLM-as-judge evaluator (design doc: response-quality evaluation).
 
 Asserts the evaluator runs the judge and posts its verdict as scores on the SAME
 (session, turn) so Langfuse shows quality next to the pipeline — and that it stays

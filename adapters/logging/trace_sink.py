@@ -4,7 +4,7 @@ Bridges the structured logger (Part B) to the durable trace store (§1): a log
 record carrying correlation ids (``trace_id`` = session, ``turn_id``, ``user_id``)
 is written as a trace event so per-LLM-call spans (model, tokens, cost, latency)
 show up in ``/debug/traces`` and the /traces UI, grouped by session — meeting the
-"per-LLM-call token/cost/latency in the trace" bar (CLAUDE.md §5).
+"per-LLM-call token/cost/latency in the trace" bar (design doc: per-turn tracing).
 
 Records without a ``trace_id``/``user_id`` (logs outside a bound turn) are skipped
 here — they still reach the file/stdout sinks. Writes are fire-and-forget so the

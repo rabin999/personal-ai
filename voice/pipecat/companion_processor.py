@@ -1,4 +1,4 @@
-"""Companion reasoning as a Pipecat FrameProcessor (CLAUDE.md §5).
+"""Companion reasoning as a Pipecat FrameProcessor (spec §19-24).
 
 Sits in the Pipecat pipeline between STT and TTS: on a FINAL transcription it runs
 the full reasoning core — §10 prompt assembly (memory read) → §12 generation with

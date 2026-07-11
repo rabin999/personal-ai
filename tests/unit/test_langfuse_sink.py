@@ -1,4 +1,4 @@
-"""Langfuse trace sink contract (A8 / CLAUDE.md §5, §3 invariant 1).
+"""Langfuse trace sink contract (A8 / design: tracing + isolation, spec §26).
 
 Mocks the Langfuse client so we can assert — without a Langfuse server — that a
 per-turn record becomes an observation that:

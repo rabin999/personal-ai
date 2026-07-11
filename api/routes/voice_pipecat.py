@@ -1,4 +1,4 @@
-"""Pipecat voice WebSocket route (CLAUDE.md §5) — framework-owned VAD + barge-in.
+"""Pipecat voice WebSocket route (spec §19, §24) — framework-owned VAD + barge-in.
 
 Parallel to the native ``/ws/voice`` (which stays the default): this endpoint runs
 the SAME reasoning engine through a Pipecat pipeline, so the framework handles the

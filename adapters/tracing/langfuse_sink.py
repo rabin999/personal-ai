@@ -85,8 +85,8 @@ class LangfuseTraceSink:
         # propagate_attributes stamps user_id/session_id onto the trace, but ONLY on
         # spans created inside its context — so the observation MUST be started within
         # the `with`, not before it. Without this the trace has no user (the app is
-        # multi-tenant; per-user filtering/cost in Langfuse depends on it — CLAUDE.md
-        # §3 invariant 1).
+        # multi-tenant; per-user filtering/cost in Langfuse depends on it — the
+        # multi-tenant isolation invariant (spec §26).
         with propagate_attributes(user_id=user_id, session_id=session):
             observation = (
                 self._lf.start_as_current_observation(

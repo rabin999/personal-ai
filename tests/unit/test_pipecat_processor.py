@@ -1,4 +1,4 @@
-"""Headless verification of the Pipecat CompanionProcessor (CLAUDE.md §5).
+"""Headless verification of the Pipecat CompanionProcessor (spec §19-24).
 
 Runs the processor inside a real Pipecat pipeline (via pipecat's own run_test
 harness) with a synthetic final transcription — no audio, no browser — and
@@ -152,7 +152,7 @@ class _CountingSTT:
 
 
 async def test_stt_segments_one_transcription_per_utterance() -> None:
-    """Regression (CLAUDE.md §5): the STT service must transcribe ONE whole
+    """Regression (spec §20): the STT service must transcribe ONE whole
     VAD-bounded utterance, not every ~20ms audio frame. The old base ``STTService``
     called run_stt per frame — faster-whisper on fragments, no coherent transcript,
     the reported prod symptom. As a ``SegmentedSTTService`` it buffers between the

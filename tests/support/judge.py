@@ -1,7 +1,7 @@
 """Reusable LLM-as-judge for the real-call suites (plan §3/§4).
 
 Single source of truth now lives in ``core.eval.judge`` so the LIVE per-turn
-evaluator (CLAUDE.md §6/§7) and these test suites share one calibrated rubric —
+evaluator (design: response-quality eval) and these test suites share one calibrated rubric —
 no drift. Re-exported here to keep the existing test imports working.
 """
 

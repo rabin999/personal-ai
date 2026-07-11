@@ -1,4 +1,4 @@
-"""LLM-as-judge for companion-voice quality (CLAUDE.md §6/§7).
+"""LLM-as-judge for companion-voice quality (design doc: response-quality evaluation).
 
 A separate, strong, PINNED model scores a captured companion reply against THIS
 app's design standard (design doc §1.2-1.4, §3). Calibrated to the app's real

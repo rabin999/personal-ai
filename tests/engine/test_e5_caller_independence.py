@@ -184,7 +184,7 @@ async def test_a_neutral_turn_is_delivered_in_a_neutral_register_on_both_paths(
 @pytest.mark.real_call
 @pytest.mark.asyncio(loop_scope="module")
 async def test_self_reflection_runs_on_every_turn_through_both_paths(real_turns) -> None:
-    """CLAUDE.md §2 and design §9.3: self-reflection is a first-class step on EVERY turn.
+    """Design §9.3: self-reflection is a first-class step on EVERY turn.
 
     **Intermittently red (D-6), and it is NOT marked `defect` for that reason.** Whether it
     passes depends on whether the judgment JSON happened to validate: `generate()` calls
