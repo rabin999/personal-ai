@@ -214,3 +214,27 @@ resilience test is green. Verified: full unit+engine suite passes; prod healthy.
 Engine-side (this phase): search repair-path honest-fail rate; repetitive/non-dynamic search ack.
 Voice-runtime (deferred to voice phase — user scoped current work to core engine, no voice I/O):
 greeting-discard-if-user-already-speaking; two related sentences across 2 turns not combined.
+
+## #18 live-info reliability — engine side DONE + PROVEN (3da6d65); voice items deferred
+Real-drive proofs (real model + real stores, not mocks):
+- GREETING/localtime: tests/real_call/test_localtime.py PASSES — the assembled greeting uses the
+  user's real local day-part (no "good morning" at night). #1 proven.
+- VERIFY-BEFORE-ANSWER freshness: drove "who is the current prime minister of Nepal?":
+    * BEFORE the year fix: the model appended its cutoff year → query "current PM of Nepal 2024" →
+      search returned nothing → engine gave the HONEST "couldn't verify, retry?" (never stale). The
+      invariant held, but it was an avoidable honest-fail.
+    * AFTER stripping the model's invented stale year: same question → "Balendra Shah is the current
+      prime minister of Nepal." — searched, self-reflected, FRESH (no stale Prachanda). #3/#18 proven.
+  Committed as a permanent regression test (test_verify_before_answer_freshness.py).
+
+Remaining #18 items are VOICE-RUNTIME (user scoped this phase to core engine, no voice I/O) → deferred
+to the voice phase: greeting-discard-if-user-already-speaking + two-related-sentences-across-2-turns
+(both Pipecat endpointing/barge-in). The dynamic search ack is already LLM-generated per turn (temp 0.9,
+topic-aware) — not a static line.
+
+## SESSION SUMMARY — all deployed to prod (health ok), every commit clean (no AI attribution)
+Batches A/B/C/D; #13 companion self-naming guard + Norsylinder graph cleanup; #14 settings removal;
+#15 tone enforcement; #17 memory supersession + canonical user_name; NO-SILENT-FAILURE resilience
+(D-9 red→green); verify-before-answer + stale-year strip (freshness proven by real drive).
+Still open (larger, next phases): #16 progressive delivery (voice), #8 Phase B eval bundle,
+#18 voice-runtime endpointing items.
