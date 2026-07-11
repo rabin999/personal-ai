@@ -70,3 +70,41 @@ decision made. Newest section appended at the bottom.
   unaffected; noted as a follow-up.
 
 **Gate condition ("if it works with full flow") — met. Proceeding to deploy.**
+
+### Step 4–5 — production deploy + verification ✅
+
+**Pre-deploy:** local regression suite green except the 2 known standing SMTP-credential tests
+(no regression from the integration). Pushed `main` → `origin` (`c57d7d1`).
+
+**Prod box** `202-58-120-93.sslip.io` — 62Gi RAM (54 free), 944G disk free; app runs as systemd,
+datastores + Langfuse as docker.
+
+1. **App deploy** — `deploy/update.sh`: pulled `main` → `c57d7d1`, `uv sync --extra voice`,
+   rebuilt UI, restarted `companion-api` + `companion-worker`. Health `{"status":"ok"}`.
+2. **Crawl4AI service** — generated a 48-char token → `deploy/crawl4ai/.env` + `/opt/companion/.env`;
+   `docker compose -f deploy/crawl4ai/docker-compose.yml up -d` (image `0.8.6`, loopback
+   `127.0.0.1:11235`, `--shm-size=1g`, 4g cap). **Healthy after ~108 s.** Restarted `companion-api`
+   to pick up the token.
+3. **Prod verification (on the box, real prod stack):**
+   - App health: internal `{"status":"ok"}`, **public HTTPS 200**.
+   - **Verified retrieval:** `status=single_source`, `answer="Balendra Shah"`, recency
+     `time_sensitive=True stale=False most_recent=2026-07-10`, source `thediplomat.com`,
+     voice *"Sources confirm that Balendra Shah is the current prime minister of Nepal."*
+     — honest cardinality, grounded, **not fabricated**. PASS.
+   - **Full engine turn (E2E):** *"It's Balendra Shah. He's the current prime minister of Nepal."*,
+     `searched=True` — the deployed engine calls verified retrieval and delivers a grounded answer.
+   - **Crawl4AI served live crawls** during the verify (browser-pool activity @14:41) — not the
+     snippet fallback.
+
+**Result: Phase A COMPLETE — verified-retrieval is deployed and working in production.**
+
+## Honest notes / follow-ups (not blockers)
+
+- `retrieval.<stage>` spans aren't tagged with the turn number → they don't show in the per-turn
+  trace view (they reach logs/trace store). Cosmetic; fix later.
+- Crawl4AI `0.8.6` pinned (0.9.1 image is broken); its token isn't enforced from env alone
+  (upstream #1442) — the **loopback bind is the real guard**. Revisit when a fixed 0.9.x lands.
+- Latency ~13 s (fetch-bound) → background/waiter path only; no inline sub-second path.
+- Bot-walled sites (some NEPSE market pages) → honest `status=error`, degrades to snippet search;
+  never a fabricated number.
+- Verification used the core-engine/text path (per scope). Voice I/O untouched and not tested.
