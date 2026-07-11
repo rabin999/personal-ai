@@ -10,6 +10,7 @@ import MemoriesPage from "./pages/MemoriesPage";
 import ProjectsPage from "./pages/ProjectsPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import { fetchMe } from "./lib/session";
+import { syncBrowserTimezone } from "./lib/profile";
 
 // App router. BrowserRouter with REAL named paths (not a hash router): the FastAPI
 // edge serves index.html for these client routes (api/app.py SPA fallback), so a
@@ -59,7 +60,12 @@ export default function App() {
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<"checking" | "in" | "out">("checking");
   useEffect(() => {
-    fetchMe().then((u) => setState(u ? "in" : "out"));
+    fetchMe().then((u) => {
+      setState(u ? "in" : "out");
+      // Once signed in, capture the browser's real timezone so the companion knows
+      // the user's local time (fixes "good morning" at 9pm). Best-effort, fire-and-forget.
+      if (u) void syncBrowserTimezone();
+    });
   }, []);
   if (state === "checking") {
     return (

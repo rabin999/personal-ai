@@ -86,7 +86,8 @@ _LULL_MS = 22_000.0
 # session — the model was converging on the same "welcome back" line because the
 # input never changed. Combined with a hotter temperature, this keeps hellos varied.
 _GREETING_ANGLES = (
-    "lead with the time of day (morning/evening) in a natural way",
+    "if you GENUINELY know their local time of day, you can nod to it naturally — but "
+    "ONLY if the prompt actually tells you their local time; never guess morning/evening",
     "riff lightly on how long it's been since you last talked",
     "just an easy, plain 'hey' with their name — nothing extra",
     "be a little playful or teasing",
@@ -794,7 +795,7 @@ class VoiceSession:
             instr = (
                 "[The user just opened the app to talk with you. Greet them first, warmly and "
                 "CASUALLY, in ONE short natural spoken line — like a friend genuinely glad they "
-                f"showed up.{note} Use their name if you know it. For THIS greeting: {angle}. "
+                f"showed up.{note} You don't need to use their name. For THIS greeting: {angle}. "
                 "Make it FRESH and clearly DIFFERENT from a stock 'welcome back' — never reuse "
                 "the same wording twice; vary the opener, rhythm and words every single time. "
                 "Keep it informal. Do NOT ask 'how can I help' or end on a stock filler question "
@@ -808,7 +809,7 @@ class VoiceSession:
             # (first words start immediately) instead of synthesized whole (L4/§8.12).
             # Hotter temperature than a normal reply so the hello genuinely varies.
             result = await self._speak_turn(
-                prompt, self._tool_context(prompt), out, temperature=1.1
+                prompt, self._tool_context(prompt), out, temperature=0.9
             )
             text = (result.voice_text or result.final_text).strip()
             if not text:

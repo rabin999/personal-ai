@@ -68,29 +68,36 @@ def read_register(emotion: Mapping[str, Any] | None) -> Register:
     return "neutral"
 
 
+# Every directive ENDS on brevity, because this is the LAST thing the model reads before it
+# generates — and a warm register was otherwise producing greeting-card monologues. Warmth is
+# carried by TONE and a real question, never by length.
+_BRIEF = (
+    " And keep it SHORT — one or two sentences like a real friend, never a paragraph or a "
+    "greeting-card monologue; meet the feeling in a few genuine words, then ask ONE real question."
+)
 _DIRECTIVES: dict[Register, str] = {
     "down": (
         "The user sounds low/sad. Deliver in a WARM, GENTLE, quietly ENCOURAGING "
-        "register that helps lift them — soft and unhurried. Use tags like [gentle], "
+        "register that helps lift them — soft. Use tags like [gentle], "
         "[warm], [soft], <slow>, <pause>. Do NOT sound cheery or upbeat, and NEVER "
-        "use [laugh]/[chuckle] or any levity — that would be tone-deaf right now."
+        "use [laugh]/[chuckle] or any levity — that would be tone-deaf right now." + _BRIEF
     ),
     "stressed": (
         "The user sounds stressed/anxious. Deliver CALM and STEADY — grounding, "
-        "reassuring, slower. Use [gentle], [warm], <slow>, <pause>. Do NOT be bubbly "
-        "or fast, and do NOT use [laugh]/[chuckle]."
+        "reassuring. Use [gentle], [warm], <slow>, <pause>. Do NOT be bubbly "
+        "or fast, and do NOT use [laugh]/[chuckle]." + _BRIEF
     ),
     "excited": (
         "The user sounds excited. Match their energy — UPBEAT, warm, a little playful. "
-        "[laugh]/[chuckle] and <emphasis> fit here when something's genuinely fun."
+        "[laugh]/[chuckle] and <emphasis> fit here when something's genuinely fun." + _BRIEF
     ),
     "upbeat": (
         "The user sounds positive. Keep it light and warm — a natural, friendly upbeat "
-        "register; a [chuckle] or <emphasis> where it genuinely fits."
+        "register; a [chuckle] or <emphasis> where it genuinely fits." + _BRIEF
     ),
     "neutral": (
         "Natural, warm conversational delivery — weave in a delivery tag only where it "
-        "genuinely fits the moment."
+        "genuinely fits the moment." + _BRIEF
     ),
 }
 

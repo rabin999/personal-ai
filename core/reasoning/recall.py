@@ -122,7 +122,7 @@ _PAST_HEADER = (
 
 def render_current_transcript(turns: Sequence[_Turn], companion_name: str | None = None) -> str:
     """Numbered, ordered transcript of the current session (oldest→newest)."""
-    name = companion_name or "companion"
+    name = companion_name or "Saathi"
     shown = turns[-_MAX_CURRENT_TURNS:]
     elided = len(turns) - len(shown)
     lines = []

@@ -145,7 +145,7 @@ function TurnDetail({
               )}
               {reply && (
                 <p className="text-[15px] leading-relaxed text-neutral-700 dark:text-neutral-200">
-                  <span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-sm font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">Asaathi</span>
+                  <span className="mr-1.5 rounded bg-sky-100 px-1.5 py-0.5 text-sm font-semibold uppercase tracking-wide text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">Saathi</span>
                   {reply}
                 </p>
               )}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { fetchProfile, updatePrefs, type LocaleProfile, type UserProfile } from "../lib/profile";
+import { fetchProfile, updatePrefs, type UserProfile } from "../lib/profile";
 import { deleteAccount, fetchMe, type Me } from "../lib/session";
 
 interface Props {
@@ -154,7 +154,7 @@ function DeleteAccount() {
 }
 
 function ProfileBody({ p, me }: { p: UserProfile; me: Me | null }) {
-  const companion = p.companion_name || "Asaathi";
+  const companion = p.companion_name || "Saathi";
   const displayName = me?.name || me?.email?.split("@")[0] || "You";
   return (
     <div className="flex flex-col gap-6">
@@ -239,7 +239,6 @@ function ProfileBody({ p, me }: { p: UserProfile; me: Me | null }) {
 // /api/prefs; the speed applies on the next reply, locale on the next turn.
 function VoiceAndLocale({ p }: { p: UserProfile }) {
   const [speed, setSpeed] = useState<number>(numOr(p.audio_prefs.voice_speed, 1.0));
-  const [loc, setLoc] = useState<LocaleProfile>({ ...p.locale });
   const [saved, setSaved] = useState<"" | "saving" | "ok" | "err">("");
 
   // Reflect the new speed on the LIVE conversation immediately (the AudioPlayer in
@@ -248,7 +247,7 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
     window.dispatchEvent(new CustomEvent("asaathi:voice-speed", { detail: v }));
   }
 
-  async function save(patch: { voice_speed?: number; locale?: LocaleProfile }) {
+  async function save(patch: { voice_speed?: number }) {
     setSaved("saving");
     try {
       await updatePrefs(patch);
@@ -258,19 +257,6 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
       setSaved("err");
     }
   }
-
-  const field = (key: keyof LocaleProfile, label: string, placeholder: string) => (
-    <label className="flex flex-col gap-1">
-      <span className="text-[11px] text-slate-400 dark:text-slate-500">{label}</span>
-      <input
-        value={loc[key] ?? ""}
-        onChange={(e) => setLoc({ ...loc, [key]: e.target.value })}
-        onBlur={() => save({ locale: loc })}
-        placeholder={placeholder}
-        className="rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
-      />
-    </label>
-  );
 
   return (
     <Section title="Voice & you">
@@ -307,29 +293,9 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
           <span className="absolute right-0">1.5×</span>
         </div>
       </div>
-      {/* City/country removed — the companion learns where you are dynamically now
-          (persona/memory). Timezone stays: it's what anchors time-of-day greetings. */}
-      <div className="mt-3 grid grid-cols-2 gap-2.5">
-        {field("timezone", "Timezone", "Asia/Kathmandu")}
-        {field("currency", "Currency", "NPR")}
-        <label className="flex flex-col gap-1">
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">Units</span>
-          <select
-            value={loc.units ?? ""}
-            onChange={(e) => {
-              const next = { ...loc, units: e.target.value as LocaleProfile["units"] };
-              setLoc(next);
-              void save({ locale: next });
-            }}
-            className="rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm text-slate-800 focus:border-sky-400 focus:outline-none dark:border-slate-700 dark:text-slate-100"
-          >
-            <option value="">—</option>
-            <option value="metric">Metric</option>
-            <option value="imperial">Imperial</option>
-          </select>
-        </label>
-        {field("language", "Language", "en")}
-      </div>
+      {/* Location/locale fields removed — the companion captures the user's timezone
+          automatically from the browser and learns their place, units and currency
+          dynamically (persona/memory). No fixed location to manage. */}
       {saved === "saving" && <p className="text-[11px] text-slate-400">Saving…</p>}
       {saved === "ok" && <p className="text-[11px] text-emerald-500">Saved</p>}
       {saved === "err" && <p className="text-[11px] text-red-500">Couldn't save</p>}

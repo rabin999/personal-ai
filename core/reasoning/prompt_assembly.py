@@ -678,7 +678,7 @@ def _user_context_section(locale: "LocaleProfile | None") -> tuple[str, list[str
 
 
 def _identity_section(companion_name: str | None) -> str:
-    name = companion_name or "Companion"
+    name = companion_name or "Saathi"
     # Only identity + safety (self-model/disclosure) + capability (tool-awareness)
     # are hard-coded here. The toggleable STYLE — voice/anti-chatbot tics and
     # intent-first curiosity — lives in the response_voice + curiosity_policy TRAITS

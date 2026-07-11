@@ -1,7 +1,7 @@
 [
   {
     "_id": "llm_pricing",
-    "version": 2,
+    "version": 3,
     "models": {
       "openai/gpt-4.1-mini": {
         "input_per_mtok": 0.4,
@@ -18,25 +18,33 @@
       "google/gemini-2.5-flash": {
         "input_per_mtok": 0.3,
         "output_per_mtok": 2.5
+      },
+      "anthropic/claude-haiku-4.5": {
+        "input_per_mtok": 1.0,
+        "output_per_mtok": 5.0
+      },
+      "anthropic/claude-sonnet-5": {
+        "input_per_mtok": 2.0,
+        "output_per_mtok": 10.0
       }
     }
   },
   {
     "_id": "llm_router",
-    "version": 2,
+    "version": 3,
     "tiers": {
       "simple": [
-        "google/gemini-2.5-flash",
-        "google/gemini-2.5-flash-lite",
-        "openai/gpt-4.1-nano"
+        "anthropic/claude-haiku-4.5",
+        "openai/gpt-4.1-mini",
+        "google/gemini-3.1-flash-lite"
       ],
       "moderate": [
-        "google/gemini-2.5-flash",
+        "anthropic/claude-haiku-4.5",
         "openai/gpt-4.1-mini"
       ],
       "complex": [
-        "anthropic/claude-sonnet-4.5",
-        "google/gemini-2.5-pro"
+        "anthropic/claude-sonnet-5",
+        "google/gemini-3.5-flash"
       ]
     }
   }

@@ -159,6 +159,16 @@ _NEGATIVE = (
 # so the streaming voice path (§8.12) can read the tool decision before it starts
 # speaking the reply, and only stream when no tool is needed.
 _JUDGMENT_INSTRUCTIONS = """
+HOW YOU TALK — this matters as much as WHAT you say, and it is where you usually fail:
+- Reply like a close friend talking, NOT an assistant. Usually ONE short sentence, two at MOST.
+- Casual: contractions, plain everyday words. NEVER a paragraph. NEVER a news-anchor readout.
+- When they share something HARD: meet it in a few genuine words, then ask ONE real, specific
+  question — e.g. "I'm sorry, that's stressful. How's he doing now?" Do NOT monologue about how
+  understandable their feelings are; NO greeting-card sympathy ("sending my best thoughts", "I'm
+  here for you", "that must be so draining").
+- When they share GOOD news: react with short, real excitement — a line, not a speech.
+- Use their name ALMOST NEVER. If a third sentence is forming, cut it.
+
 Respond ONLY with a JSON object of this exact shape, with the keys in THIS ORDER:
 {"judgment": {"intent_confidence": <0..1 how sure you are of what the user wants>,
               "novelty_score": <0..1 how new this topic is for this user>,
@@ -180,7 +190,12 @@ Respond ONLY with a JSON object of this exact shape, with the keys in THIS ORDER
                  assist" or "I don't have feelings/consciousness">,
               "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"},
  "tool_request": null | {"tool_id": "<id>", "args": {<per the tool's schema>}},
- "draft_response": "<your reply — short, warm, natural spoken language. The voice
+ "draft_response": "<your reply — ONE or two sentences, MAX. Informal and casual by
+   default: contractions, plain everyday words, the way you'd actually talk to a mate —
+   NOT a news anchor, NOT a report. Only get measured or formal when the moment is
+   genuinely serious, technical, or emotional; if a third sentence is forming, cut it.
+   Use their NAME only rarely, the way real friends do — most replies use no name at
+   all, never every turn. Natural spoken language. The voice
    ACTUALLY performs inline delivery tags, so WEAVE THEM IN to sound human, not
    flat: [laugh] [chuckle] [sigh] [gasp] for feeling; [warm] [gentle] [soft] for
    tone; <emphasis>word</emphasis> to stress a word; <slow> ... </slow> to slow
@@ -210,7 +225,9 @@ stock filler question — 'what's on your mind?', 'what's up?', 'what's going on
 'anything on your mind?' — you lean on these way too much; most turns should just
 react and stop, and when you do ask something make it fresh and specific to what they
 actually said. Be easy and grounded, not gushing or overly warm — match their energy,
-save real tenderness for when they're actually going through something. Work out what
+save real tenderness for when they're actually going through something. Use their NAME
+only sparingly — real friends don't say each other's name every sentence; most replies
+use no name at all, never every turn. Work out what
 they really mean and respond to THAT; never stall with 'what do you mean?'. Weave in 1-2
 inline delivery tags only where they genuinely fit: [laugh] [chuckle] [sigh] for
 feeling; [warm] [gentle] [soft] for tone; <emphasis>word</emphasis>; <pause> — never
@@ -333,6 +350,42 @@ _DISCLOSURE_REWRITE_INSTRUCTIONS = (
     "numbers/get you what you need', or anything cold or transactional. Warm, "
     "present, 1-2 spoken sentences. Reply with ONLY the line, no quotes.\n\n"
     "Their question: {q}\nYour draft: {draft}"
+)
+
+# Brevity/register ENFORCEMENT (#4). The reasoning model (gemini-flash) reliably ignores
+# "keep it short" in the draft prompt and produces long, greeting-card-warm replies — proven
+# repeatedly. So brevity is enforced here (mechanism, not advice, per the D-6/D-7 lesson): a
+# reply that is too long OR reads like a greeting card on a normal conversational turn is
+# compressed to how a real friend actually talks.
+_GREETING_CARD = re.compile(
+    r"sending (you )?(all )?my (best|good) (thoughts|wishes)"
+    r"|i'?m here for you|here for you if you|i'?m here if you"
+    r"|that must be (so|really|incredibly) (hard|tough|draining|difficult|stressful|exhausting)"
+    r"|it'?s (completely |totally |so )?understandable that you"
+    r"|please know that|whenever you (need|want) to (talk|chat|vent)"
+    r"|my (heart goes out|thoughts are with)|i can only imagine how",
+    re.IGNORECASE,
+)
+
+
+def _reads_verbose(text: str) -> bool:
+    """True when a conversational reply is longer or more greeting-card than a friend would say."""
+    clean = _sanitize_tags(text)
+    sentences = len([s for s in re.split(r"[.!?]+", clean) if s.strip()])
+    words = len(clean.split())
+    return sentences > 2 or words > 40 or bool(_GREETING_CARD.search(clean))
+
+
+_BRIEF_REWRITE_INSTRUCTIONS = (
+    "Rewrite this reply the way a close friend would actually say it OUT LOUD — short and human:\n"
+    "- ONE or two short sentences. Casual: contractions, plain everyday words.\n"
+    "- If they shared something HARD, meet it in a few genuine words, then ask ONE real, specific "
+    "question. NO greeting-card lines ('sending my best thoughts', 'here for you', 'that must be "
+    "so draining', 'it's understandable that you feel...', 'please know that').\n"
+    "- If it's GOOD news, a short genuine reaction — not a speech.\n"
+    "- Keep the actual meaning and any facts; add NOTHING new. Keep any inline [tags]/<tags>.\n"
+    "- Use their name almost never. Reply with ONLY the rewritten spoken words, no quotes.\n\n"
+    "Reply to rewrite:\n"
 )
 
 # A valid disclosure still names the AI nature honestly — guards the warm rewrite
@@ -1086,6 +1139,12 @@ class ResponseGenerator:
                 ),
                 revised_text=text if revised else "",
             )
+        # Brevity/register enforcement (#4): the draft prompt cannot make gemini-flash brief,
+        # so compress a too-long / greeting-card reply HERE — after self-reflection, before it is
+        # spoken. Fires only when the reply actually reads verbose, so short replies are untouched.
+        if self._self_reflect and _reads_verbose(text):
+            text = await self._rewrite_brief(prompt, text)
+
         # Enforcement runs HERE, not only in `_finish`, because `_stream_reply` speaks the
         # text this method returns. A reply enforced after it has been spoken is a companion
         # that audibly walks back its own words. `_finish` enforces again as a backstop for
@@ -1178,6 +1237,24 @@ class ResponseGenerator:
             if not found:  # fully clean; no second pass needed
                 return best
         return best
+
+    async def _rewrite_brief(self, prompt: AssembledPrompt, text: str) -> str:
+        """Compress a too-long / greeting-card reply to how a friend actually talks. Keeps the
+        original if the rewrite is empty, a single word, or the provider is down (#4)."""
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [{"role": "user", "content": _BRIEF_REWRITE_INSTRUCTIONS + text}],
+                "simple",
+                session_id=prompt.session_id,
+                purpose="brevity_rewrite",
+            )
+        except LLMUnavailable:
+            return text
+        candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        if len(candidate.split()) < 2:  # never gut the reply to nothing
+            return text
+        return candidate
 
     async def _dispatch_tool(
         self,

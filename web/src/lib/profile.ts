@@ -62,6 +62,24 @@ export async function updatePrefs(
   return (await res.json()) as { voice_speed: number; locale: LocaleProfile };
 }
 
+/** Auto-detect the browser's IANA timezone and persist it to the profile so the
+ * companion knows the user's real local time (time-of-day greetings, "tonight",
+ * relative clocks). Runs once after sign-in; best-effort — never blocks the app.
+ * Merges into the existing locale so other fields aren't wiped, and only PATCHes
+ * when the timezone actually changed. This replaces the manual timezone field
+ * (dynamic, not fixed) — the user should never have to type their timezone. */
+export async function syncBrowserTimezone(): Promise<void> {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!tz) return;
+    const profile = await fetchProfile();
+    if (profile.locale.timezone === tz) return;
+    await updatePrefs({ locale: { ...profile.locale, timezone: tz } });
+  } catch {
+    // best-effort: a failed tz sync must never break the app
+  }
+}
+
 /** Fetch the resolved user's profile. Throws on a non-2xx / network failure. */
 export async function fetchProfile(): Promise<UserProfile> {
   const res = await fetch("/api/me", { credentials: "include" });

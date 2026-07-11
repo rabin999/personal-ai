@@ -96,9 +96,9 @@ def _trim_messages(
 
 # Fallback chains if provider_config carries no llm_router document.
 DEFAULT_TIERS: dict[str, list[str]] = {
-    "simple": ["google/gemini-2.5-flash", "google/gemini-2.5-flash-lite", "openai/gpt-4.1-nano"],
-    "moderate": ["google/gemini-2.5-flash", "openai/gpt-4.1-mini"],
-    "complex": ["anthropic/claude-sonnet-4.5", "google/gemini-2.5-pro"],
+    "simple": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini", "google/gemini-3.1-flash-lite"],
+    "moderate": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini"],
+    "complex": ["anthropic/claude-sonnet-5", "google/gemini-3.5-flash"],
 }
 
 
