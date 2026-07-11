@@ -145,14 +145,23 @@ def must_state_spanish_time(result: Any) -> str:
     stated = re.findall(r"\b(\d{1,2}):(\d{2})\s*(am|pm)?", result.reply, re.IGNORECASE)
     if not stated:
         return f"no clock time stated for Spain: {result.reply!r}"
+    # A human says "3:11 in the afternoon", not "3:11 pm". Infer the meridiem from a day-part
+    # word when it isn't spelled am/pm, or the check false-fails a CORRECT reply (D-21).
+    low = result.reply.lower()
+    day_pm = any(w in low for w in ("afternoon", "evening", "tonight", "night", "p.m"))
+    day_am = any(w in low for w in ("morning", "a.m", "midnight"))
     for hour_s, _minute, meridiem in stated:
         hour = int(hour_s)
-        if meridiem:
-            meridiem = meridiem.lower()
-            if meridiem == "pm" and hour != 12:
-                hour += 12
-            elif meridiem == "am" and hour == 12:
-                hour = 0
+        meridiem = (meridiem or "").lower()
+        if not meridiem:
+            if day_pm and not day_am:
+                meridiem = "pm"
+            elif day_am and not day_pm:
+                meridiem = "am"
+        if meridiem == "pm" and hour != 12:
+            hour += 12
+        elif meridiem == "am" and hour == 12:
+            hour = 0
         if hour in ok_hours:
             return ""
     return f"stated the wrong time in Spain (it is {now:%H:%M} on {now:%A}): {result.reply!r}"

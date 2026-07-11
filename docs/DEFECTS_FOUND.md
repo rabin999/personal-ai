@@ -6,9 +6,18 @@ follow-up **fix** session then repaired eight of them and, in doing so, found th
 
 **Status of every defect below:**
 
-| fixed (8) | open (13) |
+| fixed | open |
 |---|---|
-| D-2, D-5, D-6, D-7, D-8, D-12, D-13, D-14, D-16, D-17, D-18 | D-1, D-3, D-4, D-9, D-10, D-11, D-15, D-19, D-20, D-21 |
+| D-2, D-5, D-6, D-7, D-8, D-12, D-13, D-14, D-16, D-17, D-18, **D-20**, **D-21** | D-1, D-3, D-4, D-9, D-10, D-11, D-15, D-19 |
+
+**2026-07-11 follow-up.** D-21 fixed (localtime gate PASS, 10/10 correct clock, 0 chatbot).
+D-20 fixed down to a 1/20 stochastic residual (was ~13/20). One further correctness
+improvement was made to the *test harness itself*: `must_state_spanish_time` was false-failing
+CORRECT replies because its parser did not read "3:11 in the afternoon" as 15:11 — the same
+"the check is wrong, not the engine" class this whole effort keeps finding. See §D-20 / §D-21
+below. Also verified (new, not a lettered defect): a long answer comes back as a short spoken
+**summary** and a follow-up drills into a single item — the voice-first response standard
+applied to long lists. Proof by real conversation in `scripts/summarize_probe.py`.
 
 (D-6/D-7/D-8/D-16 shared one control-flow fix, and D-12's fix subsumed part of D-1's symptom;
 the effective volatility gate now runs on both callers, so the deterministic backstop's 0.839
@@ -58,9 +67,21 @@ design contract · **S3** waste or latent hazard.
 
 ## D-20 — a recommendation question answered as a weather report
 
-**Severity S2.** Found in the post-fix gate run (`--repeats 5`). **Not fixed.**
+**Severity S2.** Found in the post-fix gate run (`--repeats 5`). **Fixed 2026-07-11**
+(6–7/10 → 1/20; a fresh N=5 scored 0/10).
 
-`should I bring an umbrella today?` asks for a *decision*. The engine returns a forecast:
+**The fix.** The recommendation rule went into the system-prompt delivery rules
+(`_user_context_section` in `core/reasoning/prompt_assembly.py`), not only into
+`_REPAIR_INSTRUCTIONS` — because the umbrella turn answers through the agentic loop
+(`_JUDGMENT_INSTRUCTIONS` + tool notes), which `_REPAIR_INSTRUCTIONS` never touches (the first
+attempt edited the wrong prompt and moved 7/10 → 7/10). A decision-shaped question ("should I
+bring an umbrella?", "do I need a jacket?") now leads with the call in plain words and is told
+NEVER to recite percentages, "scattered showers/thunderstorms", or weather-warning language —
+the register that reads as a weather app. The lone 1/20 residual is a `generate_spoken` run
+that appends a forecast sentence despite the explicit instruction; it is left to the judge
+rather than chased with a phrase-regex (the D-12/D-16 closed-list trap).
+
+`should I bring an umbrella today?` asks for a *decision*. The engine returned a forecast:
 
 > *"Yes, you should definitely bring an umbrella today! It's currently raining lightly in
 > Kathmandu with thunderstorms expected this afternoon…"*
@@ -79,9 +100,20 @@ decision wants a decision, and nothing checks that it gave one.
 
 ## D-21 — the world clock is read once in ten as an offset, not a time
 
-**Severity S2.** Residual of D-17. **Not fixed.**
+**Severity S2.** Residual of D-17. **Fixed 2026-07-11** (localtime gate PASS: 10/10 correct
+clock, 0/10 chatbot, 0 violations).
 
-After the fix, 9 of 10 `localtime_spain` runs state the correct Spanish clock time. One
+**The fix — two residual invitations to compute, both removed.** (1) `_now_section` still led
+with a raw "The current time is … UTC" clock the model could do arithmetic FROM; it is now
+marked "(Machine reference only — do NOT read aloud or do arithmetic on it)". (2) The worked
+example `'~3 hours ahead of you'` that D-17 removed from `_now_section` was still living in
+`_user_context_section` — the exact illustrative offset that D-17 identified as the cause,
+surviving in a second location. Removed. The `world_clock()` converted lines are now the sole
+authoritative time source. **A check bug was also fixed:** `must_state_spanish_time` parsed
+only explicit "am/pm", so it false-failed the CORRECT reply "3:11 in the afternoon" (= 15:11);
+it now infers the meridiem from the day-part word.
+
+Before the fix, 9 of 10 `localtime_spain` runs stated the correct Spanish clock time. One
 `generate_spoken` run replied, at a true 19:14 CEST:
 
 > *"It's currently 5:06 AM on Thursday, July 9, 2026, in most of Spain, which observes Central

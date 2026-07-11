@@ -219,11 +219,12 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     # Episodic gave way: the real acceptance is that the 6 big episodic chunks were
     # trimmed (not all 6 survive), while the persona floor + the non-trimmable
     # capability/self blocks stay. The ceiling sits just above that floor and well
-    # below floor + all 6 chunks (~9.9k), proving episodic was dropped to fit.
+    # below floor + all 6 chunks (~11.9k), proving episodic was dropped to fit.
     # Ceiling tracks the (non-trimmable) pinned floor — identity + capabilities +
-    # the U6/U7 understanding block + traits + user-local-time — and sits below
-    # floor + all 6 episodic chunks, proving episodic was trimmed to fit.
-    assert len(result.system_prompt) <= 9_000
+    # the U6/U7 understanding block + traits + user-local-time + the delivery rules
+    # (which now carry the recommendation + long-list-summary guidance, response
+    # standard §12) — and sits below floor + all 6 episodic chunks.
+    assert len(result.system_prompt) <= 9_500
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

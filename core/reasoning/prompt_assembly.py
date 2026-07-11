@@ -569,10 +569,16 @@ def _now_section(locale: "LocaleProfile | None" = None) -> tuple[str, str | None
     # timezone arithmetic is done in `world_clock()` with `zoneinfo` rather than asked of the
     # model. Hand it answers, not a puzzle.
     now = datetime.now(UTC)
+    # D-21: the leading UTC clock was a second time source the model could reason FROM — one
+    # run in ten subtracted an offset itself and read it aloud ("...UTC+2", wrong hour). Mark it
+    # as a machine reference the model must not speak or compute from; the converted world clock
+    # below is the ONLY authoritative time. (Residual of D-17.)
     base = (
-        f"\n\n## Right now\nThe current time is {now.strftime('%Y-%m-%d %H:%M')} UTC "
-        f"({now.strftime('%A')}). When asked the time or date anywhere, state the actual clock "
-        "time and day in plain spoken language — never a UTC offset, and never deflect."
+        f"\n\n## Right now\n(Machine reference only — do NOT read aloud or do arithmetic on it: "
+        f"{now.strftime('%Y-%m-%d %H:%M')} UTC, {now.strftime('%A')}.) "
+        "When asked the time or date anywhere, state the actual clock time and day in plain "
+        "spoken language — never a UTC offset, never compute a time difference yourself, and "
+        "never deflect."
     )
     local = local_now(locale, now)
     if local is not None:
@@ -647,14 +653,25 @@ def _user_context_section(locale: "LocaleProfile | None") -> tuple[str, list[str
         "\n\n## Who you're talking to & how to answer them\n"
         f"{who}"
         "Deliver EVERY answer the way a thoughtful human would — not raw data:\n"
-        "- Times → the actual local clock time, framed relative to the user's timezone "
-        "('about half four in the afternoon there, ~3 hours ahead of you'), never a UTC offset.\n"
+        "- Times → the actual local clock time in plain spoken language; read the already-"
+        "converted 'Right now' lines off directly. Never state a UTC offset and never compute a "
+        "time difference yourself.\n"
         f"- Temperatures, distances, weights → the user's unit system. {unit_line}\n"
         f"- Money → their currency where it helps. {money}\n"
         "- Paraphrase & synthesise raw search/tool output into a natural, concise spoken "
         "answer; never read tables, fields, codes, or IDs aloud.\n"
         "- Concrete answer first, then optional detail. Round where precision isn't needed. "
-        "Keep it short enough to say out loud.\n"
+        "Keep it short enough to say out loud. If the full answer is a long list or several "
+        "items each needing a paragraph, give a short spoken summary of just the headline "
+        "points and invite them to dig into any one — never recite a long list aloud; go deep "
+        "on a single item only when they ask for it.\n"
+        "- If they ask whether they should DO something ('should I bring an umbrella?', 'do I "
+        "need a jacket?', 'is it worth going?'), answer like a friend giving their take, NOT a "
+        "forecaster or a service: LEAD with your call in plain words ('yeah, I'd grab one — "
+        "supposed to rain this afternoon') and basically stop. NEVER recite percentages, "
+        "'scattered showers/thunderstorms', flood or weather-warning language, or a multi-part "
+        "forecast — that reporting-the-data voice is exactly what makes you sound like a "
+        "weather app instead of a person.\n"
         "- If a unit/timezone the answer needs is genuinely unknown, ask once, briefly."
     )
     return section, signals

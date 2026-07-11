@@ -11,8 +11,24 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 && lint-imports && pytest` is green. (See CLAUDE.md §6.) Track test levels per module
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
-**Last updated:** 2026-07-09
+**Last updated:** 2026-07-11
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
+
+> ## 2026-07-11 — resumed the two remaining engine-gate failures. Both cleared.
+> **D-21 localtime** fixed (gate PASS: 10/10 correct clock, 0 chatbot) — removed two residual
+> invitations to compute a timezone offset (a raw UTC clock in `_now_section` + the leftover
+> `'~3 hours ahead of you'` worked example still living in `_user_context_section`); the
+> `world_clock()` converted lines are now the sole time source. Also fixed the gate's own
+> `must_state_spanish_time` parser, which false-failed the correct reply "3:11 in the afternoon".
+> **D-20 umbrella** fixed 6–7/10 → **1/20** chatbot_like (a fresh N=5 scored 0/10) — the
+> recommendation rule ("lead with the call, never recite a forecast") moved into the
+> system-prompt delivery rules so it reaches the agentic answer path, not just `_REPAIR`.
+> **Long list → summary → drill-down** (voice-first response standard for long answers) verified
+> by real conversation, both callers: "biggest news right now?" returns a 2-headline summary,
+> "tell me more about the second one" drills into that item (`scripts/summarize_probe.py`).
+> Regression-checked the shared-prompt edits (officeholder/price/greeting/arithmetic/overclaim —
+> clean, no chain-reaction). Non-real-call suite green except the 2 known SMTP-credential tests.
+> Details: `docs/DEFECTS_FOUND.md` (D-20/D-21). Not deployed.
 
 > ## ⚠️ 2026-07-09 — the LIVE VOICE PATH WAS DEAD; fixed. Read `docs/SESSION_REPORT_F1-F6.md` first.
 >
