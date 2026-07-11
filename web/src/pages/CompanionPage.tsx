@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Waveform } from "../components/Waveform";
 import { MicPicker } from "../components/MicPicker";
-import { ModelPicker } from "../components/ModelPicker";
 import { TraceLog } from "../components/TraceLog";
 import { AppHeader } from "../components/AppHeader";
 import { ProfilePanel } from "../components/ProfilePanel";
@@ -17,8 +16,6 @@ import {
   getVoices,
   type VoiceItem,
   sendFeedback,
-  setModel as saveModel,
-  setReasoningModel as saveReasoningModel,
   setVoiceEngine as saveVoiceEngine,
 } from "../lib/api";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
@@ -80,23 +77,9 @@ export default function CompanionPage() {
   const [runtime, setRuntime] = useState<"native" | "pipecat">("native");
   const runtimeRef = useRef(runtime);
   runtimeRef.current = runtime;
-  // Fast/flash LLM the user can pick (§4). Empty = the tier default.
-  const [models, setModels] = useState<string[]>([]);
-  const [model, setModel_] = useState<string>("");
-  // Full live catalog (all models) so the picker can search everything, not just the
-  // configured few. Falls back to the curated choices if the catalog is empty.
-  const [catalog, setCatalog] = useState<string[]>([]);
-  // F8: the mature "thinking"/reasoning model for the main turn. Empty = default.
-  const [reasoningModels, setReasoningModels] = useState<string[]>([]);
-  const [reasoningModel, setReasoningModel_] = useState<string>("");
   useEffect(() => {
     getModels()
       .then((m) => {
-        setModels(m.choices);
-        setCatalog(m.catalog?.length ? m.catalog : m.choices);
-        setModel_(m.selected ?? "");
-        setReasoningModels(m.reasoning_choices ?? []);
-        setReasoningModel_(m.reasoning_model ?? "");
         // §11: restore the persisted voice engine so the client reconnects to
         // the same runtime the user last chose.
         if (m.voice_engine === "native" || m.voice_engine === "pipecat") {
@@ -517,30 +500,6 @@ export default function CompanionPage() {
                   <option value="native">Native</option>
                   <option value="pipecat">Pipecat</option>
                 </select>
-              </label>
-              <label className="flex min-w-0 flex-col gap-1.5">
-                <span className={FIELD_LABEL}>Fast model</span>
-                <ModelPicker
-                  value={model}
-                  options={catalog.length ? catalog : models}
-                  onChange={(v) => {
-                    setModel_(v);
-                    void saveModel(v || null);
-                  }}
-                  title="Search any model (gemini-2.5-flash is the default). Applies from the next turn."
-                />
-              </label>
-              <label className="flex min-w-0 flex-col gap-1.5">
-                <span className={FIELD_LABEL}>Thinking model</span>
-                <ModelPicker
-                  value={reasoningModel}
-                  options={catalog.length ? catalog : reasoningModels}
-                  onChange={(v) => {
-                    setReasoningModel_(v);
-                    void saveReasoningModel(v || null).catch(() => {});
-                  }}
-                  title="The mature model for the main reasoning turn. Applies from the next turn; shown in the trace."
-                />
               </label>
             </div>
 

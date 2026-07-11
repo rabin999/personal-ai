@@ -15,12 +15,6 @@ export interface AudioPrefs {
   [k: string]: unknown;
 }
 
-export interface CommPrefs {
-  directness?: number;
-  emotional_scaffolding?: number;
-  [k: string]: unknown;
-}
-
 export interface LocaleProfile {
   timezone?: string;
   city?: string;
@@ -35,21 +29,17 @@ export interface UserProfile {
   companion_name: string | null;
   audio_prefs: AudioPrefs;
   traits_enabled: Record<string, boolean>;
-  comm_prefs: CommPrefs;
   locale: LocaleProfile;
 }
 
-/** Save voice speed (C7), locale (C5), and the U10-U12 audio-awareness toggles.
+/** Save voice speed (C7), locale (C5), and the U12 listening/privacy toggles.
  * Partial — only sent keys change; toggles take effect on the next reply (live). */
 export async function updatePrefs(
   patch: {
     voice_speed?: number;
     locale?: LocaleProfile;
-    comm_prefs?: { directness?: number; emotional_scaffolding?: number };
-    mimic_tone?: boolean;
     ambient_mode?: "near" | "surroundings";
     transcribe_others?: boolean;
-    health_checkins?: boolean;
   },
 ): Promise<{ voice_speed: number; locale: LocaleProfile }> {
   const res = await fetch("/api/prefs", {
@@ -96,7 +86,6 @@ export async function fetchProfile(): Promise<UserProfile> {
     companion_name: data.companion_name ?? null,
     audio_prefs: data.audio_prefs ?? {},
     traits_enabled: data.traits_enabled ?? {},
-    comm_prefs: data.comm_prefs ?? {},
     locale: data.locale ?? {},
   };
 }

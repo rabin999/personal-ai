@@ -178,11 +178,6 @@ function ProfileBody({ p, me }: { p: UserProfile; me: Me | null }) {
         </div>
       </div>
 
-      {/* Communication prefs — editable (they actually shape the companion's tone). */}
-      <Section title="Communication">
-        <CommPrefsEditor p={p} />
-      </Section>
-
       {/* Enabled traits */}
       <Section title="Traits">
         {Object.keys(p.traits_enabled).length === 0 ? (
@@ -303,13 +298,11 @@ function VoiceAndLocale({ p }: { p: UserProfile }) {
   );
 }
 
-// U10-U12: audio-awareness settings — health check-ins, tone mirroring, and the
-// near-vs-surroundings sensitivity (+ the default-off privacy gate for transcribing
-// others). All take effect live (next reply), no restart.
+// U12: listening scope (near vs. surroundings) + the default-off privacy gate for
+// transcribing other people nearby. Both take effect live (next reply), no restart.
+// Tone mirroring and health check-ins are engine-decided (design §2), not toggles.
 function AwarenessSettings({ p }: { p: UserProfile }) {
   const a = p.audio_prefs;
-  const [mimic, setMimic] = useState<boolean>(a.mimic_tone === true);
-  const [health, setHealth] = useState<boolean>(a.health_checkins !== false);
   const [others, setOthers] = useState<boolean>(a.transcribe_others === true);
   const [mode, setMode] = useState<"near" | "surroundings">(
     a.ambient_mode === "surroundings" ? "surroundings" : "near",
@@ -317,18 +310,6 @@ function AwarenessSettings({ p }: { p: UserProfile }) {
 
   return (
     <Section title="Awareness">
-      <Switch
-        label="Match my tone"
-        hint="If you whisper or go quiet, I'll answer in the same register."
-        on={mimic}
-        onChange={(v) => { setMimic(v); void updatePrefs({ mimic_tone: v }); }}
-      />
-      <Switch
-        label="Check in on my health"
-        hint="Notice a cough/sneeze and gently ask if you're okay."
-        on={health}
-        onChange={(v) => { setHealth(v); void updatePrefs({ health_checkins: v }); }}
-      />
       <label className="flex items-center justify-between gap-3">
         <span className="flex min-w-0 flex-col">
           <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Listening</span>
@@ -392,37 +373,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h3>
       {children}
     </section>
-  );
-}
-
-// Directness + emotional-scaffolding sliders. These were static 50% (never set or
-// learned); now the user tunes them and they persist + shape the companion's tone.
-function CommPrefsEditor({ p }: { p: UserProfile }) {
-  const [directness, setDirectness] = useState(numOr(p.comm_prefs.directness, 0.5));
-  const [scaffold, setScaffold] = useState(numOr(p.comm_prefs.emotional_scaffolding, 0.5));
-  const save = (directness: number, emotional_scaffolding: number) =>
-    void updatePrefs({ comm_prefs: { directness, emotional_scaffolding } });
-  const row = (label: string, hint: string, val: number, set: (n: number) => void, other: number, isDirect: boolean) => (
-    <div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</span>
-        <span className="font-mono text-xs text-slate-500">{Math.round(val * 100)}%</span>
-      </div>
-      <input
-        type="range" min={0} max={1} step={0.05} value={val}
-        onChange={(e) => set(parseFloat(e.target.value))}
-        onMouseUp={() => save(isDirect ? val : other, isDirect ? other : val)}
-        onTouchEnd={() => save(isDirect ? val : other, isDirect ? other : val)}
-        className="slider mt-1.5"
-      />
-      <p className="text-[11px] text-slate-400 dark:text-slate-500">{hint}</p>
-    </div>
-  );
-  return (
-    <div className="space-y-3">
-      {row("Directness", "gentle & indirect ↔ blunt & to the point", directness, setDirectness, scaffold, true)}
-      {row("Emotional scaffolding", "just the facts ↔ lots of warmth & support", scaffold, setScaffold, directness, false)}
-    </div>
   );
 }
 

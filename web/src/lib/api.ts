@@ -145,28 +145,14 @@ export function getAttribution(): Promise<{ by_prompt_version: VersionRow[] }> {
   return authed("/debug/attribution");
 }
 
-// ── model selection (§4 / F8) ─────────────────────────────────────────────
+// ── voice engine (§11) ────────────────────────────────────────────────────
+// Fast/reasoning LLM tiers are backend-only (provider_config.json); the engine
+// self-routes by complexity. Only the voice-engine choice is user-selectable.
 export function getModels(): Promise<{
-  choices: string[];
-  catalog: string[];
-  selected: string | null;
-  default: string;
-  reasoning_choices: string[];
-  reasoning_model: string | null;
-  reasoning_default: string;
   voice_engines: string[];
   voice_engine: string;
 }> {
   return authed("/api/models");
-}
-export function setModel(fast_model: string | null): Promise<{ selected: string | null }> {
-  return authed("/api/models", { method: "PATCH", body: JSON.stringify({ fast_model }) });
-}
-// F8: the mature "thinking" model for the main reasoning turn.
-export function setReasoningModel(
-  reasoning_model: string | null,
-): Promise<{ reasoning_model: string | null }> {
-  return authed("/api/models", { method: "PATCH", body: JSON.stringify({ reasoning_model }) });
 }
 export function setVoiceEngine(voice_engine: string): Promise<{ voice_engine: string }> {
   return authed("/api/models", { method: "PATCH", body: JSON.stringify({ voice_engine }) });

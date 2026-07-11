@@ -5,7 +5,6 @@ Returns the ``UserRecord`` the bearer token resolves to — the static user data
 in its profile panel. Read-only; identity is the static stub (§26).
 """
 
-import contextlib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, status
@@ -46,21 +45,14 @@ async def external_tools(user: CurrentUser, request: Request) -> dict[str, Any]:
 
 @router.get("/models")
 async def list_models(user: CurrentUser, request: Request) -> dict[str, Any]:
-    """The user-selectable fast models + this user's current choice (§4)."""
+    """The user-selectable voice engine + this user's persisted choice (§11).
+
+    Fast/reasoning LLM tier selection is backend-only (provider_config.json); the
+    engine self-routes by complexity, so those model choices are no longer exposed
+    for user selection."""
     pipeline = _pipeline(request)
     profile = await pipeline.profiles.get(user.user_id)
     return {
-        "choices": pipeline.llm.fast_model_choices(),
-        # Full live OpenRouter catalog so the picker can search ALL models, not just
-        # the configured few (user request). Empty → UI falls back to `choices`.
-        "catalog": pipeline.llm.catalog_models(),
-        "selected": profile.model_prefs.fast_model,
-        "default": pipeline.llm.route("simple"),
-        # F8: the user-selectable mature "thinking"/reasoning model + this user's
-        # choice; empty selection → the configured reasoning tier's default model.
-        "reasoning_choices": pipeline.llm.reasoning_model_choices(),
-        "reasoning_model": profile.model_prefs.reasoning_model,
-        "reasoning_default": pipeline.llm.route(pipeline.settings.reasoning_tier),
         # §11: the user-selectable voice engine + this user's persisted choice.
         "voice_engines": ["native", "pipecat"],
         "voice_engine": profile.model_prefs.voice_engine,
@@ -69,32 +61,16 @@ async def list_models(user: CurrentUser, request: Request) -> dict[str, Any]:
 
 @router.patch("/models")
 async def set_model(body: dict[str, Any], user: CurrentUser, request: Request) -> dict[str, Any]:
-    """Set (or clear, with null) this user's fast/reasoning-model + voice-engine
-    choice (§4/§11/F8). A key present with null clears that choice."""
+    """Set (or clear, with null) this user's voice-engine choice (§11). Fast/
+    reasoning model tiers are backend-only and not settable here."""
     pipeline = _pipeline(request)
     updates: dict[str, Any] = {}
-    if "fast_model" in body:
-        fast = body["fast_model"]
-        # Any real catalog model is selectable (user request: full list), not just the
-        # few configured tier models.
-        if fast is not None and not pipeline.llm.is_selectable_model(fast):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown model")
-        updates["fast_model"] = fast
-    if "reasoning_model" in body:
-        rm = body["reasoning_model"]
-        if rm is not None and not pipeline.llm.is_selectable_model(rm):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, detail="unknown reasoning model"
-            )
-        updates["reasoning_model"] = rm
     if body.get("voice_engine") is not None:
         if body["voice_engine"] not in ("native", "pipecat"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unknown engine")
         updates["voice_engine"] = body["voice_engine"]
     updated = await pipeline.profiles.update(user.user_id, {"model_prefs": updates})
     return {
-        "selected": updated.model_prefs.fast_model,
-        "reasoning_model": updated.model_prefs.reasoning_model,
         "voice_engine": updated.model_prefs.voice_engine,
     }
 
@@ -114,10 +90,11 @@ async def set_prefs(body: dict[str, Any], user: CurrentUser, request: Request) -
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="bad voice_speed"
             ) from None
-    # U10/U11/U12 audio-awareness toggles (live per turn — no restart needed).
-    for key in ("mimic_tone", "transcribe_others", "health_checkins"):
-        if key in body:
-            audio[key] = bool(body[key])
+    # U12 audio-awareness toggle (live per turn — no restart needed). Tone
+    # mirroring (mimic_tone) and health check-ins are engine-decided (design §2);
+    # their backend fields remain but are no longer user-selectable.
+    if "transcribe_others" in body:
+        audio["transcribe_others"] = bool(body["transcribe_others"])
     if body.get("ambient_mode") in ("near", "surroundings"):
         audio["ambient_mode"] = body["ambient_mode"]
     if audio:
@@ -125,23 +102,10 @@ async def set_prefs(body: dict[str, Any], user: CurrentUser, request: Request) -
     if isinstance(body.get("locale"), dict):
         allowed = {"timezone", "city", "country", "units", "currency", "language"}
         patch["locale"] = {k: v for k, v in body["locale"].items() if k in allowed}
-    if isinstance(body.get("comm_prefs"), dict):
-        # Communication style the companion actually uses (§2): directness +
-        # emotional scaffolding, each 0-1. Clamped to [0,1].
-        cp: dict[str, float] = {}
-        for k in ("directness", "emotional_scaffolding"):
-            if k in body["comm_prefs"]:
-                with contextlib.suppress(TypeError, ValueError):
-                    cp[k] = min(1.0, max(0.0, float(body["comm_prefs"][k])))
-        if cp:
-            patch["comm_prefs"] = cp
     updated = await pipeline.profiles.update(user.user_id, patch)
     return {
         "voice_speed": updated.audio_prefs.voice_speed,
-        "mimic_tone": updated.audio_prefs.mimic_tone,
         "ambient_mode": updated.audio_prefs.ambient_mode,
         "transcribe_others": updated.audio_prefs.transcribe_others,
-        "health_checkins": updated.audio_prefs.health_checkins,
         "locale": updated.locale.model_dump(),
-        "comm_prefs": updated.comm_prefs.model_dump(),
     }

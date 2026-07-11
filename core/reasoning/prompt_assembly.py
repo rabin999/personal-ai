@@ -328,10 +328,6 @@ class PromptAssembler:
             task = asyncio.create_task(self._profiles.update(user_id, {"onboarded": True}))
             task.add_done_callback(lambda t: t.exception())
         sections["traits"] = "\n".join(f"- {t.description}" for t in traits)
-        sections["comm_prefs"] = (
-            f"directness={profile.comm_prefs.directness:.2f}, "
-            f"emotional_scaffolding={profile.comm_prefs.emotional_scaffolding:.2f}"
-        )
         # §17 rule 3: soft psychological signals feed the prompt (empty until
         # the model has confident evidence; wording tuned by the user, §7).
         sections["psych"] = await self._psych.render_for_prompt(user_id) if self._psych else ""
@@ -470,7 +466,6 @@ _SECTION_TITLES: dict[str, str] = {
     # ── stable prefix (cacheable) ──
     "identity": "",
     "traits": "Behavior traits",
-    "comm_prefs": "Communication preferences",
     "user_context": "",  # C4/C5: who they are + how to answer them (self-titled)
     # ── volatile per-turn context ──
     "now": "",  # U5: current time (self-titled); changes every minute
@@ -491,7 +486,7 @@ _SECTION_TITLES: dict[str, str] = {
     "episodic": "Relevant conversation memories",
 }
 # The contiguous stable-prefix sections (must stay first in _SECTION_TITLES above).
-_STABLE_SECTIONS = ("identity", "traits", "comm_prefs", "user_context")
+_STABLE_SECTIONS = ("identity", "traits", "user_context")
 _TRIM_ORDER = ("episodic", "facts", "self_statements", "psych", "project", "rules", "preferences")
 
 
