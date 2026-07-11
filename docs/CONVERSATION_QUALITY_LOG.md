@@ -166,3 +166,16 @@ prompt assembly's recent-turns inclusion; consider a short merge window for cons
 
 ## Sub-agents in flight
 - Knowledge-graph force-directed viz (worktree) — running; merge + deploy when done.
+
+## Batch D knowledge graph — DEPLOYED (33b429d, via sub-agent, merged clean)
+Ring layout → force-directed graph (react-force-graph-2d): zoom/pan/drag/click-focus/relation-filter/
+superseded-toggle/text-search; labels no longer overlap; theme-aware; verified in a real browser
+(Playwright). API unchanged.
+
+## Remaining (sub-agent in flight + backend queue)
+- Batch C traces (sub-agent running): live view = real-time user/companion transcript; detailed view =
+  snippet title + footer (cost+time / feedback) + search block; backend turn-0 dup + ranked results.
+- Backend queue (do next, carefully — subtle): repair-path reliability (reduce honest-fail — improve
+  _build_search_query for opinion-wrapped phrasings / inline budget); #13 set_companion_name self-naming
+  guard (needs the utterance wired to the tool handler — ToolContext lacks it) + clear stored "Norsylinder";
+  #17 memory supersession/dedup; #18 remaining (repetitive ack, greeting-discard-if-speaking, 2-turn combine).
