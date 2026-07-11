@@ -187,6 +187,41 @@ def register_core_tools(
         set_companion_name,
     )
 
+    async def set_user_name(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
+        name = str(args.get("name", "")).strip()[:40]
+        if not name:
+            return {"error": "no name given"}
+        # Same guard as the companion name: only accept a name the user actually said,
+        # so the model can't invent or mis-hear one. This is the canonical place the
+        # user's name lives — updating it here is how a name change supersedes the old
+        # one everywhere at once, instead of leaving stale name-entities in the graph
+        # that make the companion "call me by the old name" (design doc §3.1).
+        if not _name_came_from_user(name, ctx.utterance):
+            logger.info("rejected user name %r (not in utterance)", name)
+            return {
+                "error": "not_user_given",
+                "note": (
+                    "Only set the user's name to what they actually told you, using their "
+                    "exact word. If you're unsure what they're called, ask — don't guess."
+                ),
+            }
+        await profiles.update(ctx.user_id, {"user_name": name})
+        return {"user_name": name}
+
+    registry.register(
+        ToolSpec(
+            id="set_user_name",
+            description="Remember the name the USER goes by (what to call THEM). Call this "
+            "when they tell you their name, or correct it, using their exact word. This is "
+            "the canonical name you address them by, so setting it replaces any older name. "
+            'Never guess — if unsure, ask. args: {"name": str}',
+            type="action",
+            latency_class="fast",
+            requires_confirmation=False,
+        ),
+        set_user_name,
+    )
+
     # NOTE: trade persistence is NOT a conversational tool. Memory writes (episodic
     # events, semantic facts, and the trade ledger) all go through the single explicit
     # extraction step (core/memory/extraction.py, brief §1) — so the chat model can't

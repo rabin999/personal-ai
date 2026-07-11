@@ -86,6 +86,11 @@ class UserProfile(BaseModel):
 
     user_id: str
     companion_name: str | None = None
+    # The name the USER goes by — the single canonical place we address them from, so a
+    # name change updates ONE field instead of relying on the memory graph (where old
+    # name-entities linger and the companion "calls me by the old name"). Set only from
+    # what the user actually said (see set_user_name). Design doc §3.1 memory correctness.
+    user_name: str | None = None
     audio_prefs: AudioPrefs = Field(default_factory=AudioPrefs)
     traits_enabled: dict[str, bool] = Field(default_factory=dict)
     comm_prefs: CommPrefs = Field(default_factory=CommPrefs)

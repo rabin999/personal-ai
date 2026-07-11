@@ -18,6 +18,7 @@ from openai import AsyncOpenAI
 
 from config.settings import Settings
 from core.cost import CostEntry, CostLedger, CostMetadata
+from core.errors import PROGRAMMING_ERRORS
 from core.observability.logger import StructuredLogger
 from ports.llm import CompletionResult, LLMUnavailable, Tier
 
@@ -310,14 +311,22 @@ class OpenRouterLLM:
 
         parts: list[str] = []
         usage: Any = None
-        async for chunk in stream:
-            if chunk.choices:
-                delta = chunk.choices[0].delta
-                if delta is not None and delta.content:
-                    parts.append(delta.content)
-                    yield delta.content
-            if getattr(chunk, "usage", None) is not None:
-                usage = chunk.usage
+        # Guard the CONSUMPTION too, not just stream creation: a provider that drops the
+        # connection mid-stream (ReadTimeout on a chunk) must surface as LLMUnavailable so
+        # the caller degrades, never as a raw exception that escapes the turn as silence.
+        try:
+            async for chunk in stream:
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+                    if delta is not None and delta.content:
+                        parts.append(delta.content)
+                        yield delta.content
+                if getattr(chunk, "usage", None) is not None:
+                    usage = chunk.usage
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception as exc:
+            raise LLMUnavailable(f"stream dropped mid-flight on {model_id}: {exc}") from exc
 
         result = self._result_from_usage("".join(parts), model_id, usage)
         self._log_cost(user_id, result, session_id)

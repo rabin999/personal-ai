@@ -309,7 +309,7 @@ class PromptAssembler:
         # separate from the VOLATILE per-turn `now` (time), so the stable prefix is
         # byte-identical across turns and the provider can serve it from cache. The
         # time block moves into its own volatile section rendered after the stable one.
-        sections["identity"] = _identity_section(profile.companion_name)
+        sections["identity"] = _identity_section(profile.companion_name, profile.user_name)
         sections["user_context"] = user_ctx  # stable: who they are + how to answer them
         sections["now"] = now_section  # volatile: current time (changes every minute)
         sections["recall"] = recall_section  # F3/F4: authoritative transcript (may be "")
@@ -532,7 +532,8 @@ _COLD_START_GUIDANCE = (
     "genuinely curious about them — naturally ask their name and what's on their "
     "mind, and ask what they'd like to call you (their name for you). Keep it to "
     "a sentence or two; don't interrogate or run a questionnaire. If they tell "
-    "you a name to call you, use the set_companion_name tool to remember it."
+    "you their name, use set_user_name to remember it; if they tell you a name to "
+    "call you, use set_companion_name. Only ever store the exact name they said."
 )
 
 
@@ -674,16 +675,27 @@ def _user_context_section(locale: "LocaleProfile | None") -> tuple[str, list[str
     return section, signals
 
 
-def _identity_section(companion_name: str | None) -> str:
+def _identity_section(companion_name: str | None, user_name: str | None = None) -> str:
     name = companion_name or "Saathi"
     # Only identity + safety (self-model/disclosure) + capability (tool-awareness)
     # are hard-coded here. The toggleable STYLE — voice/anti-chatbot tics and
     # intent-first curiosity — lives in the response_voice + curiosity_policy TRAITS
     # (config over code, §6), so enabling/disabling a trait genuinely changes the
     # reply. See PROMPT_TEMPLATE_VERSION v3.
+    # The user's name comes from the profile (canonical), so it's authoritative over any
+    # older name still floating in the memory facts below — this is what stops the
+    # companion "calling me by the old name" (design doc §3.1). Absent until they give it.
+    addressed = ""
+    if user_name and user_name.strip():
+        addressed = (
+            f"\n\nThe person you're talking with is called {user_name.strip()}. Address "
+            f"them as {user_name.strip()} — this is their current name; ignore any other/"
+            "older name that may appear in the facts below."
+        )
     return (
         f"You are {name}, a voice-first personal companion. You remember past "
-        "conversations and use them.\n\n"
+        "conversations and use them."
+        f"{addressed}\n\n"
         f"{_SELF}\n\n"
         f"{_CAPABILITIES}\n\n"
         f"{_UNDERSTANDING}"

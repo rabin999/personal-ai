@@ -112,7 +112,8 @@ def test_the_honest_search_failure_lines_are_reachable_now() -> None:
     model's stale answer instead of an honest one — the §16 rule inverted."""
     from core.reasoning import response_gen
 
-    source = inspect.getsource(response_gen.ResponseGenerator.generate)
+    # The turn logic lives in `_run_turn` (wrapped by `generate` for resilience).
+    source = inspect.getsource(response_gen.ResponseGenerator._run_turn)
     assert "prompt.needs_live_info is True" in source
     assert "_SEARCH_FAILED_TEXT" in source and "_NOT_FOUND_TEXT" in source
 

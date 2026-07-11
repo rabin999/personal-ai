@@ -492,10 +492,45 @@ class ResponseGenerator:
     ) -> GenerationResult:
         """One agentic turn (§14.11): the LLM answers, OR requests a tool that is
         dispatched per §8 (readonly inline / background enqueue / action confirm),
-        looping until a direct answer — then the behavior gates run."""
+        looping until a direct answer — then the behavior gates run.
+
+        The whole turn is wrapped so ANY dependency-shaped failure (a provider
+        ReadTimeout, a store hiccup — anything that is NOT a programming error) degrades
+        to a safe reply instead of escaping as silence. The user must always get a
+        response (D-9 / design doc §16 resilience); only real programming errors (F3)
+        re-raise loudly."""
         if isinstance(prompt, DisambiguationRequest):
             return await self._disambiguate(prompt)
+        try:
+            return await self._run_turn(prompt, dispatcher, context)
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception as exc:  # dependency failure anywhere in the turn → never silence
+            logger.exception("reply path failed; degrading to a safe reply: %s", exc)
+            self._span("engine", level="error", phase="turn_failed", error=type(exc).__name__)
+            return await self._safe_degrade(prompt)
 
+    async def _safe_degrade(self, prompt: AssembledPrompt) -> GenerationResult:
+        """Produce a reply when the turn threw. Prefer the fully-gated safe line; if even
+        that fails (provider entirely down), return the canned line directly — the engine
+        NEVER returns empty/raises to the caller, so the user is never met with silence."""
+        try:
+            return await self._finish_gated(prompt, _SAFE_FALLBACK_TEXT)
+        except Exception:
+            logger.exception("gated fallback also failed; returning the canned safe line")
+            return GenerationResult(
+                final_text=_SAFE_FALLBACK_TEXT,
+                voice_text=_SAFE_FALLBACK_TEXT,
+                action="respond",
+            )
+
+    async def _run_turn(
+        self,
+        prompt: AssembledPrompt,
+        dispatcher: "ToolDispatch | None" = None,
+        context: "ToolContext | None" = None,
+    ) -> GenerationResult:
+        """The turn itself (wrapped by `generate` for resilience)."""
         can_use_tools = dispatcher is not None and context is not None
         tool_notes: list[str] = []
         # §8.3: if an action tool is awaiting confirmation, this turn is the yes/no.
@@ -716,7 +751,9 @@ class ResponseGenerator:
                 reasoning={"enabled": False},
                 purpose="search_query",
             )
-        except LLMUnavailable:
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:  # query refinement is optional — fall back to the intent/utterance
             return fallback
         query = _strip_fences(completion.text).strip().strip('"').splitlines()[0].strip()
         if not query:
@@ -1191,7 +1228,9 @@ class ResponseGenerator:
                 max_tokens=200,
                 purpose="disclosure_polish",
             )
-        except LLMUnavailable:
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:  # a polish is optional — ANY provider failure keeps the draft
             return text
         candidate = _sanitize_tags(completion.text.strip())
         # Only accept the polish if it STILL discloses honestly — never let the
@@ -1229,7 +1268,9 @@ class ResponseGenerator:
                     session_id=prompt.session_id,
                     purpose="style_rewrite",
                 )
-            except LLMUnavailable:
+            except PROGRAMMING_ERRORS:
+                raise
+            except Exception:  # a style rewrite is optional — keep the best draft so far
                 return best
             candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
             if not candidate or _is_degenerate_rewrite(best, candidate):
@@ -1255,7 +1296,9 @@ class ResponseGenerator:
                 session_id=prompt.session_id,
                 purpose="brevity_rewrite",
             )
-        except LLMUnavailable:
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:  # a brevity rewrite is optional — keep the original draft
             return text
         candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
         if len(candidate.split()) < 2:  # never gut the reply to nothing
@@ -1441,7 +1484,9 @@ class ResponseGenerator:
                 cache_prefix=prompt.cache_prefix,  # L6: cache the stable prefix
                 purpose="response_plain",
             )
-        except LLMUnavailable:
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:  # ANY provider failure → canned safe line (never a raise, D-9)
             logger.warning("plain-reply fallback failed; using canned safe line")
             return ""
         return result.text.strip()

@@ -258,6 +258,30 @@ async def test_prompt_includes_trait_descriptions_and_promoted_rules(
     assert weak.confidence < 0.6
 
 
+async def test_canonical_user_name_addresses_them_and_overrides_old_facts(
+    harness: Harness,
+) -> None:
+    """The profile's user_name is authoritative: the prompt tells the model to address
+    the user by it and to ignore any older name in the facts. This is the fix for the
+    companion "calling me by the old name" — the current name has a single canonical home."""
+    # An old name still lingering in the memory graph…
+    harness.graph.seed_fact(USER, Fact(fact="the user's name is Marshal"))
+    # …but the user has since set their canonical name.
+    await harness.profiles.update(USER, {"user_name": "Bob"})
+
+    result = await harness.assembler.assemble(USER, SESSION, "hey")
+
+    assert isinstance(result, AssembledPrompt)
+    assert "Address them as Bob" in result.system_prompt
+    assert "ignore any other/older name" in result.system_prompt
+
+
+async def test_no_user_name_line_when_unset(harness: Harness) -> None:
+    result = await harness.assembler.assemble(USER, SESSION, "hey")
+    assert isinstance(result, AssembledPrompt)
+    assert "Address them as" not in result.system_prompt
+
+
 async def test_superseded_facts_are_excluded_not_marked(harness: Harness) -> None:
     """A superseded fact (valid_to set) must NOT reach the prompt at all — only the
     current value does. Showing the old value with a "[superseded]" marker was advice
