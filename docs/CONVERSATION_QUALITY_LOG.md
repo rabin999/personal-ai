@@ -195,3 +195,22 @@ Norsylinder/Cylinder entities + naming episodics deleted from Neo4j; real user b
 Prompt-side enforcement done (exclude valid_to facts). Investigating the graph-side: when a new
 "X is now Y" fact arrives, is the prior fact's valid_to set (so it's excluded)? If extraction never
 sets valid_to, both old+new coexist and the old value can still surface. This is the systemic root.
+
+## #17 memory supersession + NO-SILENT-FAILURE resilience — DEPLOYED (61bcb40)
+#17 (calls me by old name), fixed three ways: (1) superseded facts (valid_to) excluded from the
+prompt (enforcement, not a marker the model ignored); (2) NEW canonical profile.user_name + set_user_name
+tool (same utterance guard) — prompt addresses the user by it authoritatively, overriding any older
+name in the facts, so a name change updates ONE field; (3) prod graph cleanup removed the fragmented
+Norsylinder/Cylinder identity.
+
+RESILIENCE (user: "no silent failure steps; user must always get a response"): the reply path only
+degraded on LLMUnavailable — any other dependency failure (ReadTimeout, store hiccup) escaped the turn
+as SILENCE. Now generate() wraps the whole turn: programming errors re-raise (F3), any dependency
+failure degrades to a safe gated reply with a canned ultimate net. Every enhancement gate + the
+streaming adapter's mid-stream consumption hardened to degrade on ANY provider failure. The red D-9
+resilience test is green. Verified: full unit+engine suite passes; prod healthy.
+
+## #18 (in progress) — remaining live-info + conversation-flow reports
+Engine-side (this phase): search repair-path honest-fail rate; repetitive/non-dynamic search ack.
+Voice-runtime (deferred to voice phase — user scoped current work to core engine, no voice I/O):
+greeting-discard-if-user-already-speaking; two related sentences across 2 turns not combined.
