@@ -106,3 +106,16 @@ fails, user must get its response properly.")
 
 **Guiding rules to keep applying:** contracted independent stages (typed in→process→out); resilience
 (any step fails → user still gets a response); verify with REAL drives; no Claude attribution in commits.
+
+## More fixes — DEPLOYED (2026-07-11, commit 835ca9f)
+- **Over-laughing** (even in greetings/first messages): `strip_inappropriate_tags` only stripped
+  levity on down/stressed AND wasn't applied on the STREAMING path (greetings stream). Now levity is
+  allowed ONLY on excited/upbeat; stripped on neutral/down/stressed; applied in `_stream_reply` too.
+  Verified: neutral "[laugh] Hey there!" -> "Hey there!"; excited keeps its laugh.
+- **Stale facts / old name**: prompt showed superseded facts (marked) and the model sometimes spoke
+  the old value. Now only CURRENT facts (valid_to=None) reach the prompt. PARTIAL — deeper task
+  queued: verify graph supersession actually fires + dedup redundant facts (else both old+new are
+  "current"). Real-drive test: name A -> change to B -> only B used.
+
+Cumulative validation suite: only the 3 known model-judgment-brittle acceptance tests + 2 SMTP fail;
+no new breakage from any of the above.
