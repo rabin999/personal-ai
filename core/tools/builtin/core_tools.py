@@ -15,6 +15,7 @@ import logging
 import re
 import unicodedata
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from core.memory.episodic import EpisodicMemory
@@ -34,6 +35,26 @@ def _norm_tokens(text: str) -> set[str]:
     folded = unicodedata.normalize("NFKD", text)
     folded = "".join(c for c in folded if not unicodedata.combining(c))
     return {t for t in re.findall(r"[a-z0-9]+", folded.lower()) if len(t) >= 2}
+
+
+def _strip_unrequested_stale_year(query: str, utterance: str) -> str:
+    """Remove a PAST year the model bolted onto a live-search query that the user never
+    said. Models anchor to their training cutoff and append e.g. '...2024' to a 'current'
+    question, which pins the search to a stale year and returns nothing usable (the
+    honest-fail we saw on 'who is the current PM of Nepal?'). We only strip a year that
+    is (a) not in the user's own words and (b) before this year — a year the user asked
+    about ('who won in 2019') stays untouched. Design doc §15 / RETRIEVAL_POLICY.md."""
+    this_year = datetime.now(UTC).year
+    said = set(re.findall(r"\d{4}", utterance))
+
+    def _drop(m: re.Match[str]) -> str:
+        year = m.group(0)
+        if year in said or int(year) >= this_year:
+            return year
+        return ""
+
+    cleaned = re.sub(r"\b\d{4}\b", _drop, query)
+    return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
 def _name_came_from_user(name: str, utterance: str) -> bool:
@@ -97,7 +118,7 @@ def register_core_tools(
     )
 
     async def web_search_tool(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-        query = str(args.get("query", ""))
+        query = _strip_unrequested_stale_year(str(args.get("query", "")), ctx.utterance)
         # §15 verified retrieval: read the pages + cross-check rather than trust a snippet.
         # Degrade to the snippet search on a crawler/dependency failure so live info never
         # regresses to nothing; our OWN bugs (VerifiedRetrievalError) still fail loud (D-9).

@@ -657,9 +657,12 @@ class ResponseGenerator:
         if not any(t.id == "web_search" for t in available):
             return None
         query = await self._build_search_query(prompt)
+        # Carry the utterance so the search handler can tell a user-requested year from a
+        # model-invented stale one when it cleans the query (see core_tools.web_search_tool).
+        search_ctx = context.model_copy(update={"utterance": prompt.utterance})
         try:
             result = await dispatcher.run_inline(
-                ToolCall(tool_id="web_search", args={"query": query}), context
+                ToolCall(tool_id="web_search", args={"query": query}), search_ctx
             )
         except Exception as exc:  # degrade gracefully — keep the model's own words
             logger.warning("capability-repair search failed: %s", exc)
