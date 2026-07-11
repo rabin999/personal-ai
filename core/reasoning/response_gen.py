@@ -592,10 +592,13 @@ class ResponseGenerator:
             repaired = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]
             if repaired:
                 turn.draft_response = repaired
-            elif prompt.needs_live_info is True:
-                # S1: the reasoning step said this answer would go stale without a lookup,
-                # and the lookup failed. NEVER ship the model's training-data answer as
-                # fact — say so honestly (§16).
+            else:
+                # VERIFY-BEFORE-ANSWER (docs/RETRIEVAL_POLICY.md): this turn needed live info
+                # (volatile class OR a false-refusal draft) and the forced search couldn't ground
+                # it. NEVER ship the model's training-data draft as fact — that is the stale-
+                # officeholder ("Prachanda is PM") failure. Be honest (§16). This used to fire only
+                # when the LLM classifier said so; a turn flagged volatile by is_volatile_question
+                # (needs_live_info=None) then leaked the stale draft when the search hiccuped.
                 self._span("tool", tool="web_search", phase="result", status="required_but_failed")
                 turn.draft_response = _SEARCH_FAILED_TEXT
         # The searches ran but the model still ended on a promise/refusal ("I'll do my best
