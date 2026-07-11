@@ -363,9 +363,11 @@ class PromptAssembler:
             f"- {c.name} ({c.entity_type}, id={c.entity_id})" for c in candidates
         )
         sections["project"] = project_section
+        # Only CURRENT facts reach the prompt — a superseded fact (an OLD name/value the user has
+        # since changed) must never be shown, or the model sometimes speaks the stale one. History
+        # is kept in the graph (valid_to); it just isn't fed to the live turn.
         sections["facts"] = "\n".join(
-            f"- {f.fact}{' [superseded ' + f.valid_to + ']' if f.valid_to else ''}"
-            for f in [*entity_facts, *profile_facts]
+            f"- {f.fact}" for f in [*entity_facts, *profile_facts] if not f.valid_to
         )
         sections["self_statements"] = "\n".join(f"- {s.text}" for s in prior_statements)
         # §2 Mem0 preference layer: what we know about this person, relevant now.

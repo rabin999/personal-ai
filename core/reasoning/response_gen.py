@@ -906,6 +906,9 @@ class ResponseGenerator:
             requires_nature_disclosure=_asks_about_nature(prompt.utterance),
         )
         gated, action, caught = await self._apply_gates(prompt, text, judgment)
+        # Laughter backstop on the STREAMING path too (greetings/first messages stream, and were
+        # laughing on neutral turns): strip levity unless the turn is genuinely excited/upbeat.
+        gated = strip_inappropriate_tags(gated, read_register(prompt.emotion))
 
         spoken = 0
         while (b := _sentence_end(gated, spoken)) is not None:

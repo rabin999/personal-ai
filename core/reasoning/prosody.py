@@ -183,9 +183,11 @@ def emotion_from_text(emotional_read: str | None) -> dict[str, Any] | None:
 
 
 def strip_inappropriate_tags(voice_text: str, register: Register) -> str:
-    """Deterministic backstop: remove levity tags on a down/stressed turn so the voice
-    never laughs when it shouldn't, even if the model slipped one in."""
-    if register not in ("down", "stressed"):
+    """Deterministic backstop: the voice laughs FAR too much — even in greetings / first messages.
+    The model over-adds [laugh]/[chuckle] no matter what the prompt says, so it is ENFORCED here:
+    levity is allowed ONLY on a genuinely excited/upbeat turn; every other register (neutral, down,
+    stressed) strips it entirely. A neutral greeting never laughs."""
+    if register in ("excited", "upbeat"):
         return voice_text
     cleaned = voice_text
     for tag in _LEVITY_TAGS:
