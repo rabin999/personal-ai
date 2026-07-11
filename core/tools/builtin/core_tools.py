@@ -12,6 +12,8 @@ this handler, so its result comes back at a pause (§14).
 """
 
 import contextlib
+import logging
+from collections.abc import Callable
 from typing import Any
 
 from core.memory.episodic import EpisodicMemory
@@ -21,6 +23,9 @@ from core.projects.service import ProjectService
 from core.tools.registry import ToolContext, ToolRegistry, ToolSpec
 from core.tools.results import ToolResultStore
 from core.tools.web_search import WebSearch
+from ports.retrieval import RetrievalPort, VerifiedRetrievalError
+
+logger = logging.getLogger(__name__)
 
 # VAD nudge per "you're too sensitive" style request (§11.3); clamped in §2.
 _VAD_STEP = 0.12
@@ -37,6 +42,7 @@ def register_core_tools(
     profiles: ProfileService,
     projects: ProjectService,
     results: ToolResultStore | None = None,
+    retrieval_builder: Callable[[str, str | None], RetrievalPort] | None = None,
 ) -> None:
     async def search_memory(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         hits = await episodic.retrieve(ctx.user_id, str(args.get("query", "")), k=5)
@@ -69,7 +75,26 @@ def register_core_tools(
     )
 
     async def web_search_tool(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-        outcome = await web_search.run(str(args.get("query", "")), ctx.user_id, ctx.session_id)
+        query = str(args.get("query", ""))
+        # §15 verified retrieval: read the pages + cross-check rather than trust a snippet.
+        # Degrade to the snippet search on a crawler/dependency failure so live info never
+        # regresses to nothing; our OWN bugs (VerifiedRetrievalError) still fail loud (D-9).
+        if retrieval_builder is not None:
+            try:
+                verified = await retrieval_builder(ctx.user_id, ctx.session_id).verify(query)
+                if verified.status != "error":
+                    return {
+                        "summary": verified.formatted_voice,
+                        "sources": [s.url for s in verified.sources][:5],
+                        "found": verified.status in ("corroborated", "single_source"),
+                    }
+            except VerifiedRetrievalError:
+                raise
+            except Exception:
+                logger.warning(
+                    "verified retrieval failed; falling back to snippet search", exc_info=True
+                )
+        outcome = await web_search.run(query, ctx.user_id, ctx.session_id)
         return {
             "summary": outcome.summary,
             "sources": [s.url for s in outcome.sources][:5],

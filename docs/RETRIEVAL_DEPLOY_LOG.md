@@ -49,3 +49,24 @@ decision made. Newest section appended at the bottom.
 ---
 
 ## Execution log
+
+### Step 1–3 — merge + integrate + verify (LOCAL) ✅
+
+- **Merged** `feat/verified-retrieval-crawl4ai` → main (squash, clean), scrubbed 2 reintroduced
+  CLAUDE.md refs. Commit `2ab05ef`.
+- **Retrieval harness on my side:** deterministic **31 passed**; real-call **8 passed** (live
+  Crawl4AI 0.8.6 container @127.0.0.1:11235 + real Serper + OpenRouter).
+- **Integration wired:** `api/composition.py` (shared `Crawl4AIClient` + per-call
+  `_build_retrieval(user_id, session_id)`), `core/tools/builtin/core_tools.py` (`web_search`
+  tool prefers `RetrievalPort.verify()`, degrades to Serper snippet on error; our bugs raise).
+  ruff + `lint-imports` KEPT (core→ports only) + mypy: all green.
+- **FULL-FLOW GATE (real engine turn, both callers):** PASS.
+  - `generate` and `generate_spoken`: "who is the current prime minister of Nepal?" →
+    searched=True → reply **"Balendra Shah is currently the Prime Minister of Nepal."** (grounded).
+  - **Verified retrieval confirmed engaged:** the Crawl4AI container logged live crawl requests
+    during the turn (browser-pool activity @14:29) — not the snippet fallback.
+- **Known cosmetic gap:** `retrieval.<stage>` spans aren't tagged with the turn number, so they
+  don't surface in the per-turn trace view (they do reach logs/trace store). Functional path is
+  unaffected; noted as a follow-up.
+
+**Gate condition ("if it works with full flow") — met. Proceeding to deploy.**

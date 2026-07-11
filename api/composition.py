@@ -24,6 +24,7 @@ from adapters.outbox import OutboxStore, WelcomeMailer
 from adapters.preference.mem0_adapter import Mem0PreferenceMemory
 from adapters.prompt.langfuse_prompt import BundledPromptProvider
 from adapters.queue.redis import RedisTaskQueue
+from adapters.retrieval import Crawl4AIClient, RetrievalConfig, build_crawl4ai_retrieval
 from adapters.search.brave import BraveSearch
 from adapters.search.serper import SerperSearch
 from adapters.ser.emotion2vec_client import Emotion2VecSER
@@ -68,6 +69,7 @@ from core.tools.results import ToolResultStore
 from core.tools.web_search import WebSearch
 from ports.doc_store import DocStore
 from ports.prompt import PromptProvider
+from ports.retrieval import RetrievalPort
 from ports.score_sink import ScoreSink
 from ports.stt import STT
 
@@ -251,7 +253,35 @@ async def build_pipeline(settings: Settings) -> Pipeline:
     )
     delivery = DeliveryComposer(queue, llm, max_interjections=settings.delivery_max_interjections)
     conversations = ConversationStore(docs)
-    web_search = WebSearch(docs, llm, *_search_providers(settings), ledger=ledger)
+    providers = _search_providers(settings)
+    web_search = WebSearch(docs, llm, *providers, ledger=ledger)
+    # §15 verified retrieval: read the pages + cross-check instead of trusting snippets.
+    # One shared Crawl4AI client; a per-CALL builder scopes the formatter LLM + cost to the
+    # turn's resolved user_id (invariant 2) — the web_search tool is multi-tenant, the build
+    # is not. Reuses the Serper provider for stage S1.
+    retrieval_cfg = RetrievalConfig()
+    retrieval_fetcher = Crawl4AIClient(
+        base_url=retrieval_cfg.base_url,
+        api_token=retrieval_cfg.api_token,
+        page_timeout_ms=retrieval_cfg.page_timeout_ms,
+        fetch_deadline_ms=retrieval_cfg.fetch_deadline_ms,
+        max_concurrency=retrieval_cfg.max_concurrency,
+        word_count_threshold=retrieval_cfg.word_count_threshold,
+    )
+
+    def _build_retrieval(user_id: str, session_id: str | None) -> RetrievalPort:
+        return build_crawl4ai_retrieval(
+            search=providers[0],
+            llm=llm,
+            user_id=user_id,
+            ledger=ledger,
+            session_id=session_id,
+            config=retrieval_cfg,
+            fetcher=retrieval_fetcher,
+            logs=logs,
+            trace_store=traces,
+        )
+
     register_core_tools(  # the MVP core tool set (§8.5) — so the loop can act
         tool_registry,
         episodic=episodic,
@@ -260,6 +290,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         profiles=profiles,
         projects=projects,
         results=tool_results,
+        retrieval_builder=_build_retrieval,
     )
 
     # §2 Mem0 preference memory (fast personalization layer). Guarded init:
