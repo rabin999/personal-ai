@@ -49,10 +49,29 @@ enforced in CI by `import-linter`.
 
 ## Tech stack
 
-Python 3.11+ · FastAPI/asyncio · **uv** (lockfile-based) · MongoDB · Qdrant
-(dense+BM25+RRF) · Neo4j + Graphiti · Redis · Pydantic · Pipecat/Silero VAD ·
-faster-whisper (STT) · OpenRouter (LLM) · xAI Grok (TTS) · emotion2vec (SER) ·
-ruff · mypy · pytest.
+| Layer | Tools |
+|---|---|
+| **Language / runtime** | Python 3.11+ · asyncio |
+| **Serving** | FastAPI (SSE/WebSocket streaming edge) · **uv** (lockfile-based deps) |
+| **Voice loop** | **Pipecat** (pipeline, transport, barge-in) · **Silero** VAD (idle-is-free cost gate) · semantic endpointing |
+| **STT** | Grok STT (default, fast) · faster-whisper (local, $0 fallback) |
+| **LLM** | **OpenRouter** — complexity-tier routing + provider fallback, exact-usage cost accounting |
+| **TTS** | **xAI Grok Voice TTS** — inline delivery tags, PCM streamed, interruptible |
+| **SER (emotion)** | emotion2vec on a GPU microservice (`services/ser_service`) |
+| **Episodic memory** | **Qdrant** — dense + BM25 sparse → RRF, filtered-HNSW, `user_id`-scoped |
+| **Semantic / temporal memory** | **Graphiti + Neo4j** — temporal knowledge graph of facts/relationships |
+| **Personalization memory** | **Mem0** — wired into live prompt assembly, reconciled with custom extraction |
+| **Doc store** | **MongoDB** — profiles, conversations, cost ledger, search cache, traces |
+| **Queue / cache** | **Redis** — background task queue + cache |
+| **Web search** | **Serper** (primary) · **Brave** (fallback) · Mongo cache · Crawl4AI verified-retrieval pipeline *(in progress)* |
+| **Tracing / eval** | **Langfuse** — per-turn trace (per-LLM token/cost/latency, tool calls, self-reflection span), LLM-as-judge |
+| **Validation** | **Pydantic** — every LLM JSON output validated (retry once → safe fallback) |
+| **UI** | Vite · React · TypeScript · Tailwind (mic picker, talking orb, live per-turn trace, replay) |
+| **Auth** | static bearer token → static user record (local/dev); Google OAuth SSO on the deployed server |
+| **Dev toolchain** | ruff (lint + format) · mypy · pytest (+asyncio, +cov) · **import-linter** (`core/ ↛ adapters/`) · pre-commit |
+
+Concrete providers sit behind `ports/` and are swappable — the composition root
+(`api/composition.py`) is the single place they're wired to the core.
 
 ## Setup
 
