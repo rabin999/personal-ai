@@ -589,6 +589,12 @@ class VoiceSession:
             # requests drift in tone. Falls back to per-call REST synthesis.
             self._trace.emit("tts", "synthesizing reply audio", voice=self._voice)
             result = await self._speak_turn(prompt, context, out)
+            # No-silence guarantee: if a step returned an EMPTY reply without raising (so nothing
+            # was streamed to TTS), never leave the user hanging — speak an honest short line.
+            # (Exceptions are already covered by the except below; this covers the quiet path.)
+            if not (result.voice_text or result.final_text).strip():
+                self._trace.emit("response", "", level="warn", empty_reply=True)
+                await self._say_step_failed(out)
             self._trace.emit(
                 "generation",
                 f"action={result.action}",
