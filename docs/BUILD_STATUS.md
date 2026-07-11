@@ -14,6 +14,21 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-11
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
+> ## 2026-07-11 (later) — Verified Retrieval (Crawl4AI) shipped to PRODUCTION. ✅
+> New standalone module `adapters/retrieval/` behind `ports/retrieval.py` (`VerifiedResult`):
+> reads the actual pages (JS + static, via a Crawl4AI Docker service), cross-checks the answer
+> across independent sources, checks recency, and returns corroborated / single_source /
+> conflicting / not_found / error — never a fabricated answer. Built by a sub-agent in an
+> isolated worktree against a frozen contract; 31 deterministic + 8 real-call tests; two killing
+> mutations (corroboration-min, staleness). Wired into the engine's `web_search` tool (prefers
+> verified retrieval, degrades to Serper snippet on crawler failure; our bugs fail loud).
+> **Deployed + verified in production:** the deployed engine turn "who is the current PM of Nepal?"
+> now reads live pages and answers **"It's Balendra Shah…"** (grounded, recency-checked) instead
+> of a stale/crypto-token guess. Crawl4AI `0.8.6` runs loopback-only on the prod box. Full trail:
+> `docs/RETRIEVAL_DEPLOY_LOG.md` + `docs/VERIFIED_RETRIEVAL_REPORT.md`. Follow-ups (non-blocking):
+> `retrieval.<stage>` spans not turn-tagged; ~13 s fetch latency (background-only); 0.8.6 pin.
+> Also added `docs/DESIGN_COVERAGE_MATRIX.md` (design-requirement → instrument → mutation → status).
+
 > ## 2026-07-11 — resumed the two remaining engine-gate failures. Both cleared.
 > **D-21 localtime** fixed (gate PASS: 10/10 correct clock, 0 chatbot) — removed two residual
 > invitations to compute a timezone offset (a raw UTC clock in `_now_section` + the leftover
