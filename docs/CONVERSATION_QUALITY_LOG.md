@@ -75,3 +75,34 @@ fails, user must get its response properly.")
   backend span fixes: retrieval turn-0 dup, ranked results.)
 
 ## Continuing: #14 remove profile settings (engine part first)
+
+## SESSION STATUS (2026-07-11, end of autonomous run) — prod stable
+
+**DEPLOYED to prod (in order):**
+1. Batch A — greeting/localtime, name frequency, tone enforcement, profile-location removed,
+   companion name "Saathi", model migration (Haiku reply / Sonnet complex). (4867b5b)
+2. LLM fallback flag+trace; router test robustness. (3453411)
+3. PROD HOTFIX — complex tier off sonnet-5 (parser crash) + off gemini-3.5-flash (23s hang);
+   `_call` never crashes on a None/empty response. Verified: user's freezing query now replies. (d6ea731)
+4. Batch B — killed stale "Boeing cargo plane" echo; official/authoritative source ranking
+   (wikipedia + opmcm.gov.np for the PM query). (d6ea731)
+5. No-silence guarantee — empty reply speaks an honest line; exceptions already speak; timeouts bound
+   hangs. (6eeb669)
+
+**REMAINING QUEUE (not started; designs captured above):**
+- #14 Remove profile settings from UI+API+engine: directness + emotional_scaffolding (also stop
+  rendering `comm_prefs` in prompt_assembly.py:331-333 / _STABLE_SECTIONS), thinking + fast model
+  pickers (ModelPicker + /api/models), mimic_tone, health_checkins.
+- #13 "Norsylinder" — clear the bad stored companion_name; fix the `set_companion_name` self-naming
+  (the model naming ITSELF without the user asking).
+- Batch C traces: (a) LIVE view = simple real-time transcript (fix the delay, only spoken/heard text
+  in a loop); (b) DETAILED view redesign — card title = first-N chars of input/output snippet (not
+  "Turn N"); footer = one-line summary showing ONLY cost + time, feedback actions on the right;
+  (c) backend: retrieval turn-0 duplicate span + persist ranked search results (titles/snippets).
+- Batch D — knowledge graph: replace ring layout with react-force-graph-2d + zoom/pan/drag/select/filter.
+- #16 Progressive delivery — empathetic interjection (emotional input) + chunk-by-chunk streaming for
+  multi-step turns; builds on _stream_reply + search-ack. Gate on slow turns; never split a tag.
+- #8 (later) Phase B eval bundle: coverage matrix (done) + multi-turn harness + intent labeled set.
+
+**Guiding rules to keep applying:** contracted independent stages (typed in→process→out); resilience
+(any step fails → user still gets a response); verify with REAL drives; no Claude attribution in commits.
