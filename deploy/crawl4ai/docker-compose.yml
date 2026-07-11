@@ -1,0 +1,46 @@
+# Crawl4AI render service for the Verified Retrieval pipeline
+# (adapters/retrieval — implements ports/retrieval.py).
+#
+# Runs the headless-Chromium crawler as a SIBLING service so Playwright/Chromium stay
+# OUT of the app venv, and the async job-queue/streaming endpoints fit the background/
+# waiter path. The app talks to it over HTTP via adapters/retrieval/fetch.Crawl4AIClient.
+#
+# Start:  docker compose -f deploy/crawl4ai/docker-compose.yml --env-file deploy/crawl4ai/.env up -d
+# Verify: curl -s http://127.0.0.1:11235/health
+#
+# VERSION: pinned to 0.8.6. The API verified against the v0.9.x docs (/crawl, /crawl/stream,
+# arun_many streaming, BM25ContentFilter, MemoryAdaptiveDispatcher) is IDENTICAL in 0.8.6,
+# but the 0.9.1 image ships WITHOUT the Playwright chromium-headless-shell binary and its
+# worker crashes on boot ("Executable doesn't exist ... chrome-headless-shell"). 0.8.6 boots
+# healthy and renders. Revisit when a fixed 0.9.x image lands. (See VERIFIED_RETRIEVAL_REPORT.)
+#
+# SECURITY:
+#   - Bound to 127.0.0.1 ONLY. NEVER expose :11235 publicly (this is the primary guard).
+#   - CRAWL4AI_API_TOKEN (>= 32 chars) is set and the client sends `Authorization: Bearer`.
+#     NOTE: in this image a token in the env alone is NOT enforced (upstream issue #1442) —
+#     enforcement needs security.jwt_enabled in deploy/docker/config.yml. Until then the
+#     loopback bind is the real boundary; do not rely on the token for access control.
+#   - --shm-size=1g so Chromium tabs don't OOM; a hard memory limit caps blast radius.
+name: companion-crawl4ai
+
+services:
+  crawl4ai:
+    image: unclecode/crawl4ai:0.8.6
+    # Loopback bind — the render service is internal-only.
+    ports:
+      - "127.0.0.1:11235:11235"
+    shm_size: "1gb"
+    environment:
+      # Secure-by-default auth. Set CRAWL4AI_API_TOKEN in deploy/crawl4ai/.env.
+      CRAWL4AI_API_TOKEN: "${CRAWL4AI_API_TOKEN:-}"
+    deploy:
+      resources:
+        limits:
+          memory: 4g
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:11235/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
