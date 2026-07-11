@@ -58,3 +58,20 @@ Real drive: "current PM of Nepal" fetches en.wikipedia.org + opmcm.gov.np (offic
 **NEXT (in progress): D-9 turn-level resilience** — guarantee ANY step failure (retrieval, memory,
 non-LLMUnavailable deps) still yields a spoken reply; never silence. (User: "even one or any step
 fails, user must get its response properly.")
+
+## Resilience status (2026-07-11) — adequate for the reported freeze
+- Exceptions already SPEAK an honest line: `_run_turn_inner` except → `_degrade` + `_say_step_failed`
+  (voice/session.py:636-638); STT path too (:418). So a dependency EXCEPTION never = silence.
+- Hangs bounded: llm_timeout_s=60, retrieval fetch_deadline_ms=20 → a slow step raises → fallback →
+  speak. The freeze cause (reasoning-mandatory fallback + parser crash) is removed in the hotfix.
+- Follow-up (optional): lower llm_timeout_s for faster degradation; a whole-turn deadline.
+
+## Batch C trace-UI design (from user) — QUEUED
+- Card TITLE = first N chars of the turn's input or output text (a snippet), NOT "Turn N". Title only
+  at the top header of the same card design.
+- Move the summary to the FOOTER: left = one-line summary showing ONLY total cost + time taken
+  (nothing else); right side of footer = feedback actions.
+- (Plus the earlier Batch C: live view = simple real-time transcript; detailed view keeps full spans;
+  backend span fixes: retrieval turn-0 dup, ranked results.)
+
+## Continuing: #14 remove profile settings (engine part first)
