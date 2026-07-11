@@ -119,3 +119,33 @@ fails, user must get its response properly.")
 
 Cumulative validation suite: only the 3 known model-judgment-brittle acceptance tests + 2 SMTP fail;
 no new breakage from any of the above.
+
+## OPEN ISSUES (user, 2026-07-11 late) — diagnosed, NOT yet fixed (need fresh-context care)
+
+**1. PM question still answers STALE first (Prachanda) then self-corrects.** Rule wanted: a live-info/
+officeholder question must SEARCH before answering, never from training data.
+- Diagnosis: `is_volatility_question` DOES catch "current prime minister of nepal" (via `_ROLE_OF` +
+  `_DEIXIS`; `_EXTERNAL_MARKER` includes "prime minister" so the self-directed "you" exclusion doesn't
+  fire). So `_requires_live_lookup`→True and the turn is NOT streamed. The stale answer therefore comes
+  from the AGENTIC path shipping the model's PRE-SEARCH `draft_response` when the model (now Haiku)
+  confidently answers "Prachanda" and sets `tool_request=null`. Fix direction: on a volatile turn, do
+  NOT ship the pre-search draft — FORCE the search and answer only from `_REPAIR_INSTRUCTIONS`
+  (verify-before-answer). Check `needs_search`/`_fallback` path in response_gen (~532-547) for where a
+  volatile turn can still return the model draft. Nondeterministic → verify with N≥5 real runs, both callers.
+
+**2a. Search ack "let me quickly check on that" is REPETITIVE / not short/dynamic.** The dynamic ack
+(response_gen ~752 + the `_dynamic_ack`/holding-line path) is converging on one phrase. Make it short +
+varied (or rotate a small set / dedup against the last ack), gate to once per search.
+
+**2b. Recent plane-crash search returns not-found.** Retrieval/query quality for breaking news. Check the
+search query build for news + Serper recency + whether crawl4ai fetched anything (or all bot-walled →
+honest error). May need a snippet fallback answer when fetch fails but Serper has the story.
+
+**3. Greeting must be DISCARDED if the user is already talking when they open.** Today `_greet_on_open`
+speaks regardless. Fix: if user speech arrives before/at open, cancel the greeting task (barge-in on the
+greeting) and process the user's query instead. Voice-session concurrency — do carefully.
+
+**4. Two related sentences across 2 turns → engine only used the latest.** Input-side turn combining /
+working-memory: either endpointing split one thought into 2 turns and they weren't merged, or the prompt
+didn't include the immediately-prior user turn. Debug working memory (`WorkingMemory.append`/read) +
+prompt assembly's recent-turns inclusion; consider a short merge window for consecutive user turns.
