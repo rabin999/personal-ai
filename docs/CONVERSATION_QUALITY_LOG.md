@@ -149,3 +149,20 @@ greeting) and process the user's query instead. Voice-session concurrency — do
 working-memory: either endpointing split one thought into 2 turns and they weren't merged, or the prompt
 didn't include the immediately-prior user turn. Debug working memory (`WorkingMemory.append`/read) +
 prompt assembly's recent-turns inclusion; consider a short merge window for consecutive user turns.
+
+## Verify-before-answer + settings removal — DEPLOYED (2026-07-11 overnight)
+- **Verify-before-answer** (63ac30c) — THE fix for the recurring stale-PM bug, per docs/RETRIEVAL_POLICY.md.
+  A volatile turn whose forced search can't ground it now speaks an honest can't-verify line instead of
+  the model's stale training-data draft (was leaking when the deterministic backstop flagged volatile but
+  the LLM classifier was None). Verified N=12 real turns, both callers: 0 stale answers; every reply is
+  fresh (Balendra Shah, wikipedia + official gov PM office) or honest-fail. NOTE: honest-fail share is
+  higher than ideal — direct retrieval is 3/3 reliable, so the engine REPAIR PATH (query build for
+  opinion-wrapped phrasings / inline timeout) needs a reliability follow-up (tracked in #18/RETRIEVAL_POLICY).
+- **#14 settings removal** (4f0a1d9, via sub-agent, merged clean) — removed directness/emotional_scaffolding
+  (also out of the prompt), thinking+fast model pickers (backend-only now; bundle shrank), mimic_tone,
+  health_checkins from UI+API+engine. Backend tier routing untouched.
+- **NEW policy doc**: docs/RETRIEVAL_POLICY.md — taxonomy of answer-from-training vs must-verify vs
+  user-memory + the verify-before-answer invariant + how to measure it.
+
+## Sub-agents in flight
+- Knowledge-graph force-directed viz (worktree) — running; merge + deploy when done.
