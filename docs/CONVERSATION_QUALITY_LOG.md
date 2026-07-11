@@ -179,3 +179,19 @@ superseded-toggle/text-search; labels no longer overlap; theme-aware; verified i
   _build_search_query for opinion-wrapped phrasings / inline budget); #13 set_companion_name self-naming
   guard (needs the utterance wired to the tool handler — ToolContext lacks it) + clear stored "Norsylinder";
   #17 memory supersession/dedup; #18 remaining (repetitive ack, greeting-discard-if-speaking, 2-turn combine).
+
+## #13 companion self-naming + "Norsylinder" — DEPLOYED (c49fc17)
+Diagnosis (drove prod Neo4j): the companion had self-assigned invented names via set_companion_name;
+extraction then resolved "the user named the companion 'X'" into phantom PERSON entities that
+FRAGMENTED the user's identity across Marshal(real bio, 44 facts)/Norsylinder/Cylinder — the same
+root as "#17 calls me by an old/wrong name". Fixes: (1) set_companion_name now rejects any name not
+present in the user's utterance (companion never names itself); (2) removed the semantic-episode write
+— the profile is the single source of truth for the companion name, so companion identity never
+pollutes the user's memory graph; (3) superseded facts (valid_to) are EXCLUDED from the prompt, not
+shown with a marker the model ignored. Prod cleanup: companion_names reset to null→Saathi; phantom
+Norsylinder/Cylinder entities + naming episodics deleted from Neo4j; real user bio kept intact.
+
+## #17 (in progress) — does extraction actually SUPERSEDE old facts?
+Prompt-side enforcement done (exclude valid_to facts). Investigating the graph-side: when a new
+"X is now Y" fact arrives, is the prior fact's valid_to set (so it's excluded)? If extraction never
+sets valid_to, both old+new coexist and the old value can still surface. This is the systemic root.
