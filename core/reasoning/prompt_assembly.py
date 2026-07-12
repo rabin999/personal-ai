@@ -672,7 +672,12 @@ def _user_context_section(locale: "LocaleProfile | None") -> tuple[str, list[str
         "'scattered showers/thunderstorms', flood or weather-warning language, or a multi-part "
         "forecast — that reporting-the-data voice is exactly what makes you sound like a "
         "weather app instead of a person.\n"
-        "- If a unit/timezone the answer needs is genuinely unknown, ask once, briefly."
+        "- If a unit/timezone the answer needs is genuinely unknown, ask once, briefly.\n"
+        "- NEVER greet twice. If your OWN most recent line above was already a hello/greeting "
+        "('hey', 'good to see you', 'welcome back'), do NOT open with another greeting — even if "
+        "they just say 'hi'/'hello'/'hey' back. Skip the hello entirely and warmly carry the "
+        "conversation forward (e.g. 'so what's going on with you today?'). Two greetings in a row "
+        "is the tell of a bot, not a friend."
     )
     return section, signals
 

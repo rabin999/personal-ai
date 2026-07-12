@@ -13,10 +13,39 @@ time-of-day (no "good morning" guessing) — that's the exact bug this fixes.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from core.profile.models import LocaleProfile
+
+# A question about the CURRENT clock time or today's date — answered DETERMINISTICALLY from the
+# `## Right now` prompt block (server clock → user/world timezone), never a web search. A live
+# search for the time returns a STALE, cached page whose summary the model then mis-dates (the
+# reported bug: "As of Saturday, July 11 … time in Nepal is 11:00 PM" when it was Sunday the
+# 12th). Deliberately does NOT match a SCHEDULE question ("what time does the market open?",
+# "what time is the meeting?") — those are events, not the clock, and may genuinely need a lookup.
+_TIME_OF_DAY_QUERY = re.compile(
+    r"\b("
+    r"what(?:'?s| is)?\s+the\s+time"  # what's the time
+    r"|what\s+time\s+is\s+it"  # what time is it (in X)
+    r"|what\s+time\s+do\s+you\s+have"
+    r"|(?:the\s+)?(?:current|local)\s+time"  # (the) current/local time
+    r"|time\s+(?:right\s+)?now"  # time now / time right now
+    r"|(?:current\s+)?time\s+(?:in|at|of)\s+[a-z]"  # time in nepal / time at ...
+    r"|what(?:'?s| is)?\s+(?:the|today'?s)\s+date"  # what's the date / today's date
+    r"|what\s+day\s+is\s+it"  # what day is it (today)
+    r"|what(?:'?s| is)?\s+the\s+day\s+today"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def is_time_of_day_query(utterance: str | None) -> bool:
+    """True for a 'what time/date is it (in X)?' question, which is answered from the
+    deterministic clock in the prompt — never a web search (which mis-dates a cached page)."""
+    return bool(_TIME_OF_DAY_QUERY.search(utterance or ""))
+
 
 # City → IANA timezone for common cases so a profile that only set city/country
 # (not the IANA field) still resolves. Extend as needed; unknown → country lookup.

@@ -31,6 +31,7 @@ from core.observability.logger import StructuredLogger
 from core.phrases import defaults as default_pools
 from core.phrases.catalog import PhraseCatalog
 from core.profile import ProfileNotFound, TraitRegistry
+from core.reasoning.localtime import is_time_of_day_query
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.prosody import (
     effective_register,
@@ -886,6 +887,7 @@ class ResponseGenerator:
             and prompt.session_id not in self._pending
             and not prompt.suppress_live_search
             and (prompt.needs_live_info is True or is_volatile_question(prompt.utterance))
+            and not is_time_of_day_query(prompt.utterance)  # answered from the prompt clock
         ):
             direct = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]
             if direct:
@@ -2919,6 +2921,11 @@ def _requires_live_lookup(prompt: AssembledPrompt) -> bool:
     explicit `False` on an emotionally heavy turn is a verdict. Presence over facts
     (§3.6.5, §6): a grieving person did not ask for a helpline.
     """
+    # A "what time/date is it in X?" question is answered DETERMINISTICALLY from the world clock
+    # already in the prompt — never a web search, whose summary mis-dates a cached page (reported:
+    # a Nepal-time reply came back a day off). This overrides even a classifier `needs_live_info`.
+    if is_time_of_day_query(prompt.utterance):
+        return False
     if prompt.needs_live_info is True:
         return True
     if prompt.needs_live_info is False and _is_emotionally_heavy(prompt):
