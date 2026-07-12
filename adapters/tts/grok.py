@@ -74,6 +74,13 @@ _TAG_PATTERN = re.compile(r"(\[[a-z_ ]+\]|<[a-z_ ]+>)", re.IGNORECASE)
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+|(?<=[,;:])\s+")
 
 
+def _pad_tail(text: str) -> str:
+    """A trailing space so streaming TTS renders the final word's release instead of
+    clipping it at the request boundary (the "cut off at the very corner" report).
+    Idempotent — never doubles an existing trailing space."""
+    return text if text.endswith(" ") else text + " "
+
+
 def chunk_for_synthesis(text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[str]:
     """Clause/sentence chunking that never splits an inline tag (rule 3)."""
     pieces = _SENTENCE_SPLIT.split(text.strip())
@@ -194,7 +201,11 @@ class GrokTTS:
 
     async def _synthesize(self, text: str, voice_id: str) -> AsyncIterator[bytes]:
         payload = {
-            "text": text,
+            # Trailing pad: streaming TTS clips the RELEASE of the final word when the
+            # request ends right on the last character (reported: replies "cut off at the
+            # very corner", not smooth to the end). A trailing space gives the model a
+            # boundary token to render the last word fully; it is silent itself.
+            "text": _pad_tail(text),
             "language": self._settings.tts_language,
             "voice_id": voice_id,
             "output_format": {"codec": "pcm", "sample_rate": SAMPLE_RATE},
@@ -253,9 +264,15 @@ class GrokTTSStream:
 
     async def finish(self) -> None:
         """Signal end-of-text so xAI flushes the tail; audio keeps arriving until
-        ``audio.done`` (drained by the ``audio`` iterator)."""
+        ``audio.done`` (drained by the ``audio`` iterator).
+
+        A trailing space is fed FIRST: streaming TTS clips the release of the final
+        word when ``text.done`` lands right on the last character (reported: replies
+        "cut off at the very corner", not smooth to the end). The space is a boundary
+        token the model needs to render the last word fully, and is itself silent."""
         if self._closed:
             return
+        await self._ws.send(json.dumps({"type": "text.delta", "delta": " "}))
         await self._ws.send(json.dumps({"type": "text.done"}))
 
     async def audio(self) -> AsyncIterator[bytes]:
