@@ -14,6 +14,7 @@ uses, so both runtimes share one engine.
 import asyncio
 import contextlib
 import logging
+import time
 from typing import Any, Protocol
 
 from pipecat.frames.frames import (
@@ -22,6 +23,7 @@ from pipecat.frames.frames import (
     InterruptionFrame,
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
+    OutputTransportMessageUrgentFrame,
     TextFrame,
     TranscriptionFrame,
 )
@@ -135,12 +137,17 @@ class CompanionProcessor(FrameProcessor):
         with scope:
             try:
                 self._working.append(self._session_id, Turn(role="user", text=text))
-                await self._trace(turn, "session", "voice turn", text=text)
+                # LIVE: the user's transcript (stage "stt"), matching the native runtime so
+                # the UI shows what they said the instant it's final (parity — the Pipecat
+                # runtime was only persisting traces, so the live transcript panel stayed empty).
+                await self._emit(turn, "stt", f"final: {text!r}", text=text)
                 prompt = await self._assembler.assemble(self._user_id, self._session_id, text)
+                await self._emit(turn, "tts", "synthesizing reply audio")
                 await self.push_frame(LLMFullResponseStartFrame())
                 if isinstance(prompt, DisambiguationRequest):
                     names = " or ".join(f'"{c.name}"' for c in prompt.candidates[:3])
                     reply = f"Quick check — do you mean {names}?"
+                    await self._emit(turn, "reply_chunk", reply, voice_text=reply)
                     await self.push_frame(TextFrame(reply))
                 else:
                     context = self._make_context(prompt) if self._make_context else None
@@ -150,6 +157,9 @@ class CompanionProcessor(FrameProcessor):
                     # low time-to-first-audio. (Was: generate the WHOLE reply, then push
                     # one TextFrame → TTS waited for the entire turn → felt slow.)
                     async def _speak(sentence: str) -> None:
+                        # LIVE caption for each spoken chunk (stage "reply_chunk"), exactly
+                        # like the native path, so the transcript fills in as it's spoken.
+                        await self._emit(turn, "reply_chunk", sentence, voice_text=sentence)
                         await self.push_frame(TextFrame(sentence))
 
                     result = await self._generator.generate_spoken(
@@ -158,7 +168,7 @@ class CompanionProcessor(FrameProcessor):
                     reply = result.final_text
                 await self.push_frame(LLMFullResponseEndFrame())
                 self._working.append(self._session_id, Turn(role="assistant", text=reply))
-                await self._trace(turn, "response", reply, text=reply)
+                await self._emit(turn, "response", reply, text=reply)
                 self._remember(text, reply)
                 if self._evaluator is not None:
                     self._evaluator.schedule(
@@ -169,8 +179,30 @@ class CompanionProcessor(FrameProcessor):
             except Exception:  # never let one turn tear down the pipeline
                 logger.exception("companion turn failed")
 
-    async def _trace(self, turn: int, stage: str, message: str, **data: Any) -> None:
-        """Persist one stage span so a Pipecat turn shows in the Trace tab (best-effort)."""
+    async def _emit(self, turn: int, stage: str, message: str, **data: Any) -> None:
+        """Stream a trace event LIVE to the client AND persist it (best-effort).
+
+        Live: pushed downstream as an ``OutputTransportMessageUrgentFrame`` that the
+        serializer renders to a ``{"type":"trace", ...}`` JSON text WS frame — the exact
+        shape the native runtime sends, so the browser's live transcript + trace panels
+        render a Pipecat turn identically (they were empty before: this processor only
+        persisted). Sent on the transport's own writer task, so no concurrent-send race
+        with the audio. Persist: the same event into the durable store for the Trace tab.
+        """
+        payload = {
+            "type": "trace",
+            "session_id": self._session_id,
+            "turn": turn,
+            "ts": time.time(),
+            "stage": stage,
+            "message": message,
+            "level": "info",
+            "data": data,
+        }
+        try:
+            await self.push_frame(OutputTransportMessageUrgentFrame(message=payload))
+        except Exception:
+            logger.debug("pipecat live trace emit failed", exc_info=True)
         if self._traces is None:
             return
         try:

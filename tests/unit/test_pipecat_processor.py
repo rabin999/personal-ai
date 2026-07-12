@@ -12,6 +12,7 @@ import pytest
 from pipecat.frames.frames import (
     LLMFullResponseEndFrame,
     LLMFullResponseStartFrame,
+    OutputTransportMessageUrgentFrame,
     TextFrame,
     TranscriptionFrame,
 )
@@ -87,19 +88,39 @@ async def test_final_transcription_produces_a_reply_text_frame() -> None:
         extractor=extractor,
     )
 
+    # The reply is bracketed for the TTS aggregator (start → text → end); live trace
+    # events (stt/tts/reply_chunk/response) are interleaved as urgent message frames,
+    # so we assert on the received set rather than a brittle exact order.
     received, _ = await run_test(
         proc,
         frames_to_send=[TranscriptionFrame("what's up", "u_demo_001", "2026-07-07T00:00:00Z")],
-        # The reply is bracketed for the TTS aggregator: start → text → end.
-        expected_down_frames=[LLMFullResponseStartFrame, TextFrame, LLMFullResponseEndFrame],
     )
 
     reply = next(f for f in received if isinstance(f, TextFrame))
     assert "good to hear you" in reply.text.lower()
     assert generator.calls == ["what's up"]  # reasoning ran on the transcript
+    # The reply is still bracketed for the TTS aggregator.
+    assert any(isinstance(f, LLMFullResponseStartFrame) for f in received)
+    assert any(isinstance(f, LLMFullResponseEndFrame) for f in received)
     # Working memory recorded both sides; the extraction write step fired.
     turns = working.recent("s_pc")
     assert [t.role for t in turns] == ["user", "assistant"]
+
+    # LIVE trace parity: the user transcript, the reply chunk, and the final response
+    # are streamed to the client as {"type":"trace", ...} JSON frames (native parity).
+    traces = [
+        f.message
+        for f in received
+        if isinstance(f, OutputTransportMessageUrgentFrame)
+        and isinstance(f.message, dict)
+        and f.message.get("type") == "trace"
+    ]
+    stages = {t["stage"] for t in traces}
+    assert {"stt", "reply_chunk", "response"} <= stages, stages
+    stt = next(t for t in traces if t["stage"] == "stt")
+    assert stt["data"]["text"] == "what's up"  # the UI shows exactly what the user said
+    chunk = next(t for t in traces if t["stage"] == "reply_chunk")
+    assert "good to hear you" in chunk["data"]["voice_text"].lower()
 
 
 class _FakeSTT:

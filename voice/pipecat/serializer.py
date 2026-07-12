@@ -7,10 +7,14 @@ serializer bridges those raw bytes to Pipecat's InputAudioRawFrame / audio-out
 frames. Non-audio frames are not serialized (control travels as separate JSON).
 """
 
+import json
+
 from pipecat.frames.frames import (
     Frame,
     InputAudioRawFrame,
     OutputAudioRawFrame,
+    OutputTransportMessageFrame,
+    OutputTransportMessageUrgentFrame,
     TTSAudioRawFrame,
 )
 from pipecat.serializers.base_serializer import FrameSerializer
@@ -26,10 +30,15 @@ class RawPCMSerializer(FrameSerializer):
         self._out_rate = out_rate
 
     async def serialize(self, frame: Frame) -> str | bytes | None:
-        # Only audio goes out over the binary channel; the caller streams trace
-        # JSON separately. Raw PCM bytes straight to the browser player.
+        # Audio → raw PCM bytes to the browser player (binary WS frame).
         if isinstance(frame, (TTSAudioRawFrame, OutputAudioRawFrame)):
             return bytes(frame.audio)
+        # Live TRACE events (user transcript, reply chunks, response) ride the SAME
+        # output channel as a JSON text WS frame — sent by the transport's own writer
+        # task, so there's no concurrent-send race with the audio. This is what gives
+        # the Pipecat runtime the same live transcript stream the native runtime has.
+        if isinstance(frame, (OutputTransportMessageFrame, OutputTransportMessageUrgentFrame)):
+            return json.dumps(frame.message)
         return None
 
     async def deserialize(self, data: str | bytes) -> Frame | None:
