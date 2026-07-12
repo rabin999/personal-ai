@@ -14,6 +14,28 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-12
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
+> ## 2026-07-12 (latest+2) — Voice-effect demos + whole-reply effect overrides (§10.2). ✅ (deployed)
+> The mood-driven reply path could not showcase Grok's delivery effects: it picks tags from the
+> turn's emotion, then `strip_inappropriate_tags`/brevity remove them — so "show me your voice
+> effects" or "answer in a whisper" fell flat. New `core/reasoning/voice_effects.py`, wired into
+> both reply paths (`generate` text + `generate_spoken` voice):
+> - **DEMO** ("give me N tone examples" / "how many voice effects do you support") → a
+>   deterministic ($0, exact count) reply that ANNOUNCES then PERFORMS each effect with a real
+>   tag, interleaving both Grok kinds: **wrapping** `<whisper>/<emphasis>/<slow>/<fast>/<soft>/
+>   <loud>/<sing>` and **instant** `[laugh]/[chuckle]/[sigh]/[gasp]/[breath]/[exhale]/[sniff]/
+>   [clears throat]/<pause>/[gentle]/[warm]`. Built directly (not via `_finish`) so the
+>   levity-strip backstop can't gut the examples; chat/memory gets a clean category-annotated
+>   list, the voice carries the tags.
+> - **OVERRIDE** ("answer in a whisper", "say that slowly") → the whole generated reply is wrapped
+>   in that effect for TTS, applied AFTER the gates (so even a levity effect is honoured), only on
+>   a request cue addressed to the companion (no false-positive on "I whispered to her").
+> `_ALLOWED_TAGS` extended with the doc-confirmed `<loud>`/`<sing>`. **Proven by real drive**
+> (`scripts/voice_effects_probe.py`): the LIVE xAI `/v1/tts` accepted all 18 effects (~64s audio,
+> no rejection) and a whisper override wrapped the whole reply. 53 unit tests; full source
+> ruff/mypy/lint-imports green; 541 unit tests pass. **Also (UI):** removed the 26-voice roster
+> picker from the Companion Setup panel — the companion voice is fixed to the default (helix),
+> keeping only the microphone + voice-engine (native/pipecat) pickers. `tsc`+`vite build` green.
+
 > ## 2026-07-12 (latest+1) — Engagement, complete fillers, quick-ack coverage, 65/35 layout. ✅
 > Follow-ups from live use after the pass below:
 > - **"Almost every reply is a dead-end."** Root cause (prod trace): the self-reflection SCRUBBER
