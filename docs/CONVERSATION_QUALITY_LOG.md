@@ -238,3 +238,24 @@ Batches A/B/C/D; #13 companion self-naming guard + Norsylinder graph cleanup; #1
 (D-9 red→green); verify-before-answer + stale-year strip (freshness proven by real drive).
 Still open (larger, next phases): #16 progressive delivery (voice), #8 Phase B eval bundle,
 #18 voice-runtime endpointing items.
+
+## Voice-runtime + progressive search — DEPLOYED (9a7af3f, 6d6ad4c, 169ea53)
+- GREETING-DISCARD (9a7af3f): the open greeting was a blocking await → nothing could detect the user
+  speaking over it. Now a separate cancellable task; discarded the instant real speech begins,
+  regardless of the barge_in setting (an unsolicited greeting must never talk over them).
+- TWO-UTTERANCE COMBINE (9a7af3f): the multi-utterance gap was measured to the SECOND utterance's
+  endpoint (included its speaking time) → a long continuation always split. Now measured to speech
+  ONSET (the silence between), so a continuation folds into one turn.
+- FALSE BARGE-IN (6d6ad4c): the lowered barge bar keyed off raw VAD confidence → ambient noise/
+  breathing self-interrupted the reply. Two regimes: clear gated speech commits at 8 frames; raw-only
+  energy (attenuated speech OR noise) must sustain 12 frames — filters noise, keeps real interrupts.
+- PROGRESSIVE MULTI-SEARCH (169ea53): the forced-search backstop now plans the distinct facets of a
+  complex question (≤3 self-contained queries), searches them concurrently, does one bounded gap round
+  if an essential fact is still missing, and composes from all findings. Real drive of "did someone
+  burn and die in Nepal over a fine?" → "that was Ganesh Nepali — set himself on fire outside the
+  passport department and died from his injuries… do you know what the fine was about?" (grounded,
+  warm, one good search sufficed; progressive gap-fill engages when it doesn't).
+
+#18 substantially complete (greeting, 2-turn combine, false barge-in, live-info freshness, progressive
+search). Remaining large features: #16 progressive delivery (interjection + chunk streaming + parallel
+reaction model), #8 Phase B eval bundle.
