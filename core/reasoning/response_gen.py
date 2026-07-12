@@ -141,13 +141,17 @@ _NOT_FOUND_TEXT = (
 # fetch; a simple question yields one query. The model decides how much is genuinely needed.
 _MULTIQ_PLAN_INSTRUCTIONS = (
     "The user asked something that may take MORE THAN ONE web search to answer well.\n"
-    "List the DISTINCT facts you would need to look up to answer it fully — each as a "
-    "focused, SELF-CONTAINED search query (standalone, no pronouns, name the concrete "
-    "subject/place). Include ONLY what is genuinely needed:\n"
-    "- a simple factual question needs ONE query;\n"
-    "- a multi-part or news question may need 2-3 (e.g. the specific event; its cause; the "
-    "related rule/number/official response).\n"
-    "Do NOT pad with tangents. Reply with ONE query per line, at most 3, most important first."
+    "List the DISTINCT facts you would need to look up to answer it fully — each as a focused "
+    "search query. HARD RULES:\n"
+    "- Every query must be SELF-CONTAINED and name the SPECIFIC subject — the exact event/"
+    "entity/place. A query like 'authorities' statement on the missing plane' is useless: WHICH "
+    "plane? Carry the concrete identifiers (place, what happened) into EVERY query.\n"
+    "- Do NOT append a specific date/month/year (e.g. 'July 2026'); use 'latest' or 'recent' — "
+    "the results are ranked by recency.\n"
+    "- Include ONLY what is genuinely needed: a simple factual question needs ONE query; a "
+    "multi-part or news question may need 2-3 (the specific event; its cause; the official "
+    "response). Do NOT emit near-duplicate phrasings of the same facet.\n"
+    "Reply with ONE query per line, at most 3, most important first."
 )
 # After the first round of searches, decide whether an ESSENTIAL facet is still missing and,
 # only if so, name up to two more focused queries. Bounded so retrieval never loops forever.
@@ -791,6 +795,19 @@ class ResponseGenerator:
         """Run each facet query, concurrently, returning (query, summary) for the ones that
         found something. Concurrency keeps N lookups at ~one round of latency; a single
         failing facet never sinks the others (each degrades to nothing, not a raise)."""
+        # Clean each planned query the same way the handler does — BEFORE tracing/searching —
+        # then de-duplicate. The planner tends to emit dated + undated variants of the same
+        # facet ("…missing plane July 2026" and "…missing plane"); stripping the appended date
+        # collapses them, so we don't fire (or show in the trace) the same search twice.
+        seen: set[str] = set()
+        cleaned: list[str] = []
+        for q in queries:
+            c = _strip_unrequested_date(q, search_ctx.utterance)
+            key = c.lower().strip()
+            if c and key not in seen:
+                seen.add(key)
+                cleaned.append(c)
+        queries = cleaned
 
         async def _one(query: str) -> "tuple[str, str] | None":
             self._span(
