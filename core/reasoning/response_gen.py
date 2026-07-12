@@ -32,7 +32,13 @@ from core.phrases import defaults as default_pools
 from core.phrases.catalog import PhraseCatalog
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
-from core.reasoning.prosody import prosody_directive, read_register, strip_inappropriate_tags
+from core.reasoning.prosody import (
+    effective_register,
+    prosody_directive,
+    read_register,
+    somber_content,
+    strip_inappropriate_tags,
+)
 from core.reasoning.self_model import BoundaryFlag, SelfModel, TurnRecord
 from core.reasoning.style import (
     excise_forbidden,
@@ -311,9 +317,12 @@ correctly. This is SPOKEN ALOUD, so expand a technical acronym in words the firs
 say "retrieval-augmented generation, RAG for short", not a bare "RAG"; "a large language
 model, an LLM" — then the short form is fine. Do NOT reflexively end on a
 stock filler question — 'what's on your mind?', 'what's up?', 'what's going on?',
-'anything on your mind?' — you lean on these way too much; most turns should just
-react and stop, and when you do ask something make it fresh and specific to what they
-actually said. Be easy and grounded, not gushing or overly warm — match their energy,
+'anything on your mind?' — you lean on these way too much. But DO keep the conversation
+ALIVE: a real friend stays curious and follows the thread. React with something SPECIFIC to
+what they actually said — pick up the interesting detail, offer a genuine thought or reaction,
+and when it fits, ask ONE real question that moves the topic forward (never a generic prompt).
+Don't just acknowledge and stop dead, and don't interrogate — carry it like a real back-and-
+forth. Be easy and grounded, not gushing or overly warm — match their energy,
 save real tenderness for when they're actually going through something. Use their NAME
 only sparingly — real friends don't say each other's name every sentence; most replies
 use no name at all, never every turn. Work out what
@@ -340,8 +349,11 @@ _DELIVERY_TAGS_GUIDE = (
     "<pause> — one well-placed beat of real feeling.\n"
     "• WRAPPING effects shape a SPAN and must be OPENED and CLOSED around the exact words: "
     "<emphasis>really</emphasis>, <slow>take your time</slow>, <whisper>between us</whisper>.\n"
-    "Tone markers set the register: [warm] [gentle] [soft]. One or two effects per reply is "
-    "plenty; none is fine on a flat turn; ALWAYS close a wrapping tag; never a laugh on a sad turn."
+    "Tone markers set the register: [warm] [gentle] [soft]. On any real conversational turn "
+    "weave in AT LEAST ONE delivery beat so the voice sounds alive, not flat — a [warm]/[gentle] "
+    "tone marker, a <pause>, or an <emphasis> on the word that carries the feeling; two is plenty, "
+    "never tag every sentence, and none is fine only on a terse one-word reply ('yeah', 'got it'). "
+    "ALWAYS close a wrapping tag; never a laugh on a sad or grave turn."
 )
 
 
@@ -949,7 +961,9 @@ class ResponseGenerator:
         if speak is not None:
             # This searched answer is SPOKEN — give it the same delivery guidance the plain
             # reply path gets (register + instant/wrapping effects) so it doesn't come out flat.
-            _register, directive = prosody_directive(prompt.emotion)
+            _register, directive = prosody_directive(
+                prompt.emotion, somber=somber_content(prompt.utterance)
+            )
             system += f"\n\nDelivery register for THIS turn: {directive}\n{_DELIVERY_TAGS_GUIDE}"
         messages = [
             {"role": "system", "content": system},
@@ -1207,6 +1221,7 @@ class ResponseGenerator:
         *,
         temperature: float | None = None,
         flush: "Callable[[], Awaitable[None]] | None" = None,
+        proactive: bool = False,
     ) -> GenerationResult:
         """Voice turn (§8.12): stream the spoken reply to ``speak`` sentence-by-
         sentence so TTS starts on the first sentence, when it's a plain
@@ -1215,6 +1230,14 @@ class ResponseGenerator:
         Always returns the final GenerationResult for memory/trace. ``temperature``
         overrides the default reply temperature (greetings use a higher one so they
         don't come out the same every session).
+
+        ``proactive`` marks a companion-INITIATED turn (the open greeting, the silence-
+        lull check-in) — a short single line the user did NOT ask a question to. Those
+        turns must NEVER run the wait-fillers: there's no "answer" being kept waiting, so
+        a "let me look back through our chats… still digging… sorry this is dragging on"
+        cascade in front of a one-line "you still there?" is nonsensical (it was: a lull
+        check-in whose bracketed directive tripped the recall/quick-ack + progress-filler
+        machinery). Proactive turns generate the line and speak it once, no interjections.
         """
         if isinstance(prompt, DisambiguationRequest):
             result = await self._disambiguate(prompt)
@@ -1235,7 +1258,7 @@ class ResponseGenerator:
                 # quick fact-free interjection BEFORE the answer, flushed so its audio plays now
                 # — otherwise the user waited in silence (report: recall got no "let me look back
                 # through our chats", and quick chunks weren't firing often enough).
-                if _wants_quick_ack(prompt):
+                if _wants_quick_ack(prompt) and not proactive:
                     try:
                         await self._dynamic_ack(prompt, speak, is_lookup=False)
                         already_acked = True
@@ -1265,6 +1288,7 @@ class ResponseGenerator:
             _requires_live_lookup(prompt)
             and can_use_tools
             and prompt.session_id not in self._pending
+            and not proactive
         ):
             try:
                 await self._dynamic_ack(prompt, speak, is_lookup=True)  # chunk 1
@@ -1293,7 +1317,7 @@ class ResponseGenerator:
                 return await self._finish_gated(prompt, grounded)
             # Search couldn't ground it → the full path handles the honest miss, spoken once.
             result = await self.generate(prompt, dispatcher, context)
-        elif can_use_tools and prompt.session_id not in self._pending:
+        elif can_use_tools and prompt.session_id not in self._pending and not proactive:
             # Any slow, substantive turn (a tool call or complex reasoning) that isn't a live
             # lookup — the branch that used to run in DEAD AIR. Fill the beat with a brief,
             # DETERMINISTIC, fact-free reaction (empathy if they're hurting, else "let me
@@ -1492,7 +1516,9 @@ class ResponseGenerator:
         # U8: turn the emotional read into an explicit register directive so the model
         # weaves the RIGHT delivery tags (sad→gentle/encouraging, excited→upbeat,
         # stressed→calm) instead of a flat or mismatched tone.
-        _register, directive = prosody_directive(prompt.emotion)
+        _register, directive = prosody_directive(
+            prompt.emotion, somber=somber_content(prompt.utterance)
+        )
         instructions += f"\nDelivery register for THIS turn: {directive}"
         instructions += f"\n{_DELIVERY_TAGS_GUIDE}"  # instant + wrapping effects, used properly
         if prompt.emotion:
@@ -1541,7 +1567,9 @@ class ResponseGenerator:
         gated, action, caught = await self._apply_gates(prompt, text, judgment)
         # Laughter backstop on the STREAMING path too (greetings/first messages stream, and were
         # laughing on neutral turns): strip levity unless the turn is genuinely excited/upbeat.
-        gated = strip_inappropriate_tags(gated, read_register(prompt.emotion))
+        gated = strip_inappropriate_tags(
+            gated, effective_register(prompt.emotion, prompt.utterance)
+        )
 
         spoken = 0
         while (b := _sentence_end(gated, spoken)) is not None:
@@ -1896,10 +1924,19 @@ class ResponseGenerator:
     async def _rewrite_brief(self, prompt: AssembledPrompt, text: str) -> str:
         """Compress a too-long / greeting-card reply to how a friend actually talks. Keeps the
         original if the rewrite is empty, a single word, or the provider is down (#4)."""
+        instructions = _BRIEF_REWRITE_INSTRUCTIONS
+        if somber_content(prompt.utterance):
+            # The brevity pass otherwise casual-ifies a grave reply into flippant slang
+            # ("torched himself, man") — hold the register somber and respectful here too.
+            instructions += (
+                "IMPORTANT: this is about a death or a tragedy — keep it QUIET, gentle and "
+                "respectful. NO flippant slang for the death ('torched himself', 'offed', "
+                "'man'/'dude'); keep any [gentle]/[soft]/<pause> delivery tags.\n"
+            )
         try:
             completion = await self._llm.complete(
                 prompt.user_id,
-                [{"role": "user", "content": _BRIEF_REWRITE_INSTRUCTIONS + text}],
+                [{"role": "user", "content": instructions + text}],
                 "simple",
                 session_id=prompt.session_id,
                 purpose="brevity_rewrite",
@@ -2004,7 +2041,9 @@ class ResponseGenerator:
     ) -> LLMTurn | None:
         instructions = _JUDGMENT_INSTRUCTIONS
         # U8: explicit per-turn delivery register from the emotional read.
-        _register, directive = prosody_directive(prompt.emotion)
+        _register, directive = prosody_directive(
+            prompt.emotion, somber=somber_content(prompt.utterance)
+        )
         instructions += f"\nDelivery register for THIS turn: {directive}"
         instructions += f"\n{_DELIVERY_TAGS_GUIDE}"  # instant + wrapping effects, used properly
         if prompt.emotion:
@@ -2080,7 +2119,9 @@ class ResponseGenerator:
         the dual judgment+draft JSON, so a real turn (celebrating news, comforting)
         is salvaged instead of a canned fallback. Keeps the full persona; escalates
         a tier for reliability. Returns "" if the provider is fully down."""
-        _register, directive = prosody_directive(prompt.emotion)
+        _register, directive = prosody_directive(
+            prompt.emotion, somber=somber_content(prompt.utterance)
+        )
         messages = [
             *prompt.messages[:-1],
             {
@@ -2177,7 +2218,7 @@ class ResponseGenerator:
         # U8: deterministic prosody backstop — never laugh on a down/stressed turn,
         # even if the model slipped a levity tag in. Register is from the emotional
         # read; recorded in the trace as proof prosody was selected per emotion.
-        register = read_register(prompt.emotion)
+        register = effective_register(prompt.emotion, prompt.utterance)
         # Never say a leaked tool token ("web_search:: …") out loud — scrub it from
         # both the spoken and the displayed text (user report; defense-in-depth).
         voice_text = strip_tool_leak(strip_inappropriate_tags(text, register))

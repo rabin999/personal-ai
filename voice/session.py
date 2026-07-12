@@ -829,6 +829,7 @@ class VoiceSession:
         out: asyncio.Queue[bytes | None],
         *,
         temperature: float | None = None,
+        proactive: bool = False,
     ) -> GenerationResult:
         """Generate + speak one turn, routing ALL of the turn's speech through a
         single TTS session so the voice never changes mid-reply (§2b). Prefers the
@@ -914,7 +915,13 @@ class VoiceSession:
 
         try:
             result = await self._generator.generate_spoken(
-                prompt, self._dispatcher, context, speak, temperature=temperature, flush=flush
+                prompt,
+                self._dispatcher,
+                context,
+                speak,
+                temperature=temperature,
+                flush=flush,
+                proactive=proactive,
             )
             if box["stream"] is not None:
                 await box["stream"].finish()  # flush the tail
@@ -956,7 +963,7 @@ class VoiceSession:
             # (first words start immediately) instead of synthesized whole (L4/§8.12).
             # Hotter temperature than a normal reply so the hello genuinely varies.
             result = await self._speak_turn(
-                prompt, self._tool_context(prompt), out, temperature=0.9
+                prompt, self._tool_context(prompt), out, temperature=0.9, proactive=True
             )
             text = (result.voice_text or result.final_text).strip()
             if not text:
@@ -989,7 +996,7 @@ class VoiceSession:
             if isinstance(prompt, DisambiguationRequest):
                 return
             result = await self._speak_turn(
-                prompt, self._tool_context(prompt), out, temperature=1.0
+                prompt, self._tool_context(prompt), out, temperature=1.0, proactive=True
             )
             text = (result.voice_text or result.final_text).strip()
             if not text:

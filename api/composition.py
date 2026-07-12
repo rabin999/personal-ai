@@ -151,19 +151,24 @@ class Pipeline:
 def _build_stt(settings: Settings, ledger: CostLedger) -> STT:
     """Pick the STT engine (#18): xAI Grok STT (vendor-grade) or local faster-whisper
     ($0, default), by ``settings.stt_engine`` — one wiring line, ``core/`` untouched."""
-    whisper = FasterWhisperSTT(
+    if settings.stt_engine == "grok":
+        # Grok STT (fast, vendor-grade) with local faster-whisper as a fallback: xAI STT
+        # intermittently ReadTimeouts from the box, and without a net a dropped utterance reads
+        # as "it didn't hear me" + a long wait (real prod incident). The fallback runs a FAST
+        # model (stt_fallback_model_size, ~1-2s) — NOT the slow "small" (~5-10s on CPU) — so a slow
+        # Grok call recovers in a couple of seconds, not fifteen. preload() warms it at startup.
+        fallback = FasterWhisperSTT(
+            model_size=settings.stt_fallback_model_size,
+            final_model_size=settings.stt_fallback_model_size,
+            ledger=ledger,
+        )
+        logger.info("STT engine: Grok STT (xAI) with fast local whisper fallback")
+        return GrokSTT(settings, ledger=ledger, fallback=fallback)
+    return FasterWhisperSTT(
         model_size=settings.stt_model_size,
         final_model_size=settings.stt_final_model_size,
         ledger=ledger,
     )
-    if settings.stt_engine == "grok":
-        # Grok STT (fast, vendor-grade) with local faster-whisper as a fallback: xAI STT
-        # intermittently ReadTimeouts from the box, and without a net a dropped utterance reads
-        # as "it didn't hear me" + a long wait (real prod incident). preload() warms the whisper
-        # fallback so it answers fast the first time Grok fails.
-        logger.info("STT engine: Grok STT (xAI) with local whisper fallback")
-        return GrokSTT(settings, ledger=ledger, fallback=whisper)
-    return whisper
 
 
 async def build_pipeline(settings: Settings) -> Pipeline:

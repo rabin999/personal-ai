@@ -189,6 +189,7 @@ class LangGraphOrchestrator:
         *,
         temperature: float | None = None,
         flush: Callable[[], Awaitable[None]] | None = None,
+        proactive: bool = False,
     ) -> GenerationResult:
         """Voice turn: run the context-resolution step, then delegate to the proven
         STREAMING generator so TTS starts on the first sentence (low TTFT) — the
@@ -223,7 +224,13 @@ class LangGraphOrchestrator:
             needs_live_info=res.needs_live_info,
         )
         result = await self._generator.generate_spoken(
-            turn_prompt, dispatcher, context, speak, temperature=temperature, flush=flush
+            turn_prompt,
+            dispatcher,
+            context,
+            speak,
+            temperature=temperature,
+            flush=flush,
+            proactive=proactive,
         )
         self._reflect_span(prompt, result, dispatcher, context)
         return result

@@ -37,9 +37,9 @@ VOICES = (
     "orion", "perseus", "rex", "rigel", "sal", "sirius", "ursa", "zagan", "zenith",
 )  # fmt: skip
 _VOICES = set(VOICES)
-# Default voice: "carina" — the chosen companion voice for the app. Users can pick any of
+# Default voice: "helix" — the chosen companion voice for the app. Users can pick any of
 # the 26 in the UI; the exact tonal preference is best confirmed by ear (marked in TEST_REPORT).
-DEFAULT_VOICE = "carina"
+DEFAULT_VOICE = "helix"
 
 
 _VOICE_GENDER = {v: "female" for v in ("ara", "carina", "celeste", "eve", "iris", "luna", "ursa")}

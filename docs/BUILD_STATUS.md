@@ -14,6 +14,38 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-12
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
+> ## 2026-07-12 (latest) — Live-use fixes: filler cascade, grave-subject empathy, tags, STT tail, chat UX. ✅ (NOT deployed)
+> Six reported issues, root-caused against **production traces** (Mongo `turn_traces`):
+> 1. **Filler cascade on a "thank you"** — was actually the **silence-lull check-in** (a proactive
+>    one-liner) running the full user-turn machinery: its bracketed directive tripped the
+>    recall/quick-ack + progress-filler path, so it spoke `ack_recall` + 3 progress lines + an
+>    apology before its real "you still there?". Fix: `generate_spoken(..., proactive=True)` (threaded
+>    through the `Orchestrator` port + LangGraph + `_speak_turn`) **suppresses all wait-fillers** on
+>    companion-initiated turns (greeting + lull). `progress_filler_max` 5→3 so even a real slow turn
+>    can't spiral. Unit-proven (`test_proactive_no_fillers.py`).
+> 2. **No empathy on a tragic NEWS turn** — "the man who burned himself" was answered breezily
+>    ("torched himself, man", no gentle tags) because the register keyed only off the USER's emotion
+>    ("concern"→neutral). New **grave-subject delivery**: `prosody.somber_content()` +
+>    `effective_register()` + a `_SOMBER_DIRECTIVE` steer a quiet, respectful register with
+>    `[gentle]/[soft]/<slow>/<pause>` and forbid flippant slang — **delivery-only**, so it never
+>    suppresses a lookup the user asked for (contrast `_is_emotionally_heavy`, D-14). Guards the
+>    search-answer + brevity-rewrite paths too. Unit `test_somber_delivery.py`.
+> 3. **Delivery tags under-used** — the tags guide now asks for ≥1 natural beat on any real turn
+>    (none only on a terse one-word reply).
+> 4. **STT tail latency regression** — Grok STT intermittently spikes (traced 4.6s/9.9s vs ~0.6s
+>    typical); at the old 8s timeout a slow call cost 8s wasted **+ the `small` fallback (~5-10s on
+>    CPU)** ≈ 15s. Now `stt_timeout_s` 8→3.5 and a **fast** `stt_fallback_model_size=base` (~1-2s), so
+>    a slow utterance recovers in a couple of seconds. (Audio path needs the xAI key → verify on prod.)
+> 5. **Engagement** — reply standard rebalanced from "just react and stop" to staying genuinely
+>    curious and carrying the thread with ONE specific question (still no stock filler questions).
+> 6. **Dot-wave moved into the live chat** (`TraceLog`): a per-side "processing" bubble shows which
+>    side is busy (you while transcribing, Saathi while thinking); the orb chip is now a plain dot.
+> Also: **default voice carina→helix** (config + adapter + web). **Proven by real calls**
+> (`scripts/somber_tags_probe.py`, 8 scenarios incl. excited/happy/sad/frustrated/confused): registers
+> adapt (excited→`<emphasis>`/`[chuckle]`, sad→`[gentle]`/`<pause>`, grave→`<gentle>`/`<slow>`), tags
+> land, no flippant slang on the death, every turn ends on a genuine question. Full check green: ruff
+> ✅, mypy (source) ✅, lint-imports ✅, unit suite ✅, web `tsc -b && vite build` ✅. Not deployed.
+
 > ## 2026-07-12 (latest) — Usage-driven phrase refresh: replace the lines the user wore out. ✅
 > On top of the dynamic catalog below, refresh is now **demand-driven** instead of a blind timer.
 > The live pick records an **in-memory** use count (a plain dict bump — still ~0.12 µs, no I/O);

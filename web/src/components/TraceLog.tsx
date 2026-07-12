@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
-import type { TurnGroup } from "../lib/types";
+import type { TurnGroup, TurnState } from "../lib/types";
 
 interface Props {
   turns: TurnGroup[];
+  turnState: TurnState; // live phase, so the chat shows WHICH side is processing right now
   onReplay: (turn: TurnGroup) => void;
   onStopReplay: () => void;
   playingIndex: number | null; // turn.index currently replaying, or null
@@ -40,6 +41,7 @@ function fmtTime(ts: number): string {
 // slide-in drawer toggled from the header.
 export function TraceLog({
   turns,
+  turnState,
   onReplay,
   onStopReplay,
   playingIndex,
@@ -70,11 +72,17 @@ export function TraceLog({
     return out;
   }, [turns]);
 
-  // Keep the newest line in view as the conversation streams.
+  // Which side is processing RIGHT NOW, so the dots-wave sits on that side of the chat
+  // (user while their speech is being transcribed, companion while it's thinking up the
+  // reply). Once the reply streams in as text, the growing bubble is the indicator.
+  const pending: "user" | "companion" | null =
+    turnState === "listening" ? "user" : turnState === "thinking" ? "companion" : null;
+
+  // Keep the newest line in view as the conversation streams (and as the dots appear/move).
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [lines.length]);
+  }, [lines.length, pending]);
 
   return (
     <>
@@ -134,6 +142,7 @@ export function TraceLog({
             playing={playingIndex === line.turn.index}
           />
           ))}
+          {pending && <PendingBubble side={pending} />}
           <div ref={endRef} />
         </div>
       </aside>
@@ -195,6 +204,55 @@ function Bubble({
         </div>
       </div>
     </div>
+  );
+}
+
+// A live "processing" bubble on the side that's currently working — the user's side while
+// their speech is transcribed, the companion's side while it thinks up the reply — so it's
+// always clear WHICH part is busy, right in the chat (not just on the orb). A typing-style
+// dots-wave stands in for the words that haven't landed yet.
+function PendingBubble({ side }: { side: "user" | "companion" }) {
+  const isUser = side === "user";
+  return (
+    <div className={`flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+      <span
+        className={`text-[10px] font-semibold uppercase tracking-wider ${
+          isUser ? "text-sky-600 dark:text-sky-400" : "text-emerald-600 dark:text-emerald-400"
+        }`}
+      >
+        {isUser ? "You" : "Saathi"}
+      </span>
+      <div
+        className={`rounded-2xl px-4 py-3 shadow-sm ${
+          isUser
+            ? "rounded-tr-sm bg-sky-600"
+            : "rounded-tl-sm bg-white dark:bg-slate-800"
+        }`}
+        aria-label={isUser ? "Transcribing your speech" : "Thinking"}
+      >
+        <DotWave color={isUser ? "#ffffff" : "#34d399"} />
+      </div>
+    </div>
+  );
+}
+
+// Typing-style dots-wave (shared keyframe `asaathi-dot-wave` in index.css).
+function DotWave({ color }: { color: string }) {
+  return (
+    <span className="inline-flex items-end gap-[3px]" aria-hidden>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 rounded-full"
+          style={{
+            background: color,
+            boxShadow: `0 0 6px ${color}`,
+            animation: "asaathi-dot-wave 1.1s ease-in-out infinite",
+            animationDelay: `${i * 160}ms`,
+          }}
+        />
+      ))}
+    </span>
   );
 }
 

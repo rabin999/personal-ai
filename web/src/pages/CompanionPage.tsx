@@ -31,7 +31,7 @@ const CONN_LABEL: Record<ConnState, string> = {
   error: "Error",
 };
 
-const DEFAULT_VOICE = "carina"; // the app's companion voice (26 available, fetched live)
+const DEFAULT_VOICE = "helix"; // the app's companion voice (26 available, fetched live)
 
 // Live caption is a single-line ticker: only the last N words (yours or the
 // reply's) are shown at once, so it never wraps or grows into a paragraph.
@@ -540,7 +540,7 @@ export default function CompanionPage() {
                   disabled={active}
                   className={FIELD}
                 >
-                  {(voices.length ? voices : [{ voice_id: DEFAULT_VOICE, name: "Carina", gender: "female" }]).map((v) => (
+                  {(voices.length ? voices : [{ voice_id: DEFAULT_VOICE, name: "Helix", gender: "male" }]).map((v) => (
                     <option key={v.voice_id} value={v.voice_id}>
                       {v.name}{v.gender ? ` (${v.gender})` : ""}
                     </option>
@@ -625,6 +625,7 @@ export default function CompanionPage() {
 
       <TraceLog
         turns={turns}
+        turnState={conn === "active" ? turnState : "idle"}
         onReplay={replay}
         onStopReplay={stopReplay}
         playingIndex={playingIndex}
@@ -651,39 +652,16 @@ const STATUS: Record<TurnState, { label: string; dot: string }> = {
   speaking: { label: "Speaking", dot: "#22d3ee" },
 };
 
-// A "typing"-style dots-wave shown while the companion is processing/searching (and in
-// the gap between the interjection and the searched answer) so the wait never looks dead.
-function ThinkingDots({ color }: { color: string }) {
-  return (
-    <span className="inline-flex items-end gap-[3px]" aria-label="thinking">
-      {[0, 1, 2].map((i) => (
-        <span
-          key={i}
-          className="h-1.5 w-1.5 rounded-full"
-          style={{
-            background: color,
-            boxShadow: `0 0 6px ${color}`,
-            animation: "asaathi-dot-wave 1.1s ease-in-out infinite",
-            animationDelay: `${i * 160}ms`,
-          }}
-        />
-      ))}
-    </span>
-  );
-}
-
 function StatusChip({ state }: { state: TurnState }) {
   const s = STATUS[state];
+  // The per-side dots-wave now lives in the live chat (TraceLog), where it shows WHICH
+  // side is processing; the orb chip just carries a simple status dot + label.
   return (
     <div className="pointer-events-none absolute right-4 top-4 z-10 flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/70 px-3 py-1.5 text-sm font-medium text-slate-600 backdrop-blur-md sm:right-6 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-200">
-      {state === "thinking" ? (
-        <ThinkingDots color={s.dot} />
-      ) : (
-        <span
-          className={`h-2 w-2 rounded-full ${state !== "idle" ? "animate-pulse" : ""}`}
-          style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}
-        />
-      )}
+      <span
+        className={`h-2 w-2 rounded-full ${state !== "idle" ? "animate-pulse" : ""}`}
+        style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}
+      />
       {s.label}
     </div>
   );

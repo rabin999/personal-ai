@@ -47,6 +47,7 @@ class Orchestrator(Protocol):
         *,
         temperature: float | None = None,
         flush: Callable[[], Awaitable[None]] | None = None,
+        proactive: bool = False,
     ) -> GenerationResult:
         """Voice turn: same reasoning, streamed to ``speak`` for TTS.
 
@@ -54,6 +55,10 @@ class Orchestrator(Protocol):
         greeting and the lull check-in run hotter so they vary session to session).
         It is part of the PORT because the voice edge sets it on every turn — an
         engine that omitted it broke the live path while the text path stayed green.
+
+        ``proactive`` marks a companion-INITIATED turn (greeting / silence-lull check-in):
+        the wait-fillers (interjection + progress lines) are suppressed, since there is no
+        user question being kept waiting.
         """
         ...
 

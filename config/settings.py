@@ -70,9 +70,9 @@ class Settings(BaseSettings):
     # tags supported; ~$4.20 / 1M chars. Key env var is ``X-AI-API``.
     xai_api_key: str = Field(default="", validation_alias="X-AI-API")
     xai_base_url: str = "https://api.x.ai/v1"
-    # Default voice: "carina" — the app's companion voice (26 available, see
+    # Default voice: "helix" — the app's companion voice (26 available, see
     # adapters/tts/grok.VOICES). Users pick any in the UI; tonal pick confirmed by ear.
-    tts_voice: str = "carina"
+    tts_voice: str = "helix"
     tts_language: str = "en"
     tts_timeout_s: float = 30.0
 
@@ -88,11 +88,20 @@ class Settings(BaseSettings):
     stt_engine: str = "grok"  # "grok" (xAI STT, fast) | "faster-whisper" (local, $0)
     stt_model_size: str = "base"  # streaming-partial (fast draft) model
     stt_final_model_size: str = "small"  # final-transcript (accurate) model
+    # The Grok FALLBACK whisper (used ONLY when the remote call is slow/fails) runs a FAST model,
+    # not "small": on the CPU host the small model transcribes in ~5-10s, so an 8s Grok timeout
+    # then a small-model fallback was ~15s of dead air on every slow utterance (the reported "voice
+    # input got slower"). A "base" fallback returns in ~1-2s, so a slow utterance recovers in a
+    # couple of seconds instead of fifteen. Accuracy is secondary here — the point is not to drop
+    # the turn. (The PRIMARY faster-whisper engine, when selected, still uses the sizes above.)
+    stt_fallback_model_size: str = "base"
     stt_language: str = "en"  # Grok STT language hint (empty = auto-detect)
     # Grok STT request timeout. Kept SHORT so an intermittently-slow xAI endpoint fails FAST to
     # the local whisper fallback instead of hanging the turn (a 20s timeout meant a stalled
-    # transcription froze the whole turn — real prod incident); a healthy call returns in ~1.5s.
-    stt_timeout_s: float = 8.0
+    # transcription froze the whole turn — real prod incident). A healthy call returns in ~1.5s;
+    # observed prod spikes hit 4.6-9.9s, so 3.5s catches the bad tail and fails over to the fast
+    # local fallback (~1-2s) rather than making the user wait out the whole spike.
+    stt_timeout_s: float = 3.5
 
     # SER (§22): self-hosted emotion2vec microservice on a small GPU box
     # (design doc §17.3) — separate service, its own hardware. Empty means
@@ -133,8 +142,10 @@ class Settings(BaseSettings):
     # real spoken chunk resets the clock, so it never talks over the streaming answer.
     progress_filler_gap_s: float = 3.0
     # Cap on how many progress lines a single turn may emit (so a very slow turn can't
-    # turn into a comedic "still searching…" loop). 0 disables progress fillers.
-    progress_filler_max: int = 5
+    # turn into a comedic "still searching… still looking… sorry this is dragging on…" loop —
+    # the reported cascade). 0 disables progress fillers. Kept low: two brisk nudges then one
+    # gentle apology is plenty; beyond that it reads as flailing.
+    progress_filler_max: int = 3
     # After this many BRIEF progress nudges ("still on it"), the tone softens to a gentle
     # apology ("so sorry it's taking longer than expected — I'm trying my best") — the way a
     # person eases up when they've kept you waiting longer than they promised.

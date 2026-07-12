@@ -102,9 +102,62 @@ _DIRECTIVES: dict[Register, str] = {
 }
 
 
-def prosody_directive(emotion: Mapping[str, Any] | None) -> tuple[Register, str]:
-    """The (register, generation-instruction) pair for this turn's emotional read."""
+# Grave subject matter — a death, a suicide, a fatal accident, violence, terminal illness.
+# Detected in the user's OWN words so the DELIVERY stays somber and respectful even when the
+# user themselves sounds neutral — e.g. asking about a tragic NEWS event ("what's the news on
+# the boy who burned himself?"). The reported failure: that turn was delivered breezily, with
+# flippant wording ("torched himself, man") and no gentle tags, because the register was driven
+# only by the user's own emotional read ("concern" → neutral). This steers DELIVERY only: it is
+# deliberately NOT wired into `_is_emotionally_heavy` (D-14), so it never suppresses a factual
+# lookup the user explicitly asked for — it only makes the voice grave and the words careful.
+_SOMBER_CONTENT = re.compile(
+    r"\b(died|dies|dying|dead|death|deaths|killed|kill(?:ing|s)?|passed away|"
+    r"suicid(?:e|al)|took (?:his|her|their) own life|"
+    r"burned? (?:himself|herself|themselves|to death)|"
+    r"set (?:himself|herself|themselves|themself) on fire|self[- ]immolat\w*|"
+    r"fatal(?:ity|ities|ly)?|funeral|murder(?:ed|s)?|massacre|casualt(?:y|ies)|"
+    r"fatalities|terminal(?:ly)?\s+ill|stillborn|miscarriage|overdose|drowned|"
+    r"crash(?:ed)?\s+and\s+(?:died|killed))\b",
+    re.IGNORECASE,
+)
+
+
+def somber_content(text: str | None) -> bool:
+    """True when the turn is ABOUT something grave (a death/tragedy), so the delivery must be
+    somber regardless of how the user themselves sounds. Delivery-only signal (see above)."""
+    return bool(_SOMBER_CONTENT.search(text or ""))
+
+
+# Grave-subject delivery: quiet, respectful, never flippant. Distinct from the "down" directive
+# (which is aimed at lifting a sad USER) — here we're narrating something heavy TO them.
+_SOMBER_DIRECTIVE = (
+    "This turn is about something GRAVE — a death or a tragedy. Deliver it QUIETLY and with "
+    "respect: [gentle], [soft], <slow>, <pause>. NOT breezy, NOT upbeat, and NEVER flippant or "
+    "casual slang for the death itself ('torched himself', 'offed himself', 'man'/'dude'). State "
+    "what happened plainly and kindly, and let the weight of it land in a few genuine words. "
+    "NEVER [laugh]/[chuckle]." + _BRIEF
+)
+
+
+def effective_register(emotion: Mapping[str, Any] | None, utterance: str | None = None) -> Register:
+    """The delivery register, elevated to somber ('down') when the SUBJECT is grave even if the
+    user's own read is neutral/positive. Used for the tag-stripping backstop so a stray levity
+    tag is removed on a tragic turn."""
     register = read_register(emotion)
+    if register in ("neutral", "upbeat", "excited") and somber_content(utterance):
+        return "down"
+    return register
+
+
+def prosody_directive(
+    emotion: Mapping[str, Any] | None, *, somber: bool = False
+) -> tuple[Register, str]:
+    """The (register, generation-instruction) pair for this turn's emotional read. When
+    ``somber`` (grave subject matter) and the user's own read isn't already low/stressed, the
+    grave-subject directive takes over so the delivery is quiet and respectful, not breezy."""
+    register = read_register(emotion)
+    if somber and register in ("neutral", "upbeat", "excited"):
+        return "down", _SOMBER_DIRECTIVE
     return register, _DIRECTIVES[register]
 
 
