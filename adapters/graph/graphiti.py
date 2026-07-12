@@ -106,6 +106,26 @@ class GraphitiGraphStore:
             record = await result.single()
         return bool(record and record.get("removed", 0))
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Wipe the WHOLE knowledge graph for one user — every node (Entity, Episodic,
+        Community…) and edge Graphiti wrote under this ``group_id`` (account deletion,
+        GDPR-style). Group-scoped so it can never touch another user's graph (§0.5).
+        DETACH DELETE removes each node's relationships with it. Returns nodes deleted."""
+        cypher = (
+            "MATCH (n) WHERE n.group_id = $gid "
+            "WITH n LIMIT 50000 DETACH DELETE n RETURN count(n) AS removed"
+        )
+        removed = 0
+        async with self._db.neo4j().session() as session:
+            while True:  # batch so a huge graph never blows the transaction memory
+                result = await session.run(cypher, gid=user_id)
+                record = await result.single()
+                n = int(record.get("removed", 0)) if record else 0
+                removed += n
+                if n == 0:
+                    break
+        return removed
+
     def _log_llm_usage(self, user_id: str, task: str) -> None:
         if self._ledger is None:
             return

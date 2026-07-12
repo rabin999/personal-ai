@@ -89,6 +89,7 @@ class Pipeline:
     settings: Settings
     db: Database
     docs: DocStore  # raw user-scoped doc store (account deletion, etc.)
+    vectors: QdrantVectorStore  # Qdrant (episodic + entity collections) — account deletion
     ledger: CostLedger
     profiles: ProfileService
     registry: TraitRegistry
@@ -343,6 +344,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         settings=settings,
         db=db,
         docs=docs,
+        vectors=vectors,
         ledger=ledger,
         profiles=profiles,
         registry=registry,

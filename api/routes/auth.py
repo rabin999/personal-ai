@@ -133,8 +133,9 @@ _USER_COLLECTIONS = [
 @router.delete("/account")
 async def delete_account(request: Request) -> JSONResponse:
     """Delete the signed-in user's account and ALL their data, then end the session.
-    Wipes every user-scoped Mongo collection + episodic vectors (Qdrant); best-effort
-    so one failing store never blocks the rest. The user is fully logged out after."""
+    Wipes EVERY user-scoped store: Mongo collections, episodic + entity vectors (Qdrant),
+    the knowledge graph (Neo4j/Graphiti, group_id-scoped), and Mem0 personalization memory.
+    Best-effort so one failing store never blocks the rest. Fully logged out after."""
     dev_user = get_settings().dev_auth_user
     user_id = dev_user or request.session.get(SESSION_USER_KEY)
     if not user_id:
@@ -147,9 +148,23 @@ async def delete_account(request: Request) -> JSONResponse:
         except Exception:
             logger.warning("delete_account: failed on collection %s", col, exc_info=True)
     try:
-        await pipeline.episodic.delete_all(user_id)
+        await pipeline.episodic.delete_all(user_id)  # Qdrant episodic vectors
     except Exception:
         logger.warning("delete_account: episodic wipe failed", exc_info=True)
+    try:
+        await pipeline.vectors.delete_all_for_user("entities", user_id=user_id)  # Qdrant entities
+    except Exception:
+        logger.warning("delete_account: entity-vector wipe failed", exc_info=True)
+    try:
+        removed_nodes = await pipeline.semantic.delete_all(user_id)  # Neo4j knowledge graph
+        logger.info("delete_account: wiped %d graph nodes for %s", removed_nodes, user_id)
+    except Exception:
+        logger.warning("delete_account: knowledge-graph wipe failed", exc_info=True)
+    if pipeline.preferences is not None:
+        try:
+            await pipeline.preferences.delete_all(user_id)  # Mem0 personalization memory
+        except Exception:
+            logger.warning("delete_account: Mem0 wipe failed", exc_info=True)
     try:  # the account record itself lives in the accounts store (Mongo)
         await pipeline.docs.delete_many("accounts", {"user_id": user_id})
         await pipeline.docs.delete_many("accounts", {"_id": user_id})

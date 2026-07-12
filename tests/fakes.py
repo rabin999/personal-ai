@@ -200,6 +200,10 @@ class FakeGraphStore:
                 return True
         return False
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        removed = len(self.facts_by_user.pop(user_id, []))
+        return removed
+
 
 class FakeLLM:
     """Scriptable LLM: pops queued response texts; records every call."""

@@ -60,3 +60,7 @@ class SemanticMemory:
     async def delete_fact(self, user_id: str, uuid: str) -> bool:
         """Remove one accreted/gibberish fact edge (cleanup, U1), user-scoped."""
         return await self._graph.delete_fact(user_id, uuid)
+
+    async def delete_all(self, user_id: str) -> int:
+        """Wipe the user's ENTIRE knowledge graph (account deletion). Returns nodes removed."""
+        return await self._graph.delete_all_for_user(user_id)

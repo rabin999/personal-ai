@@ -46,3 +46,8 @@ class GraphStore(Protocol):
         """Hard-delete one relationship edge (cleanup of accreted junk, U1). Scoped to
         the user's group so it can never touch another user's graph. Returns removed."""
         ...
+
+    async def delete_all_for_user(self, user_id: str) -> int:
+        """Wipe the WHOLE knowledge graph for one user (account deletion). Group-scoped so
+        it can never touch another user's graph (§0.5). Returns nodes deleted."""
+        ...

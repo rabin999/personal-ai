@@ -35,6 +35,21 @@ class FakeGraphStore:
         self.searches.append({"user_id": user_id, "query": query, "limit": limit})
         return self.facts
 
+    async def delete_all_for_user(self, user_id: str) -> int:
+        self.deleted_user = user_id
+        self.episodes = [e for e in self.episodes if e["user_id"] != user_id]
+        return 7
+
+
+async def test_delete_all_wipes_the_users_graph() -> None:
+    """Account deletion must wipe the user's WHOLE knowledge graph, not just single facts —
+    the "knowledge graph survived a profile delete" bug. SemanticMemory.delete_all delegates
+    to the group-scoped graph wipe and returns how many nodes went."""
+    graph = FakeGraphStore()
+    removed = await SemanticMemory(graph).delete_all("u_demo_001")
+    assert graph.deleted_user == "u_demo_001"
+    assert removed == 7
+
 
 async def test_add_episode_passes_user_scope_through() -> None:
     graph = FakeGraphStore()

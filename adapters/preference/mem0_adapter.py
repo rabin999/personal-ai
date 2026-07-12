@@ -91,3 +91,12 @@ class Mem0PreferenceMemory:
             return []
         hits = result.get("results", []) if isinstance(result, dict) else (result or [])
         return [h["memory"] for h in hits if isinstance(h, dict) and h.get("memory")]
+
+    async def delete_all(self, user_id: str) -> None:
+        """Wipe ALL of this user's Mem0 personalization memory (account deletion)."""
+        if self._memory is None:
+            return
+        try:
+            await asyncio.to_thread(self._memory.delete_all, user_id=user_id)
+        except Exception:
+            logger.exception("Mem0 delete_all failed (best-effort)")
