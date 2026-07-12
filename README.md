@@ -133,6 +133,40 @@ uv run ruff check && uv run mypy . && uv run lint-imports && uv run pytest
   (+ an opt-in LLM-as-judge), GS4 learning, GS5 multi-tenant isolation. See the
   golden README for how to run them.
 
+## Evaluating the LLM & its output
+
+This is a GenAI companion, so a test that mocks the model and passes while the app
+gives bad replies is worthless. The rule: **the core reasoning/memory/response loop is
+judged on REAL model calls against REAL stores** — mocking the model there proves nothing.
+Tests marked `@pytest.mark.real_call` need `OPEN_ROUTER_API_KEY` + the docker stores.
+
+```bash
+uv run pytest -m "not real_call"    # deterministic logic (mock ports) — CI default
+uv run pytest -m real_call          # REAL model + REAL stores — the GenAI loop
+```
+
+**How each behavior is evaluated**
+
+| Concern | Asset | What it measures |
+|---|---|---|
+| Live-info gating (volatile vs stable) | [`tests/labeled/volatility.jsonl`](tests/labeled/volatility.jsonl) (174 queries, 87/87, 22 classes) + `tests/engine/test_e2_volatility_classifier.py` | Per-class **precision/recall** of the search-gate classifier; false-negatives pinned so any drift shows |
+| Verify-before-answer invariant | `tests/real_call/test_verify_before_answer_freshness.py` | A volatile officeholder/news question **searches first** and never ships a stale/guessed answer; a search that returns nothing yields an honest miss, never the training-data draft |
+| Multi-turn conversation ("proof by conversation") | [`tests/real_call/multiturn_scenarios.jsonl`](tests/real_call/multiturn_scenarios.jsonl) + `test_multiturn_scenarios.py` | Data-driven scenarios drive real turns with per-turn assertions: did it search, is banned assistant-speak absent, are list items distinct, is context carried across turns |
+| Response quality (warm / human / short / companion) | GS3-judge ([`tests/golden/gs3_judge.json`](tests/golden/)) + `tests/support/judge.py` | **LLM-as-judge** on a *pinned* model, human-calibrated, scores the reply against the design's response standard; negative examples must fail. Opt-in (`RUN_GS3_JUDGE=1`) so it never destabilizes the deterministic suite |
+| Retrieval quality | verified-retrieval pipeline tests (`tests/retrieval/`) | Cross-checked, corroboration ≥2, honest "not found" — never fabricates a source |
+| No silent failure (D-9) | `tests/engine/test_e1_enforcement.py` | Any dependency failure degrades to a reply (never `reply=""`); a total model outage is honest that the system is down; programming errors still re-raise loudly |
+| Never invents user facts (D-19) | `tests/acceptance/test_core_engine_e2e.py` | Asked about an unknown personal fact, the engine admits it doesn't know rather than fabricating |
+| Every LLM JSON output | Pydantic validation in the engine | Invalid JSON → retry once → safe fallback (invariant); measured on the real judgment path |
+
+**Choosing & benchmarking models.** Model choice is config (`config/defaults/provider_config.json`
+→ `llm_router` tiers), never hard-coded, and is picked from **live measurement, not names**: each
+candidate is scored on time-to-first-token (voice needs low TTFT), JSON reliability (the judgment
+path), tool-calling support (native + our `draft_response`/`tool_request` envelope), and conversational
+quality. That's how the reply tier landed on `claude-haiku-4.5` and the last-resort **free** fallback
+on `openai/gpt-oss-20b:free` (so a credit outage still answers) — the latter verified end-to-end
+through the adapter, including its reasoning-mandatory quirk. Per-turn token/cost/latency and the
+self-reflection span are captured in the Langfuse trace for every call.
+
 ## Status
 
 All 26 spec modules are built and tested, assembled into a running app + demo
