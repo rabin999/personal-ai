@@ -28,6 +28,8 @@ from pydantic import BaseModel, BeforeValidator, ValidationError
 
 from core.errors import PROGRAMMING_ERRORS
 from core.observability.logger import StructuredLogger
+from core.phrases import defaults as default_pools
+from core.phrases.catalog import PhraseCatalog
 from core.profile import ProfileNotFound, TraitRegistry
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.prosody import prosody_directive, read_register, strip_inappropriate_tags
@@ -171,76 +173,22 @@ _MULTIQ_GAP_INSTRUCTIONS = (
 # Deterministic interjection pools (§8.12 progressive delivery). Curated, FACT-FREE lines —
 # spoken to fill the beat before the real answer lands, so they can never contradict it (an
 # LLM-written ack once hallucinated a temperature that clashed with the real answer). Picked at
-# random (avoiding a back-to-back repeat) so it stays lively without a model call.
-_ACK_EMPATHY = (
-    "Oh no…",
-    "Ugh, that's a lot.",
-    "Oh, that's really rough.",
-    "Aw, I'm sorry.",
-    "Oh man…",
-    "That sounds heavy.",
-    "Oof, that's tough.",
-    "Hey — that's a lot to carry.",
-)
-_ACK_LOOKUP = (
-    "On it — let me check.",
-    "One sec, pulling that up.",
-    "Let me look that up.",
-    "Hang on, checking now.",
-    "Give me a sec to find that.",
-    "Let me dig into that.",
-    "Alright, let me see.",
-    "Checking on that right now.",
-)
-_ACK_THINKING = (
-    "Hmm, let me think.",
-    "Ooh, good one — one sec.",
-    "Let me chew on that.",
-    "Hang on, thinking it over.",
-    "Good question — give me a beat.",
-    "Let me sit with that a sec.",
-)
-# Recall turns ("what did we talk about last time") — the beat is spent reading back
-# through the stored conversations, so the filler nods to THAT, not a web lookup.
-_ACK_RECALL = (
-    "Let me look back through our chats.",
-    "One sec, let me remember what we talked about.",
-    "Hmm, let me think back.",
-    "Give me a sec to dig through our conversation.",
-    "Let me pull up what we discussed.",
-    "One moment — checking back over our chats.",
-)
-
-# PROGRESS fillers (§8.12): the FIRST interjection ("let me check") already played; these
-# fill the SECOND (and later) beats when the search/generation is still running and the audio
-# has gone quiet. Honest and fact-free — never state a result we don't have yet (same reason
-# the acks are curated, not LLM-written: a template can't hallucinate a contradicting fact).
-_ACK_PROGRESS_LOOKUP = (
-    "Still on it — almost there.",
-    "Still digging, one more sec.",
-    "Still pulling it together — hang tight.",
-    "Nearly there, still gathering the details.",
-    "Still searching — won't be long.",
-    "Just checking a couple more sources.",
-)
-_ACK_PROGRESS_THINKING = (
-    "Still thinking it through.",
-    "Almost got it — one more beat.",
-    "Still piecing it together.",
-    "Hang tight, nearly there.",
-    "Still working it out — won't be long.",
-)
-# When the wait really drags (after the first couple of brief nudges), soften the tone:
-# apologize gently and reassure that we're still trying — the way a person would if they'd
-# kept you waiting longer than promised. Used for the LATER progress beats, not the first.
-_ACK_PROGRESS_APOLOGY = (
-    "Sorry, this is taking longer than I expected — still on it.",
-    "Apologies for the wait — I'm digging as fast as I can.",
-    "So sorry it's taking a while — I want to get this right.",
-    "Sorry to keep you waiting — almost there, I promise.",
-    "Sorry for the wait — I'm trying my best to pin this down.",
-    "Still going — sorry it's slow, I want to get it right for you.",
-)
+# random (avoiding a back-to-back repeat) so it stays lively without a model call. The canonical
+# text lives in `core.phrases.defaults`; a background regenerator refreshes the LIVE pools through
+# the injected `PhraseCatalog` so they don't feel static — but these defaults are always the safe
+# fallback. Names kept here for existing imports/tests.
+_ACK_EMPATHY = default_pools.ACK_EMPATHY
+_ACK_LOOKUP = default_pools.ACK_LOOKUP
+_ACK_THINKING = default_pools.ACK_THINKING
+# Recall turns ("what did we talk about last time") — the beat is reading back through stored
+# conversations, so the filler nods to THAT, not a web lookup.
+_ACK_RECALL = default_pools.ACK_RECALL
+# PROGRESS fillers: the FIRST interjection ("let me check") already played; these fill the LATER
+# beats while the search/generation is still running and the audio has gone quiet.
+_ACK_PROGRESS_LOOKUP = default_pools.PROGRESS_LOOKUP
+_ACK_PROGRESS_THINKING = default_pools.PROGRESS_THINKING
+# When the wait really drags, soften to a gentle apology (later beats, not the first).
+_ACK_PROGRESS_APOLOGY = default_pools.PROGRESS_APOLOGY
 
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
 _AFFIRMATIVE = (
@@ -673,6 +621,7 @@ class ResponseGenerator:
         progress_filler_gap_s: float = 3.0,
         progress_filler_max: int = 5,
         progress_filler_apology_after: int = 2,
+        phrases: PhraseCatalog | None = None,
     ) -> None:
         self._llm = llm
         self._self_model = self_model
@@ -687,6 +636,10 @@ class ResponseGenerator:
         self._progress_gap_s = progress_filler_gap_s
         self._progress_max = progress_filler_max
         self._progress_apology_after = progress_filler_apology_after
+        # The interjection pools, read on the hot path as a pure in-memory lookup. A background
+        # refresher swaps in regenerated lines so they don't feel static; absent one, this holds
+        # the defaults. Never None → the filler pick never has to guard for it.
+        self._phrases = phrases or PhraseCatalog()
         # A2: the main user-facing reasoning turn runs on this (mature) tier, not the
         # flashy fast tier — quality of thought over speed.
         self._reasoning_tier = reasoning_tier
@@ -1368,15 +1321,15 @@ class ResponseGenerator:
         it doesn't repeat the session's previous line back-to-back. Emitted on the trace as
         `purpose=ack` for inspectability."""
         register = read_register(prompt.emotion)
-        pool: tuple[str, ...]
         if register in ("down", "stressed"):
-            pool = _ACK_EMPATHY
+            name = "ack_empathy"
         elif prompt.recall_source in ("past", "current"):
-            pool = _ACK_RECALL  # the wait is reading back our conversations, not a web lookup
+            name = "ack_recall"  # the wait is reading back our conversations, not a web lookup
         elif is_lookup:
-            pool = _ACK_LOOKUP
+            name = "ack_lookup"
         else:
-            pool = _ACK_THINKING
+            name = "ack_thinking"
+        pool = self._phrases.get(name)  # current (regenerated) lines, else the defaults
         last = self._last_ack.get(prompt.session_id)
         choices = [c for c in pool if c != last] or list(pool)
         line = random.choice(choices)
@@ -1402,11 +1355,11 @@ class ResponseGenerator:
         ``_progress_apology_after``, the tone SOFTENS from a brisk nudge to a gentle apology
         ("so sorry it's taking longer than expected — I'm trying my best"), the way a person
         eases up when they've kept you waiting longer than promised."""
-        pool: tuple[str, ...]
         if emitted >= self._progress_apology_after:
-            pool = _ACK_PROGRESS_APOLOGY  # the wait has really dragged — be gentle
+            name = "progress_apology"  # the wait has really dragged — be gentle
         else:
-            pool = _ACK_PROGRESS_LOOKUP if is_lookup else _ACK_PROGRESS_THINKING
+            name = "progress_lookup" if is_lookup else "progress_thinking"
+        pool = self._phrases.get(name)  # current (regenerated) lines, else the defaults
         last = self._last_ack.get(prompt.session_id)
         choices = [c for c in pool if c != last] or list(pool)
         line = random.choice(choices)

@@ -137,6 +137,20 @@ class Settings(BaseSettings):
     # person eases up when they've kept you waiting longer than they promised.
     progress_filler_apology_after: int = 2
 
+    # Dynamic phrase catalog (§8.12 follow-up): the interjection/progress/greeting pools are
+    # regenerated in the BACKGROUND so they don't feel static. The live turn never waits on
+    # this — a worker regenerates + stores; the edge refreshes an in-memory copy on a slow
+    # tick; the filler pick stays a pure in-memory lookup with the static defaults as fallback.
+    phrases_dynamic_enabled: bool = True
+    # How often the WORKER regenerates the pools (one cheap LLM call). Low = fresher but more
+    # cost/trace noise; a regen no user perceives faster than this is wasted spend.
+    phrase_regen_interval_s: float = 40.0
+    # How often the SERVING EDGE reloads the stored pools into its in-memory catalog.
+    phrase_refresh_interval_s: float = 20.0
+    # Lines generated per pool, and the (cheap) tier the regenerator runs on.
+    phrase_pool_size: int = 8
+    phrase_regen_tier: str = "simple"
+
     # Deferred memory routing (Item 9): when True (default), the live turn only
     # writes the raw log; the episodic/semantic/procedural routing is done by the
     # background worker via the raw-log cursor (kills double-writes, off the latency

@@ -104,6 +104,40 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         bg_tasks.append(asyncio.create_task(outbox_worker.run_forever()))
         logger.info("background worker + outbox poller running in-process (dev; §14/§4)")
 
+    # §8.12 dynamic phrases: seed the in-memory catalog with whatever the worker last stored
+    # (best-effort, off the request path), then keep it fresh on a slow tick. In dev the worker
+    # runs in-process, so also drive regeneration here; in prod the separate worker owns regen.
+    if settings.phrases_dynamic_enabled:
+        from core.phrases.refresh import refresh_forever, regenerate_forever
+
+        async def _seed_phrases() -> None:
+            try:
+                stored = await pipeline.phrase_store.load()
+                if stored:
+                    pipeline.phrases.apply({k: tuple(v) for k, v in stored.items()})
+            except Exception:  # defaults stand — never block startup on the catalog
+                logger.warning("phrase catalog seed failed (non-fatal)", exc_info=True)
+
+        bg_tasks.append(asyncio.create_task(_seed_phrases()))
+        bg_tasks.append(
+            asyncio.create_task(
+                refresh_forever(
+                    pipeline.phrase_store, pipeline.phrases, settings.phrase_refresh_interval_s
+                )
+            )
+        )
+        if settings.run_worker_in_process:
+            bg_tasks.append(
+                asyncio.create_task(
+                    regenerate_forever(
+                        pipeline.phrase_generator,
+                        pipeline.phrase_store,
+                        pipeline.phrases,
+                        settings.phrase_regen_interval_s,
+                    )
+                )
+            )
+
     try:
         yield
     finally:

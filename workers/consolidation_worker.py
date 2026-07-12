@@ -47,13 +47,28 @@ async def main() -> None:
         "worker started — handling: %s + outbox",
         [TOOL_TASK_TYPE, WEB_SEARCH_TASK_TYPE, CONSOLIDATION_TASK_TYPE],
     )
-    try:
-        # Queue worker + outbox poller + memory-routing poller run concurrently.
-        await asyncio.gather(
-            worker.run_forever(),
-            outbox_worker.run_forever(),
-            _route_memory_forever(pipeline),
+    coros = [
+        worker.run_forever(),
+        outbox_worker.run_forever(),
+        _route_memory_forever(pipeline),
+    ]
+    # §8.12: this process OWNS phrase regeneration in production (the edge only reads the store).
+    if pipeline.settings.phrases_dynamic_enabled:
+        from core.phrases.refresh import regenerate_forever
+
+        coros.append(
+            regenerate_forever(
+                pipeline.phrase_generator,
+                pipeline.phrase_store,
+                pipeline.phrases,
+                pipeline.settings.phrase_regen_interval_s,
+            )
         )
+        logger.info(
+            "phrase regeneration running (every %.0fs)", pipeline.settings.phrase_regen_interval_s
+        )
+    try:
+        await asyncio.gather(*coros)
     finally:
         await pipeline.aclose()
 

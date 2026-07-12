@@ -13,7 +13,7 @@ Behavior params (LLM tier chains, model pricing) are loaded from the seeded
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from adapters.db import Database
 from adapters.graph.graphiti import GraphitiGraphStore
@@ -21,6 +21,7 @@ from adapters.llm.openrouter import OpenRouterLLM
 from adapters.logging.factory import build_log_sinks
 from adapters.logging.trace_sink import TraceStoreLogSink
 from adapters.outbox import OutboxStore, WelcomeMailer
+from adapters.phrase.redis_store import RedisPhraseStore
 from adapters.preference.mem0_adapter import Mem0PreferenceMemory
 from adapters.prompt.langfuse_prompt import BundledPromptProvider
 from adapters.queue.redis import RedisTaskQueue
@@ -51,6 +52,8 @@ from core.memory.vocab import VocabProvider
 from core.memory.working import WorkingMemory
 from core.observability import TraceStore
 from core.observability.logger import StructuredLogger
+from core.phrases.catalog import PhraseCatalog
+from core.phrases.generator import PhraseGenerator
 from core.profile import ProfileService, TraitRegistry
 from core.projects.service import ProjectService
 from core.psych.consolidation import Consolidator
@@ -68,6 +71,7 @@ from core.tools.registry import ToolRegistry
 from core.tools.results import ToolResultStore
 from core.tools.web_search import WebSearch
 from ports.doc_store import DocStore
+from ports.llm import Tier
 from ports.prompt import PromptProvider
 from ports.retrieval import RetrievalPort
 from ports.score_sink import ScoreSink
@@ -130,12 +134,16 @@ class Pipeline:
     prompts: PromptProvider  # F13: runtime prompt management (Langfuse or bundled)
     scores: ScoreSink | None  # F13: eval/feedback scoring backend (Langfuse), if enabled
     compactor: SessionCompactor  # F14: rolling-summary compaction for long sessions
+    phrases: PhraseCatalog  # §8.12: live interjection/greeting pools (regenerated in background)
+    phrase_store: RedisPhraseStore  # shared store the worker writes + the edge reads
+    phrase_generator: PhraseGenerator  # background regenerator (worker-side)
     langfuse: Any | None = None  # LangfuseTraceSink (deep-link builder), if enabled
     evaluator: TurnEvaluator | None = None  # §6/§7 live LLM-as-judge, if enabled
 
     async def aclose(self) -> None:
         await self.ledger.flush()
         await self.queue.aclose()
+        await self.phrase_store.aclose()
         await self.db.aclose()
         self.logs.close()
 
@@ -315,6 +323,18 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         preferences=preferences,
         recall=ConversationRecall(conversations),  # F3/F4 conversation-recall routing
     )
+    # §8.12 dynamic phrases: one shared in-memory catalog (defaults until the worker fills it),
+    # a Redis store the worker writes + the edge reads, and the background regenerator. The live
+    # turn only ever reads `phrases` — a pure in-memory lookup — so none of this is on the reply
+    # path. Cast keeps the tier a Literal from the free-form settings string.
+    phrases = PhraseCatalog()
+    phrase_store = RedisPhraseStore(settings)
+    phrase_generator = PhraseGenerator(
+        llm,
+        tier=cast(Tier, settings.phrase_regen_tier),
+        pool_size=settings.phrase_pool_size,
+        logs=logs,
+    )
     generator = ResponseGenerator(
         llm,
         self_model,
@@ -326,6 +346,7 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         progress_filler_gap_s=settings.progress_filler_gap_s,  # §8.12: fill dead air on slow turns
         progress_filler_max=settings.progress_filler_max,
         progress_filler_apology_after=settings.progress_filler_apology_after,
+        phrases=phrases,  # §8.12: interjection pools (regenerated in background)
     )
     # A1/A1.5: the reasoning engine sits behind the Orchestrator port. LangGraph is
     # one adapter (imported only in adapters/), the native loop is the other —
@@ -388,6 +409,9 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         prompts=prompts,
         scores=scores,
         compactor=SessionCompactor(llm, working, logs=logs),
+        phrases=phrases,
+        phrase_store=phrase_store,
+        phrase_generator=phrase_generator,
         langfuse=langfuse_sink,
         # S5: a DEDICATED LLM client for the judge — its own AsyncOpenAI connection pool,
         # and `logs=None` so its background call never lands inside the live turn's trace.

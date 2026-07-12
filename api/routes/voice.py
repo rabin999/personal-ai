@@ -161,6 +161,7 @@ def _start(
         compactor=pipeline.compactor,  # F14: rolling-summary compaction
         logs=pipeline.logs,  # C1: bind per-turn so deep LLM-call spans persist
         evaluator=pipeline.evaluator,  # §6/§7: judge voice turns too (Langfuse eval)
+        phrases=pipeline.phrases,  # §8.12: greeting angles from the regenerated catalog
     )
 
     async def persist(event: dict[str, object]) -> None:

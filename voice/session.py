@@ -31,6 +31,7 @@ from core.memory.extraction import MemoryExtractor
 from core.memory.vocab import VocabProvider
 from core.memory.working import Turn, WorkingMemory
 from core.observability.logger import StructuredLogger
+from core.phrases.catalog import PhraseCatalog
 from core.reasoning.orchestrator import Orchestrator
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest, PromptAssembler
 from core.reasoning.response_gen import GenerationResult, ToolDispatch
@@ -163,6 +164,7 @@ class VoiceSession:
         logs: StructuredLogger | None = None,
         evaluator: Any = None,
         greet_on_open: bool = True,  # speak a dynamic hello when the session opens (§3.6.3)
+        phrases: PhraseCatalog | None = None,
     ) -> None:
         self._user_id = user_id
         # §6/§7: per-turn LLM-as-judge (off the reply path) → scores on the same
@@ -189,6 +191,9 @@ class VoiceSession:
         self._endpointer = endpointer
         self._assembler = assembler
         self._generator = generator
+        # Greeting ANGLES read from the shared catalog (regenerated in the background) with the
+        # static defaults as fallback — a pure in-memory lookup, off any latency-critical path.
+        self._phrases = phrases or PhraseCatalog()
         self._tts = tts
         self._working = working
         self._trace = trace
@@ -932,7 +937,7 @@ class VoiceSession:
         try:
             note = await self._last_seen_note()
             avoid = await self._recent_greetings()
-            angle = random.choice(_GREETING_ANGLES)
+            angle = random.choice(self._phrases.get("greeting_angles") or _GREETING_ANGLES)
             instr = (
                 "[The user just opened the app to talk with you. Greet them first, warmly and "
                 "CASUALLY, in ONE short natural spoken line — like a friend genuinely glad they "

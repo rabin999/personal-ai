@@ -14,6 +14,24 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-12
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
+> ## 2026-07-12 (later) — Dynamic phrase catalog: fillers + greetings regenerated in the background. ✅ (not deployed)
+> The interjection/progress/greeting pools were static forever. Now they're **periodically
+> regenerated off-path** so they don't feel canned — with a hard guarantee the voice turn never
+> waits on it. New `core/phrases/` (`PhraseCatalog` in-memory holder seeded from
+> `defaults.py`; `PhraseGenerator` = one cheap LLM call, JSON, Pydantic-validated, and EVERY line
+> re-checked through the live assistant-speak+slang scrubber — stricter than the live path on slang
+> position; a pool that ends up too thin is dropped so the catalog keeps its safe default;
+> `refresh.py` regen/refresh loops), `ports/phrase_store.py` + `adapters/phrase/redis_store.py`
+> (one global JSON doc, 24h TTL). **Regeneration runs only in `companion-worker`** (or a dev
+> in-process bg task); the **serving edge** refreshes an in-memory copy on a slow tick; the live
+> `_dynamic_ack`/`_emit_progress_ack`/greeting read is a **pure in-memory dict lookup**. Global
+> (fillers carry no user data → isolation-trivial). Config (§3.6): `phrases_dynamic_enabled`,
+> `phrase_regen_interval_s` (40s), `phrase_refresh_interval_s` (20s), `phrase_pool_size`,
+> `phrase_regen_tier`. **Proven by real call** (`scripts/phrase_regen_probe.py`): regenerated 63
+> lines across 8 pools, **all pass the live scrubber**, on-brand & varied; **hot-path pick = 0.12 µs**
+> (no I/O) after applying the fresh pools. 22 unit tests (`tests/unit/test_phrase_catalog.py` +
+> the filler tests); ruff/mypy(touched)/lint-imports green; full unit suite green.
+
 > ## 2026-07-12 — Progress fillers on slow turns (§8.12 "keep the user in the loop"). ✅ (not deployed)
 > A slow voice turn spoke ONE interjection ("On it — let me check.") then ran the search/generation
 > in **silence** — on a real live lookup that was **8.2 s of dead air** before the answer (user report).
