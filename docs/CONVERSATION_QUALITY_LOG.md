@@ -259,3 +259,13 @@ Still open (larger, next phases): #16 progressive delivery (voice), #8 Phase B e
 #18 substantially complete (greeting, 2-turn combine, false barge-in, live-info freshness, progressive
 search). Remaining large features: #16 progressive delivery (interjection + chunk streaming + parallel
 reaction model), #8 Phase B eval bundle.
+
+## #16 progressive delivery — DEPLOYED (d6ccce8)
+The slow-turn gap-filler is now emotion-aware and fact-free: empathy first if the person is hurting
+("Man, that's really rough."), "on it" for a lookup, "let me think" otherwise — and it now covers the
+slow reasoning/tool path that used to run in dead air (gated to emotional turns there, so a plain tool
+turn doesn't grow a repetitive filler tic). Runs concurrently with the real generation (no added
+wall-clock); reply chunk-streaming already existed. Real voice drive of a grief message led with
+"Man, that's really rough." then a caring follow-up (streamed, judged warm).
+
+## STATUS: all user-reported issues + designed features done & deployed. Remaining: #8 eval bundle.
