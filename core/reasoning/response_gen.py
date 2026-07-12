@@ -1140,6 +1140,7 @@ class ResponseGenerator:
         speak: "Callable[[str], Awaitable[None]]",
         *,
         temperature: float | None = None,
+        flush: "Callable[[], Awaitable[None]] | None" = None,
     ) -> GenerationResult:
         """Voice turn (§8.12): stream the spoken reply to ``speak`` sentence-by-
         sentence so TTS starts on the first sentence, when it's a plain
@@ -1186,6 +1187,11 @@ class ResponseGenerator:
         ):
             try:
                 await self._dynamic_ack(prompt, speak, is_lookup=True)  # chunk 1
+                # Flush the interjection as its OWN utterance so its audio plays in ~seconds
+                # while the (slow) search runs — otherwise the streaming TTS holds it until
+                # turn-end and the user hears the filler and the answer together (report).
+                if flush is not None:
+                    await flush()
             except PROGRAMMING_ERRORS:
                 raise
             except Exception:  # the filler is optional — the answer is not
@@ -1208,6 +1214,10 @@ class ResponseGenerator:
             gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             try:
                 await self._dynamic_ack(prompt, speak, is_lookup=False)
+                # Flush the reaction as its own utterance so its audio plays now, while the
+                # real generation runs — not batched behind the whole reply at turn-end.
+                if flush is not None:
+                    await flush()
             except PROGRAMMING_ERRORS:
                 gen_task.cancel()
                 raise

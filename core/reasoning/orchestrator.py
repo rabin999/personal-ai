@@ -46,6 +46,7 @@ class Orchestrator(Protocol):
         speak: Callable[[str], Awaitable[None]],
         *,
         temperature: float | None = None,
+        flush: Callable[[], Awaitable[None]] | None = None,
     ) -> GenerationResult:
         """Voice turn: same reasoning, streamed to ``speak`` for TTS.
 
@@ -77,12 +78,12 @@ def assert_orchestrator_contract(engine: Any) -> None:
     sentinel = object()
     try:
         # The literal call shape of VoiceSession._speak_turn: four positional args
-        # (prompt, dispatcher, context, speak) plus the temperature keyword.
+        # (prompt, dispatcher, context, speak) plus the temperature + flush keywords.
         inspect.signature(engine.generate_spoken).bind(
-            sentinel, sentinel, sentinel, sentinel, temperature=None
+            sentinel, sentinel, sentinel, sentinel, temperature=None, flush=None
         )
     except TypeError as exc:
         raise OrchestratorContractError(
             f"{type(engine).__name__}.generate_spoken() cannot accept the call the voice "
-            f"edge makes (prompt, dispatcher, context, speak, temperature=...): {exc}"
+            f"edge makes (prompt, dispatcher, context, speak, temperature=..., flush=...): {exc}"
         ) from exc

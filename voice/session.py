@@ -36,7 +36,7 @@ from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationReques
 from core.reasoning.response_gen import GenerationResult, ToolDispatch
 from core.tools.registry import ToolContext
 from ports.stt import STT
-from ports.tts import TTS, StreamingTTS
+from ports.tts import TTS, StreamingTTS, TTSStream
 from voice.emotion import LaggingEmotionProvider
 from voice.endpointing import SemanticEndpointer
 from voice.multiutterance import classify_utterance, combine
@@ -279,6 +279,7 @@ class VoiceSession:
         silence_ms = 0.0
         barge_frames = 0
         barge_speech_frames = 0  # of the barge window, how many were GATED speech (not noise)
+        greeting_speech_frames = 0  # sustained speech needed to discard the open greeting
         idle_frames = 0
         lull_ms = 0.0  # unbroken idle silence, for the §3.6.4 lull check-in
         decided_incomplete = False
@@ -321,18 +322,29 @@ class VoiceSession:
                             self._greeting_task = None
                             raise gexc
                         self._greeting_task = None
-                    elif frame.event == "speech_start" or frame.is_speech:
-                        self._greeting_task.cancel()
-                        await asyncio.gather(self._greeting_task, return_exceptions=True)
-                        self._greeting_task = None
-                        self._playback_until = 0.0  # greeting no longer playing → capture now
-                        flushed = self._drain(out)
-                        self._trace.emit(
-                            "barge_in",
-                            "user spoke over the open greeting — greeting discarded",
-                            phase="greeting_discarded",
-                            flushed_chunks=flushed,
-                        )
+                    else:
+                        # Discard the greeting only on SUSTAINED real speech — a single
+                        # is_speech frame at session open is often mic warm-up / echo /
+                        # room noise, and cancelling on it meant the greeting never played
+                        # (user report: "no greeting"). Require a few gated-speech frames
+                        # (~128ms), the same bar barge-in uses, so a genuine "hi" still
+                        # yields but a noise blip doesn't kill the hello.
+                        if frame.is_speech or frame.event == "speech_start":
+                            greeting_speech_frames += 1
+                        else:
+                            greeting_speech_frames = 0
+                        if greeting_speech_frames >= _BARGE_IN_SPEECH_MIN:
+                            self._greeting_task.cancel()
+                            await asyncio.gather(self._greeting_task, return_exceptions=True)
+                            self._greeting_task = None
+                            self._playback_until = 0.0  # greeting done → capture now
+                            flushed = self._drain(out)
+                            self._trace.emit(
+                                "barge_in",
+                                "user spoke over the open greeting — greeting discarded",
+                                phase="greeting_discarded",
+                                flushed_chunks=flushed,
+                            )
 
                 # Barge-in: user speaks while the companion is talking (§24). "Talking"
                 # means EITHER a turn task is still generating/streaming OR the client
@@ -817,55 +829,97 @@ class VoiceSession:
         the session (finally) so synthesis stops and cost is logged (rule 5).
         ``temperature`` overrides the reply temperature (greetings run hotter so
         they vary session to session)."""
-        stream = None
-        pump: asyncio.Task[None] | None = None
-        if isinstance(self._tts, StreamingTTS):
+
+        async def _open() -> "TTSStream | None":
+            if not isinstance(self._tts, StreamingTTS):
+                return None
             try:
-                stream = await self._tts.open_stream(
+                return await self._tts.open_stream(
                     self._voice, user_id=self._user_id, session_id=self._session_id
                 )
             except PROGRAMMING_ERRORS:
                 raise  # F3: a wiring bug in the TTS adapter, not a flaky handshake
             except Exception:  # network/handshake — never fail the turn on TTS setup
                 logger.warning("tts stream open failed; using per-call synthesis", exc_info=True)
-                stream = None
+                return None
+
+        # Mutable holder so `flush()` can retire the current session and open a fresh one
+        # WITHOUT rebinding the speak/feed closures (they read the holder each call).
+        stream = await _open()
+        box: dict[str, Any] = {"stream": stream, "pump": None}
+
+        def _start_pump(s: "TTSStream") -> None:
+            async def _pump() -> None:
+                async for chunk in s.audio():
+                    out.put_nowait(chunk)
+
+            box["pump"] = asyncio.create_task(_pump())
+
+        if stream is not None:
+            _start_pump(stream)
+
+        async def _feed(text: str) -> None:
+            s = box["stream"]
+            if s is not None:
+                await s.feed(text)
+            else:  # per-call REST synthesis — audio flushes immediately per chunk
+                async for chunk in self._tts.speak(
+                    text, self._voice, user_id=self._user_id, session_id=self._session_id
+                ):
+                    out.put_nowait(chunk)
+
+        async def speak(text: str) -> None:
+            self._turn_spoke = True  # A4: once speaking, a new utterance is a barge-in
+            # Stream the SPOKEN text to the UI as its own caption the instant it's
+            # spoken (user report: interjection + answer arrived together, and the chat
+            # text differed from the audio). Each chunk is a `reply_chunk` event carrying
+            # EXACTLY the words being synthesized now, so the transcript fills in
+            # progressively and displayed == spoken. The turn-end `response` event still
+            # records the full reply for memory/trace.
+            if text.strip():
+                self._trace.emit("reply_chunk", text, voice_text=text)
+            await _feed(text)
+
+        async def flush() -> None:
+            # Force everything spoken so far out as its OWN complete utterance, then open a
+            # fresh session for what comes next. The streaming TTS only synthesizes audio
+            # after text.done (`finish`), and finish was called only at turn-end — so the
+            # instant interjection's audio was stuck behind the whole (slow) turn and the
+            # user heard "hang on" and the answer together (report). The engine calls this
+            # right after the interjection so its audio plays in ~seconds while the search runs.
+            s = box["stream"]
+            p = box["pump"]
+            if s is None:
+                return  # REST path already flushes per chunk
+            try:
+                await s.finish()
+                if p is not None:
+                    await p  # drain this utterance's audio to `out`
+                await s.aclose()
+            except Exception:  # a flush hiccup must never break the turn
+                logger.warning("tts flush failed; continuing", exc_info=True)
+            box["stream"] = await _open()
+            if box["stream"] is not None:
+                _start_pump(box["stream"])
+            else:
+                box["pump"] = None
 
         try:
-            if stream is not None:
-                s = stream  # bind for the closures/type-narrowing
-
-                async def _pump() -> None:
-                    async for chunk in s.audio():
-                        out.put_nowait(chunk)
-
-                pump = asyncio.create_task(_pump())
-
-                async def speak(text: str) -> None:
-                    self._turn_spoke = True  # A4: once speaking, a new utterance is a barge-in
-                    await s.feed(text)
-            else:
-
-                async def speak(text: str) -> None:
-                    self._turn_spoke = True
-                    async for chunk in self._tts.speak(
-                        text, self._voice, user_id=self._user_id, session_id=self._session_id
-                    ):
-                        out.put_nowait(chunk)
-
             result = await self._generator.generate_spoken(
-                prompt, self._dispatcher, context, speak, temperature=temperature
+                prompt, self._dispatcher, context, speak, temperature=temperature, flush=flush
             )
-            if stream is not None:
-                await stream.finish()  # flush the tail
-                if pump is not None:
-                    await pump  # drain remaining audio before the turn completes
+            if box["stream"] is not None:
+                await box["stream"].finish()  # flush the tail
+                if box["pump"] is not None:
+                    await box["pump"]  # drain remaining audio before the turn completes
             return result
         finally:
-            if stream is not None:
-                await stream.aclose()
-            if pump is not None and not pump.done():
-                pump.cancel()
-                await asyncio.gather(pump, return_exceptions=True)
+            if box["stream"] is not None:
+                await box["stream"].aclose()
+            p = box["pump"]
+            if p is not None and not p.done():
+                p.cancel()
+                await asyncio.gather(p, return_exceptions=True)
 
     async def _greet_on_open(self, out: asyncio.Queue[bytes | None]) -> None:
         """Speak a warm, contextual hello when the conversation opens (§3.6.3). Built

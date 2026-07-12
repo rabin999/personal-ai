@@ -71,6 +71,9 @@ export default function CompanionPage() {
   const sampleRateRef = useRef(24_000);
   const audioTurnRef = useRef(0);
   const sessionIdRef = useRef("");
+  // Turn indices whose reply streamed as progressive `reply_chunk` captions — so the
+  // final `response` event doesn't re-reveal the whole reply on top of them.
+  const chunkedTurnsRef = useRef<Set<number>>(new Set());
   // Voice runtime to A/B before starting: "native" (our asyncio loop) or
   // "pipecat" (framework VAD/endpointing/barge-in). Read at connect time.
   const [runtime, setRuntime] = useState<"native" | "pipecat">("native");
@@ -134,11 +137,25 @@ export default function CompanionPage() {
       // The reply text rides in `message` (with `voice_text` as a fallback) — NOT
       // `data.text` — so read those, or the companion line never streams in.
       if (e.stage === "stt" && typeof e.data.text === "string") t.heard = e.data.text;
+      // Progressive delivery: each spoken chunk (interjection, then answer pieces) arrives
+      // as its own `reply_chunk` and is APPENDED, so the bubble fills in as it's spoken and
+      // reads EXACTLY as the audio (displayed == spoken).
+      if (e.stage === "reply_chunk") {
+        const txt = (
+          e.message || (typeof e.data.voice_text === "string" ? e.data.voice_text : "")
+        ).trim();
+        if (txt) {
+          t.reply = t.reply ? `${t.reply} ${txt}` : txt;
+          t.streamed = true;
+        }
+      }
       if (e.stage === "response") {
         const txt = (
           e.message || (typeof e.data.voice_text === "string" ? e.data.voice_text : "")
         ).trim();
-        if (txt) t.reply = txt;
+        // Chunks already streamed the reply progressively (and equal the spoken words),
+        // so keep that; only fall back to the final response text when nothing streamed.
+        if (txt && !t.streamed) t.reply = txt;
       }
     });
     if (e.stage === "vad") setTurn("listening");
@@ -267,7 +284,18 @@ export default function CompanionPage() {
             // Same single-line ticker for your words: show only the trailing window.
             setCaption(tailWords(cleanCaption(ev2.data.text as string)));
           }
-          if (ev2.stage === "response" && !ev2.data?.delivered) {
+          // Each spoken chunk reveals as it arrives, in sync with its audio.
+          if (ev2.stage === "reply_chunk") {
+            chunkedTurnsRef.current.add(ev2.turn);
+            revealCaption(cleanCaption((ev2.data?.voice_text as string) ?? ev2.message ?? ""));
+          }
+          // Only reveal the final reply as one caption when NOTHING streamed this turn
+          // (fallback path); otherwise the chunks already drove the caption.
+          if (
+            ev2.stage === "response" &&
+            !ev2.data?.delivered &&
+            !chunkedTurnsRef.current.has(ev2.turn)
+          ) {
             revealCaption(cleanCaption((ev2.data?.voice_text as string) ?? ev2.message ?? ""));
           }
           handleTrace(ev2);

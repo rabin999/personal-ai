@@ -8,6 +8,7 @@ export type Stage =
   | "router"
   | "generation"
   | "response"
+  | "reply_chunk"
   | "tts"
   | "barge_in"
   | "error";
@@ -27,6 +28,7 @@ export interface TurnGroup {
   events: TraceEvent[];
   heard: string; // what STT transcribed
   reply: string; // the companion's reply text
+  streamed?: boolean; // reply was built from progressive reply_chunk events (== spoken)
   audio: ArrayBuffer[]; // collected TTS PCM chunks for replay
 }
 

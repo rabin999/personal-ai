@@ -163,6 +163,7 @@ class _GoodEngine:
         speak: object,
         *,
         temperature: float | None = None,
+        flush: object = None,
     ) -> None: ...
 
 

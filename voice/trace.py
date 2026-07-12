@@ -27,6 +27,7 @@ Stage = Literal[
     "reflection",
     "memory",
     "response",
+    "reply_chunk",  # one spoken chunk (interjection / progressive answer piece) → live caption
     "tts",
     "barge_in",
     "audio",  # U10-U12 sound-awareness (health check-in, tone mirror, surroundings)

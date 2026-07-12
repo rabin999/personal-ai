@@ -188,19 +188,27 @@ class LangGraphOrchestrator:
         speak: Callable[[str], Awaitable[None]],
         *,
         temperature: float | None = None,
+        flush: Callable[[], Awaitable[None]] | None = None,
     ) -> GenerationResult:
         """Voice turn: run the context-resolution step, then delegate to the proven
         STREAMING generator so TTS starts on the first sentence (low TTFT) — the
         graph adds context-connection without losing streaming latency."""
         if isinstance(prompt, DisambiguationRequest):
             return await self._generator.generate_spoken(
-                prompt, dispatcher, context, speak, temperature=temperature
+                prompt, dispatcher, context, speak, temperature=temperature, flush=flush
             )
         self._perceive_span(prompt)
         # Skip the ~1.6s context/intent call on a pure greeting/social line (same safe skip as
         # the text node) so a trivial voice turn stays fast; never on a volatile/question turn.
         if _is_trivial_social(prompt.utterance):
             res = _Resolution(needs_live_info=False)
+        elif is_volatile_question(prompt.utterance):
+            # A clearly-volatile question (role-holder / latest / current-events) ALWAYS needs
+            # live info — the classifier would only confirm what the fast check already knows.
+            # Skipping it here lets the instant interjection fire ~1.6s sooner so the first
+            # spoken chunk lands inside the 3-5s target (user: "chunks not under 3-5s"). The
+            # engine builds the query from the utterance when there's no classifier live_query.
+            res = _Resolution(needs_live_info=True)
         else:
             res = await self._resolve_note(prompt)
         # S1: ALWAYS augment — the volatility verdict must reach the reasoning core even
@@ -215,7 +223,7 @@ class LangGraphOrchestrator:
             needs_live_info=res.needs_live_info,
         )
         result = await self._generator.generate_spoken(
-            turn_prompt, dispatcher, context, speak, temperature=temperature
+            turn_prompt, dispatcher, context, speak, temperature=temperature, flush=flush
         )
         self._reflect_span(prompt, result, dispatcher, context)
         return result
