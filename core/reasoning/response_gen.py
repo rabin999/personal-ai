@@ -1427,16 +1427,28 @@ class ResponseGenerator:
         revised = False
         scrubbed_used = False
         if self._self_reflect and flags_before:
-            text = await self._rewrite_assistant_speak(prompt, text, flags_before)
-            revised = True
-            # Deterministic safety net: if the rewrite still carries a banned
-            # shape, drop the offending sentence(s) — but only if something
-            # natural remains (never ship an empty reply).
-            if find_forbidden(text, allow_disclosure=allow_disc):
-                scrubbed = scrub_forbidden(text, allow_disclosure=allow_disc)
-                if scrubbed:
-                    text = scrubbed
-                    scrubbed_used = True
+            # Latency: try the DETERMINISTIC scrub FIRST (no LLM). If it drops the offending
+            # assistant-speak while leaving a natural reply, use it and SKIP the ~1s LLM rewrite
+            # — with a strong model we rarely need to regenerate, and the scrub is what enforces
+            # the rule anyway. Only fall back to the LLM rewrite when scrubbing would gut the
+            # reply (e.g. the whole draft was assistant-speak).
+            quick = scrub_forbidden(text, allow_disclosure=allow_disc)
+            if (
+                quick
+                and len(quick.split()) >= 3
+                and not find_forbidden(quick, allow_disclosure=allow_disc)
+            ):
+                text = quick
+                scrubbed_used = True
+                revised = True
+            else:
+                text = await self._rewrite_assistant_speak(prompt, text, flags_before)
+                revised = True
+                if find_forbidden(text, allow_disclosure=allow_disc):
+                    scrubbed = scrub_forbidden(text, allow_disclosure=allow_disc)
+                    if scrubbed:
+                        text = scrubbed
+                        scrubbed_used = True
         if self._self_reflect:
             self._span(
                 "reflection",
