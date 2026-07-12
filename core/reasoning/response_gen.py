@@ -814,6 +814,10 @@ class ResponseGenerator:
         multipart = _is_multipart_question(prompt.utterance)
         if multipart:
             queries = await self._plan_search_queries(prompt)
+        elif prompt.live_query.strip():
+            # The context/intent step (our "decision" call) ALREADY inferred the search query,
+            # so a single-fact turn reuses it directly — no separate search_query LLM call.
+            queries = [prompt.live_query.strip()]
         else:
             queries = [await self._build_search_query(prompt)]
         findings = await self._run_searches(queries, dispatcher, search_ctx)
@@ -1828,6 +1832,10 @@ class ResponseGenerator:
         # which makes a freshly-searched answer read as out of date (eval harness caught
         # "…the current PM of Nepal as of 2024"). The real date is already in the prompt.
         text = _strip_stale_datestamp(text)
+        # Drop a leading "let me look that up" the model glued onto the ANSWER — the spoken
+        # interjection already said it, so hearing it again fused to the fact made the filler
+        # and the answer sound like one blob (user report). The answer is just the substance.
+        text = _strip_leading_filler(text)
 
         # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
         # and stored memory get the tag-free version (brief §1.4).
@@ -2006,6 +2014,30 @@ _STALE_DATESTAMP = re.compile(
     r"[\s,;(—-]*\bas of\b(?:\s+\w+){0,2}\s+((?:19|20)\d\d)\b\)?[,;]?",
     re.IGNORECASE,
 )
+
+
+# ONLY unambiguous lookup fillers — never "okay/sure/hmm", which are legitimate warmth on a
+# normal reply. These are the "I'm going to go check" prefaces the interjection already covered.
+_LEADING_FILLER = re.compile(
+    r"^\s*(?:(?:on it|hang on|one sec(?:ond)?|let me see|let me check|let me look(?: that)?"
+    r"(?: up)?|let me dig(?: into that)?|let me find(?: that)?|checking(?: that)?(?: now)?|"
+    r"give me a (?:sec|second|moment))[\s,!.…—-]*)+",
+    re.IGNORECASE,
+)
+
+
+def _strip_leading_filler(text: str) -> str:
+    """Drop a leading lookup-filler the model tacked onto the ANSWER ("Let me look that up. …")
+    — the interjection already said that, and hearing it again glued to the fact made them
+    sound like one blob (user report). Only touches a LEADING filler and only when one is
+    actually present (so a normal reply is returned byte-identical); never returns empty."""
+    stripped = _LEADING_FILLER.sub("", text)
+    if stripped == text:  # no filler prefix → leave the reply exactly as-is
+        return text
+    stripped = stripped.lstrip(" ,.!…—-")
+    if not stripped.strip():
+        return text
+    return stripped[0].upper() + stripped[1:]  # re-capitalize the new opening word
 
 
 def _search_grounded(tool_notes: "list[str]") -> bool:
