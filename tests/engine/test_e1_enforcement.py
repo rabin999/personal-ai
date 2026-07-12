@@ -333,6 +333,14 @@ async def test_a_wrapped_provider_outage_degrades_to_an_honest_reply() -> None:
     )
     assert result.final_text.strip(), "the engine returned an EMPTY reply — the user heard silence"
     assert len(result.final_text.split()) >= 4, f"barely a reply: {result.final_text!r}"
+    # A TOTAL model outage must be HONEST that the system is down — never the warm "I'm right
+    # here with you, what's going on?" line, which pretends to be engaged when nothing is
+    # thinking (user report: the credit-exhausted reply was misleading).
+    low = result.final_text.lower()
+    assert "right here with you" not in low, f"pretended to be present during an outage: {low!r}"
+    assert any(w in low for w in ("down", "try", "unavailable", "can't think")), (
+        f"outage reply didn't signal a system problem: {result.final_text!r}"
+    )
 
 
 @pytest.mark.defect

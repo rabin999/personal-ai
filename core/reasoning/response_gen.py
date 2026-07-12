@@ -112,6 +112,14 @@ DEFAULT_GATE_PARAMS = {"T_intent": 0.3, "T_novel": 0.75, "T_emotion": 0.7, "T_am
 # shape is exactly what a greeting like "hi there" used to fall back to). The real
 # disclosure (rule 4) and background acks are model-generated in-voice, never here.
 _SAFE_FALLBACK_TEXT = "Hey, I'm right here with you — what's going on?"
+# TOTAL model outage (every provider in the chain failed — e.g. out of credits / all 402,
+# a full API outage). The warm "I'm right here" line is a LIE here: nothing is thinking. Say
+# so honestly instead (user report). Kept free of banned assistant-speak so enforcement
+# never rewrites it, and not exposing "credits" — just that the system is temporarily down.
+_SERVICE_DOWN_TEXT = (
+    "Sorry — I can't think straight right now, looks like my system's temporarily down on my "
+    "end. Give it a minute and try me again?"
+)
 
 # S1: the reasoning step judged this answer would go stale without a live lookup, and the
 # lookup failed. Say so honestly rather than shipping a training-data answer as fact (§16).
@@ -533,21 +541,24 @@ class ResponseGenerator:
         except Exception as exc:  # dependency failure anywhere in the turn → never silence
             logger.exception("reply path failed; degrading to a safe reply: %s", exc)
             self._span("engine", level="error", phase="turn_failed", error=type(exc).__name__)
-            return await self._safe_degrade(prompt)
+            # A total model outage (LLMUnavailable = the whole provider chain failed) gets the
+            # HONEST "system's down" line; any other hiccup keeps the warm presence line.
+            return await self._safe_degrade(prompt, service_down=isinstance(exc, LLMUnavailable))
 
-    async def _safe_degrade(self, prompt: AssembledPrompt) -> GenerationResult:
+    async def _safe_degrade(
+        self, prompt: AssembledPrompt, *, service_down: bool = False
+    ) -> GenerationResult:
         """Produce a reply when the turn threw. Prefer the fully-gated safe line; if even
         that fails (provider entirely down), return the canned line directly — the engine
-        NEVER returns empty/raises to the caller, so the user is never met with silence."""
+        NEVER returns empty/raises to the caller, so the user is never met with silence.
+        When the model is entirely unavailable, the line is an honest "system's down", not the
+        warm "I'm right here" (which would pretend to be thinking when nothing is)."""
+        line = _SERVICE_DOWN_TEXT if service_down else _SAFE_FALLBACK_TEXT
         try:
-            return await self._finish_gated(prompt, _SAFE_FALLBACK_TEXT)
+            return await self._finish_gated(prompt, line)
         except Exception:
             logger.exception("gated fallback also failed; returning the canned safe line")
-            return GenerationResult(
-                final_text=_SAFE_FALLBACK_TEXT,
-                voice_text=_SAFE_FALLBACK_TEXT,
-                action="respond",
-            )
+            return GenerationResult(final_text=line, voice_text=line, action="respond")
 
     async def _run_turn(
         self,
@@ -1300,7 +1311,10 @@ class ResponseGenerator:
             elif prompt.needs_live_info is True:
                 self._span("tool", tool="web_search", phase="result", status="required_but_failed")
                 text = _SEARCH_FAILED_TEXT
-        reply = _sanitize_tags(text) if text else _SAFE_FALLBACK_TEXT
+        # Empty `text` here means BOTH the structured judgment AND the plain-reply retry
+        # produced nothing — i.e. the model is entirely unavailable this turn (total outage).
+        # Be honest that the system is down rather than warmly pretending to be present.
+        reply = _sanitize_tags(text) if text else _SERVICE_DOWN_TEXT
         return await self._finish_gated(prompt, reply)
 
     async def _finish_gated(self, prompt: AssembledPrompt, text: str) -> GenerationResult:
