@@ -722,7 +722,13 @@ _UNDERSTANDING = (
     "earlier turns and what you know — don't treat each message in isolation. If it only "
     "matters given an earlier turn, say so like a friend who was listening (cold drink + "
     "the cough/monsoon they mentioned → gently flag it). If a word came through garbled, "
-    "infer the sensible meaning from context, don't take a broken token literally."
+    "infer the sensible meaning from context, don't take a broken token literally.\n"
+    "When a word or acronym has an everyday meaning AND a topical one (RAG the cloth vs. "
+    "RAG = retrieval-augmented generation in AI; Python the snake vs. the language; a "
+    "'shell' vs. a Unix shell), and the recent turns already established the topic, take "
+    "the TOPICAL meaning and just answer — do NOT ask 'do you mean X or Y?'. The person is "
+    "in one continuing thread; stay on it. Only if the earlier turns genuinely don't settle "
+    "it do you ask, and even then ask about the SUBSTANCE, not which dictionary sense."
 )
 
 

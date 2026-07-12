@@ -240,6 +240,16 @@ HOW YOU TALK — this matters as much as WHAT you say, and it is where you usual
   here for you", "that must be so draining").
 - When they share GOOD news: react with short, real excitement — a line, not a speech.
 - Use their name ALMOST NEVER. If a third sentence is forming, cut it.
+- BUT when they ask a REAL question that needs information — "what are the types of X",
+  "how does Y work", "the difference between A and B", "explain Z" — the one-sentence cap
+  does NOT apply. Give a CLEAR, COMPLETE, CORRECT answer with the actual substance and the
+  real terms: name the actual kinds/steps/parts, say what each one is in a few words. Still
+  casual and concise (no lecture, no textbook tone) — but NEVER vague hand-waving like "some
+  people throw in graph stuff" or "stuff like that". Informal does NOT mean clueless: know
+  what you're talking about and say it plainly. A friend who actually knows the topic
+  explains it clearly, they don't mumble. This is SPOKEN ALOUD, so expand a technical
+  acronym in words the first time you use it — "retrieval-augmented generation, RAG for
+  short", not a bare "RAG" — so it's clear out loud; after that the short form is fine.
 
 Respond ONLY with a JSON object of this exact shape, with the keys in THIS ORDER:
 {"judgment": {"intent_confidence": <0..1 how sure you are of what the user wants>,
@@ -292,7 +302,15 @@ AI'). KEEP IT SHORT — usually ONE sentence, at most two, like a friend actuall
 talking. Stay INFORMAL and casual by default — contractions, plain everyday words,
 the way you'd actually talk to a mate; only get more measured or formal when the
 moment is genuinely serious, technical, or emotional. Don't explain or elaborate
-unless they ask; if a third sentence is forming, cut it. Do NOT reflexively end on a
+unless they ask; if a third sentence is forming, cut it. BUT when they DO ask a real
+question that needs information — types of something, how something works, the
+difference between things, "explain X" — drop the one-sentence cap and actually answer
+it: name the real kinds/steps/parts and say what each is, clearly and completely, still
+casual and concise. NEVER vague hand-waving ("some people throw in graph stuff", "stuff
+like that") — informal does NOT mean clueless; if you know the topic, say it plainly and
+correctly. This is SPOKEN ALOUD, so expand a technical acronym in words the first time —
+say "retrieval-augmented generation, RAG for short", not a bare "RAG"; "a large language
+model, an LLM" — then the short form is fine. Do NOT reflexively end on a
 stock filler question — 'what's on your mind?', 'what's up?', 'what's going on?',
 'anything on your mind?' — you lean on these way too much; most turns should just
 react and stop, and when you do ask something make it fresh and specific to what they
@@ -440,12 +458,47 @@ _GREETING_CARD = re.compile(
 )
 
 
-def _reads_verbose(text: str) -> bool:
-    """True when a conversational reply is longer or more greeting-card than a friend would say."""
+# Genuine informational/explanatory questions — "types of RAG", "how does X work",
+# "difference between A and B", "explain …". These need a CLEAR, COMPLETE answer with
+# real substance, so the brevity clamp (below) must NOT gut them into vague hand-waving
+# ("some people throw in graph stuff"). Informal ≠ clueless. The clamp still applies to
+# chit-chat and emotional turns; it just doesn't fire when the user actually asked to be
+# informed. Deliberately narrow so it never catches "how are you" / "what's up".
+_WANTS_SUBSTANCE = re.compile(
+    r"\b(types?|kinds?|sorts?|categories|kind)\s+of\b"
+    r"|\bdifferences?\s+between\b"
+    r"|\bhow\s+(do(es)?|can|would|should)\b[^?]*\bwork\b"
+    r"|\bhow\s+(to|do\s+i|do\s+you|can\s+i)\b"
+    r"|\bexplain\b|\bwalk\s+me\s+through\b|\bbreak\s+(it|this|that|down)\b"
+    r"|\bpros\s+and\s+cons\b|\btrade-?offs?\b|\badvantages?\b|\bdisadvantages?\b"
+    r"|\bwhy\s+(do(es)?|is|are|would|can|should)\b"
+    r"|\bwhat('?s|\s+is|\s+are)\s+(the\s+)?(main\s+|different\s+|various\s+)?(steps?|ways?|"
+    r"methods?|approaches?|options?|components?|parts?)\b"
+    r"|\bcompare\b|\blist\s+(the|some|of|out|a\s+few)\b|\bwhat\s+are\s+the\b",
+    re.IGNORECASE,
+)
+
+
+def _wants_substance(question: str) -> bool:
+    """True when the user asked a genuine informational/explanatory question that
+    deserves a clear, complete answer — so the brevity clamp should not compress it."""
+    return bool(_WANTS_SUBSTANCE.search(question))
+
+
+def _reads_verbose(text: str, question: str = "") -> bool:
+    """True when a conversational reply is longer or more greeting-card than a friend
+    would say. An informational/explanatory question is exempt from the plain length
+    cap (it needs room to answer fully) but never from the greeting-card check."""
     clean = _sanitize_tags(text)
+    if bool(_GREETING_CARD.search(clean)):
+        return True
+    if _wants_substance(question):
+        # Room to actually explain — still bounded so it can't become a lecture.
+        sentences = len([s for s in re.split(r"[.!?]+", clean) if s.strip()])
+        return sentences > 6 or len(clean.split()) > 120
     sentences = len([s for s in re.split(r"[.!?]+", clean) if s.strip()])
     words = len(clean.split())
-    return sentences > 2 or words > 40 or bool(_GREETING_CARD.search(clean))
+    return sentences > 2 or words > 40
 
 
 _BRIEF_REWRITE_INSTRUCTIONS = (
@@ -795,11 +848,19 @@ class ResponseGenerator:
         return _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
 
     async def _capability_repair(
-        self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
+        self,
+        prompt: AssembledPrompt,
+        dispatcher: "ToolDispatch",
+        context: "ToolContext",
+        speak: "Callable[[str], Awaitable[None]] | None" = None,
     ) -> str | None:
         """Force a real web_search for a live-info/unknown query the model tried to
         refuse, then re-answer with the result (brief §8.8/§8.11). Inline + bounded
-        so it answers this turn; the background/waiter path stays for voice latency."""
+        so it answers this turn; the background/waiter path stays for voice latency.
+
+        When ``speak`` is given (voice), the composed answer is STREAMED clause-by-clause into
+        TTS as it's generated — progressive delivery: the user hears the answer flow in small
+        chunks instead of one block after the whole search (§8.12)."""
         available = offered_tools(prompt, dispatcher.tools_for(context))
         if not any(t.id == "web_search" for t in available):
             return None
@@ -828,25 +889,63 @@ class ResponseGenerator:
             if gaps:
                 findings += await self._run_searches(gaps, dispatcher, search_ctx)
         combined = "\n\n".join(f"[{q}]\n{s}" for q, s in findings)
-        try:
-            completion = await self._llm.complete(
-                prompt.user_id,
-                [
-                    {"role": "system", "content": _REPAIR_INSTRUCTIONS + combined},
-                    {"role": "user", "content": prompt.utterance},
-                ],
-                "simple",
-                session_id=prompt.session_id,
-                purpose="response_repair",
-            )
-        except LLMUnavailable:
-            return findings[0][1]  # at least hand them the real facts from the first facet
-        answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        messages = [
+            {"role": "system", "content": _REPAIR_INSTRUCTIONS + combined},
+            {"role": "user", "content": prompt.utterance},
+        ]
+        if speak is not None:
+            answer = await self._compose_streamed(prompt, messages, speak)
+            if not answer:
+                return findings[0][1]
+        else:
+            try:
+                completion = await self._llm.complete(
+                    prompt.user_id,
+                    messages,
+                    "simple",
+                    session_id=prompt.session_id,
+                    purpose="response_repair",
+                )
+            except LLMUnavailable:
+                return findings[0][1]  # at least hand them the real facts from the first facet
+            answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
         # The model sometimes writes a search query itself into the draft; the user must
         # never hear it. Strip every facet query we issued.
         for q, _s in findings:
             answer = _strip_query_echo(answer, q)
         return answer or findings[0][1]
+
+    async def _compose_streamed(
+        self,
+        prompt: AssembledPrompt,
+        messages: "list[dict[str, str]]",
+        speak: "Callable[[str], Awaitable[None]]",
+    ) -> str:
+        """Stream the composed answer, speaking each CLAUSE the instant it completes — the
+        user hears the answer flow in small chunks (progressive delivery) rather than one block.
+        Returns the full text (for the record/memory); "" on failure so the caller falls back."""
+        text = ""
+        spoken = 0
+        try:
+            async for delta in self._llm.stream(
+                prompt.user_id,
+                messages,
+                "simple",
+                session_id=prompt.session_id,
+                model=prompt.model_override,
+                purpose="response_repair",
+            ):
+                text += delta
+                while (b := _sentence_end(text, spoken)) is not None:
+                    await self._speak_clean(text[spoken:b], speak)  # one chunk
+                    spoken = b
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:
+            return ""
+        if spoken < len(text):  # flush the final clause
+            await self._speak_clean(text[spoken:], speak)
+        return _sanitize_tags(_strip_fences(text)).strip().strip('"')
 
     async def _run_searches(
         self,
@@ -1069,25 +1168,28 @@ class ResponseGenerator:
             except Exception:  # any streaming hiccup → safe fallback (never worse)
                 logger.exception("streaming reply failed; falling back to non-streamed")
 
-        # A live-info query means a lookup is coming, which takes a beat. Kick off the
-        # search+answer, and CONCURRENTLY generate a short, natural, topic-aware ack and
-        # stream it in chunks so the user hears "on it" instantly instead of dead air.
-        # The ack is generated fresh every time (never a canned line) and fully overlaps
-        # the lookup, so it adds no wall-clock (user feedback: dynamic, chunked, no static).
+        # A live-info query is delivered in INCREMENTAL CHUNKS (§8.12, user request): (1) an
+        # instant fact-free interjection, then (2) the answer STREAMED clause-by-clause as it's
+        # composed from the search — so the user hears small pieces flowing, not one block after
+        # a long wait. The interjection plays while the search runs.
         if (
             _requires_live_lookup(prompt)
             and can_use_tools
             and prompt.session_id not in self._pending
         ):
-            gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             try:
-                await self._dynamic_ack(prompt, speak, is_lookup=True)
+                await self._dynamic_ack(prompt, speak, is_lookup=True)  # chunk 1
             except PROGRAMMING_ERRORS:
-                gen_task.cancel()
-                raise  # F3: a bug in the ack path was previously swallowed silently
+                raise
             except Exception:  # the filler is optional — the answer is not
                 logger.warning("dynamic ack failed; continuing to the answer", exc_info=True)
-            result = await gen_task
+            # Search + STREAM the answer in chunks straight to TTS (already spoken on return).
+            grounded = await self._capability_repair(prompt, dispatcher, context, speak=speak)  # type: ignore[arg-type]
+            if grounded:
+                # Record/gate the full text for memory + trace; the chunks were already spoken.
+                return await self._finish_gated(prompt, grounded)
+            # Search couldn't ground it → the full path handles the honest miss, spoken once.
+            result = await self.generate(prompt, dispatcher, context)
         elif can_use_tools and prompt.session_id not in self._pending:
             # Any slow, substantive turn (a tool call or complex reasoning) that isn't a live
             # lookup — the branch that used to run in DEAD AIR. Fill the beat with a brief,
@@ -1471,7 +1573,7 @@ class ResponseGenerator:
         # Brevity/register enforcement (#4): the draft prompt cannot make gemini-flash brief,
         # so compress a too-long / greeting-card reply HERE — after self-reflection, before it is
         # spoken. Fires only when the reply actually reads verbose, so short replies are untouched.
-        if self._self_reflect and _reads_verbose(text):
+        if self._self_reflect and _reads_verbose(text, prompt.utterance):
             text = await self._rewrite_brief(prompt, text)
 
         # Enforcement runs HERE, not only in `_finish`, because `_stream_reply` speaks the
