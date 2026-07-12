@@ -19,9 +19,13 @@ interface Line {
   ts: number; // when this line was said (ms epoch), for the message timestamp
 }
 
-// "08:42:36 PM" — clock time a line was said, shown under each message.
+// "08:42:36 PM" — clock time a line was said, in the VIEWER'S local timezone. The backend
+// stamps events with time.time() (epoch SECONDS); JS Date wants milliseconds, so scale up when
+// the value looks like seconds (< year ~33658). toLocaleTimeString then renders in the browser's
+// own timezone — i.e. the user's actual local time (Nepal, etc.), not the server's.
 function fmtTime(ts: number): string {
-  return new Date(ts).toLocaleTimeString([], {
+  const ms = ts < 1e12 ? ts * 1000 : ts;
+  return new Date(ms).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
     second: "2-digit",
