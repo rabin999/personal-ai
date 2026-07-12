@@ -8,26 +8,26 @@ interface Props {
   onGoogle: () => void;
 }
 
-// What the companion can DO — concrete capabilities, so a first-time visitor knows
-// what they're signing into (user request: explain the app on the login page).
-const FEATURES: { icon: ReactNode; title: string; body: string }[] = [
+// What the companion can DO — concrete capabilities, each with a small illustration,
+// so a first-time visitor knows what they're signing into.
+const FEATURES: { art: ReactNode; title: string; body: string }[] = [
   {
-    icon: <MicIcon />,
+    art: <ArtTalk />,
     title: "Just talk, naturally",
     body: "Voice-first — speak like you would to a friend, interrupt anytime, and hear a warm human reply.",
   },
   {
-    icon: <MemoryIcon />,
+    art: <ArtRemember />,
     title: "Remembers you",
     body: "Recalls your past chats, preferences, and the people and details that matter — across sessions.",
   },
   {
-    icon: <ThinkIcon />,
+    art: <ArtThink />,
     title: "Thinks before it replies",
     body: "Reasons about what you said and checks its own answer — not a reflexive chatbot one-liner.",
   },
   {
-    icon: <SearchIcon />,
+    art: <ArtSearch />,
     title: "Looks things up live",
     body: "Searches the web for current news and facts when you ask, and tells you honestly when it doesn't know.",
   },
@@ -41,25 +41,25 @@ const BENEFITS = [
   "Private to you — your data is yours alone, and you can wipe it anytime",
 ];
 
-// Real sign-in / sign-up screen. Google SSO is the single flow (the callback creates the
-// account on first login and signs in on return). Two-column story + sign-in on desktop,
-// cleanly stacked and scrollable on mobile; theme-aware, no horizontal overflow.
+// Real sign-in / sign-up screen. Split-screen: the story scrolls on the LEFT, the sign-in
+// panel stays FIXED on the right (only the left side scrolls). Theme-aware; on mobile it
+// cleanly stacks into one scrolling column.
 export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
   const failed = new URLSearchParams(window.location.search).get("error");
 
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900 lg:flex dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900 lg:flex lg:h-screen lg:overflow-hidden dark:bg-slate-950 dark:text-slate-100">
       <div className="absolute right-4 top-4 z-20">
         <ThemeToggle pref={themePref} onChange={onThemeChange} />
       </div>
 
-      {/* ── LEFT: the story — what it is / can do / how it helps ───────────── */}
-      <section className="relative order-2 flex flex-1 items-start overflow-hidden px-6 py-16 sm:px-10 lg:order-1 lg:items-center lg:px-16 lg:py-20 xl:px-24">
+      {/* ── LEFT: the story — what it is / can do / how it helps (scrolls) ─── */}
+      <section className="relative order-2 flex flex-1 items-start overflow-x-hidden px-6 py-16 sm:px-10 lg:order-1 lg:h-screen lg:overflow-y-auto lg:px-16 lg:py-20 xl:px-24">
         {/* Soft decorative glow for depth (Dribbble-ish), kept subtle */}
         <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-sky-400/20 blur-3xl dark:bg-sky-500/10" />
         <div className="pointer-events-none absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-cyan-300/15 blur-3xl dark:bg-cyan-500/10" />
 
-        <div className="relative mx-auto w-full max-w-2xl lg:mx-0">
+        <div className="relative mx-auto w-full max-w-2xl lg:mx-0 lg:my-auto">
           {/* Eyebrow: brand */}
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/25">
@@ -94,9 +94,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
                 key={f.title}
                 className="group rounded-2xl border border-slate-200/80 bg-white/70 p-5 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-lg hover:shadow-sky-600/5 dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-sky-500/40"
               >
-                <div className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-400">
-                  {f.icon}
-                </div>
+                <div className="mb-3 h-14 w-14">{f.art}</div>
                 <h3 className="text-base font-semibold">{f.title}</h3>
                 <p className="mt-1.5 text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
                   {f.body}
@@ -122,8 +120,8 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
         </div>
       </section>
 
-      {/* ── RIGHT: isolated sign-in panel ─────────────────────────────────── */}
-      <section className="relative order-1 flex items-center justify-center border-slate-200 bg-white px-5 py-12 lg:sticky lg:top-0 lg:order-2 lg:h-screen lg:w-[26rem] lg:shrink-0 lg:self-start lg:border-l xl:w-[28rem] dark:border-slate-800 dark:bg-slate-900/60">
+      {/* ── RIGHT: isolated sign-in panel (fixed, does not scroll) ─────────── */}
+      <section className="relative order-1 flex items-center justify-center border-slate-200 bg-white px-5 py-12 lg:order-2 lg:h-screen lg:w-[26rem] lg:shrink-0 lg:border-l xl:w-[28rem] dark:border-slate-800 dark:bg-slate-900/60">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(14,165,233,0.10),transparent_70%)]" />
         <div className="relative w-full max-w-sm">
           {/* Brand mark lives in the sign-in panel so the mobile-first (top) view is branded */}
@@ -162,10 +160,67 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
   );
 }
 
+// ── Feature illustrations (inline SVG — self-contained, theme-safe) ──────────
+function ArtTalk() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-full w-full" fill="none">
+      <circle cx="32" cy="32" r="30" fill="#0ea5e9" opacity="0.10" />
+      <rect x="12" y="15" width="31" height="23" rx="8" fill="#0ea5e9" />
+      <path d="M20 37l-3 8 10-6z" fill="#0ea5e9" />
+      <circle cx="22" cy="26" r="2.4" fill="#fff" />
+      <circle cx="29" cy="26" r="2.4" fill="#fff" />
+      <circle cx="36" cy="26" r="2.4" fill="#fff" />
+      <rect x="34" y="31" width="20" height="15" rx="6" fill="#22d3ee" />
+      <path d="M49 45l2 6-8-4z" fill="#22d3ee" />
+    </svg>
+  );
+}
+function ArtRemember() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-full w-full" fill="none">
+      <circle cx="32" cy="32" r="30" fill="#0ea5e9" opacity="0.10" />
+      <rect x="17" y="13" width="27" height="38" rx="6" fill="#fff" stroke="#0ea5e9" strokeWidth="2.6" />
+      <path d="M33 13h9a2 2 0 0 1 2 2v13l-6.5-4-6.5 4V15a2 2 0 0 1 2-2z" fill="#22d3ee" />
+      <line x1="23" y1="36" x2="38" y2="36" stroke="#93c5fd" strokeWidth="2.6" strokeLinecap="round" />
+      <line x1="23" y1="43" x2="34" y2="43" stroke="#93c5fd" strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+function ArtThink() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-full w-full" fill="none">
+      <circle cx="32" cy="32" r="30" fill="#0ea5e9" opacity="0.10" />
+      <circle cx="32" cy="27" r="12" fill="#0ea5e9" />
+      <path d="M27 36h10v3a2 2 0 0 1-2 2h-6a2 2 0 0 1-2-2v-3z" fill="#0369a1" />
+      <line x1="29" y1="44" x2="35" y2="44" stroke="#0369a1" strokeWidth="2.4" strokeLinecap="round" />
+      <path d="M32 21l1.6 3.6L37 26l-3.4 1.4L32 31l-1.6-3.6L27 26l3.4-1.4L32 21z" fill="#fff" />
+      <g stroke="#22d3ee" strokeWidth="2.4" strokeLinecap="round">
+        <line x1="16" y1="27" x2="12" y2="27" />
+        <line x1="52" y1="27" x2="48" y2="27" />
+        <line x1="20" y1="15" x2="17" y2="12" />
+        <line x1="44" y1="15" x2="47" y2="12" />
+      </g>
+    </svg>
+  );
+}
+function ArtSearch() {
+  return (
+    <svg viewBox="0 0 64 64" className="h-full w-full" fill="none">
+      <circle cx="32" cy="32" r="30" fill="#0ea5e9" opacity="0.10" />
+      <circle cx="28" cy="28" r="13" fill="#e0f2fe" stroke="#0ea5e9" strokeWidth="3" />
+      <g stroke="#22d3ee" strokeWidth="2" fill="none">
+        <ellipse cx="28" cy="28" rx="5.5" ry="13" />
+        <line x1="15" y1="28" x2="41" y2="28" />
+      </g>
+      <line x1="38" y1="38" x2="49" y2="49" stroke="#0ea5e9" strokeWidth="4.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ── Brand mark ───────────────────────────────────────────────────────────────
 // Asaathi's own logo: a speech bubble (a companion you talk WITH) cradling a voice
 // waveform (voice-first). Distinct to this app — not a stock mic. Inline SVG.
-function AsaathiMark({ className = "h-7 w-7" }: { className?: string }) {
+export function AsaathiMark({ className = "h-7 w-7" }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -188,39 +243,6 @@ function AsaathiMark({ className = "h-7 w-7" }: { className?: string }) {
   );
 }
 
-// ── Icons (inline so there's no external asset / network fetch) ──────────────
-function MicIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-      <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
-    </svg>
-  );
-}
-function MemoryIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 5a3 3 0 0 0-3 3 3 3 0 0 0-1 5.83V16a3 3 0 0 0 4 2.83A3 3 0 0 0 16 16v-2.17A3 3 0 0 0 15 8a3 3 0 0 0-3-3z" />
-      <path d="M9 8h.01M15 8h.01M9 13h6" />
-    </svg>
-  );
-}
-function ThinkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="m12 3 1.9 4.3L18 9l-4.1 1.7L12 15l-1.9-4.3L6 9l4.1-1.7L12 3z" />
-      <path d="M18 15l.8 1.8 1.9.7-1.9.8-.8 1.7-.8-1.7-1.9-.8 1.9-.7.8-1.8z" />
-    </svg>
-  );
-}
-function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="7" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
-  );
-}
 function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" className="mt-0.5 h-4 w-4 shrink-0 text-sky-500 dark:text-sky-400" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">

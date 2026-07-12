@@ -4,6 +4,7 @@ import { AppHeader } from "./components/AppHeader";
 import { ProfileButton } from "./components/ProfileButton";
 import CompanionPage from "./pages/CompanionPage";
 import LoginPage from "./pages/LoginPage";
+import HowItWorksPage from "./pages/HowItWorksPage";
 import ConversationsPage from "./pages/ConversationsPage";
 import ConversationDetailPage from "./pages/ConversationDetailPage";
 import MemoriesPage from "./pages/MemoriesPage";
@@ -25,6 +26,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        {/* URL-only explainer — intentionally NOT linked from any nav/button. */}
+        <Route path="/how-it-works" element={<HowItWorksPage />} />
         <Route path="/" element={<RequireAuth><CompanionPage /></RequireAuth>} />
         <Route
           path="/conversations"
