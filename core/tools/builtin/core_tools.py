@@ -154,6 +154,9 @@ def register_core_tools(
                 "subject + any key entities/place from the conversation (resolve pronouns "
                 "into the concrete subject from the conversation), and add "
                 "'latest' or 'today' for unfolding events. Don't send a vague fragment. "
+                "For a MULTI-PART question (an event PLUS its cause PLUS a related rule/number), "
+                "do ONE focused search per distinct fact and call this again for each — then "
+                "answer once you have enough; don't cram several facets into one vague query. "
                 'args: {"query": str}'
             ),
             type="background",

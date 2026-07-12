@@ -31,3 +31,20 @@ async def test_current_pm_of_nepal_searches_and_is_not_stale(real_turns) -> None
     assert not any(m in low for m in _STALE_MARKERS), (
         f"shipped a stale predecessor as the answer: {result.reply}"
     )
+
+
+async def test_complex_question_triggers_multiple_focused_searches(real_turns) -> None:
+    """A multi-faceted news question ("someone burned and died in Nepal over a fine")
+    should fetch SEVERAL relevant facts — the incident, the cause, the related fine — not
+    one shallow lookup. Drives the real engine and inspects the searches actually issued."""
+    session = f"multi_{uuid.uuid4().hex[:6]}"
+    q = "hey did you hear someone burned and died in Nepal recently over some fine? what happened?"
+    result = await real_turns.say(q, session)
+
+    print(f"\n[progressive-search] Q: {q}\n  A: {result.reply}")
+    print(f"  searches ({len(result.searches)}): {result.searches}")
+
+    assert result.reply.strip(), "empty reply on a complex question"
+    assert result.searches, "a live news question was answered without any web search"
+    low = result.reply.lower()
+    assert not any(m in low for m in _REFUSAL_MARKERS), f"false refusal shipped: {result.reply}"

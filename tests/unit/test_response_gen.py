@@ -415,3 +415,28 @@ async def test_speak_clean_never_speaks_banned_filler_but_keeps_the_lead_in() ->
     assert "Hey Nandi" in spoken  # the warm lead-in was kept
     assert "Good to see you" in spoken
     assert "Hey, what's up?" in spoken  # informal opener is fine, untouched
+
+
+def test_clean_query_list_parses_bounds_and_dedupes() -> None:
+    """Progressive-search planning must never fan out into unbounded searches: the
+    model's one-per-line reply is stripped of bullets/numbering/quotes, de-duplicated,
+    and capped."""
+    from core.reasoning.response_gen import _clean_query_list
+
+    text = (
+        "1. burned death Nepal recent news\n"
+        '- "cause of death Nepal fire incident"\n'
+        "* burned death Nepal recent news\n"  # duplicate
+        "new fines law Nepal 2026\n"
+        "extra tangent query\n"  # beyond the cap of 3
+    )
+    out = _clean_query_list(text)
+    assert out == [
+        "burned death Nepal recent news",
+        "cause of death Nepal fire incident",
+        "new fines law Nepal 2026",
+    ]
+    # "ENOUGH" is a control token, never a query.
+    assert _clean_query_list("ENOUGH") == []
+    # A simple single-line question yields exactly one query.
+    assert _clean_query_list("who is the current PM of Nepal") == ["who is the current PM of Nepal"]

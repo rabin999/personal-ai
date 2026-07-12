@@ -125,6 +125,30 @@ _NOT_FOUND_TEXT = (
     "I had a look and couldn't find anything current on that — I'd rather tell you that than guess."
 )
 
+# Progressive retrieval (RETRIEVAL_POLICY.md): a complex question ("someone burned and
+# died in Nepal over a fine") needs SEVERAL focused lookups — the specific incident, the
+# cause, the related rule/number — not one shallow query. This plans the distinct facets to
+# fetch; a simple question yields one query. The model decides how much is genuinely needed.
+_MULTIQ_PLAN_INSTRUCTIONS = (
+    "The user asked something that may take MORE THAN ONE web search to answer well.\n"
+    "List the DISTINCT facts you would need to look up to answer it fully — each as a "
+    "focused, SELF-CONTAINED search query (standalone, no pronouns, name the concrete "
+    "subject/place). Include ONLY what is genuinely needed:\n"
+    "- a simple factual question needs ONE query;\n"
+    "- a multi-part or news question may need 2-3 (e.g. the specific event; its cause; the "
+    "related rule/number/official response).\n"
+    "Do NOT pad with tangents. Reply with ONE query per line, at most 3, most important first."
+)
+# After the first round of searches, decide whether an ESSENTIAL facet is still missing and,
+# only if so, name up to two more focused queries. Bounded so retrieval never loops forever.
+_MULTIQ_GAP_INSTRUCTIONS = (
+    "You searched the web and gathered the findings below for the user's question. Decide if "
+    "an ESSENTIAL fact needed to answer them is STILL missing.\n"
+    "If the findings are enough to answer, reply with exactly: ENOUGH\n"
+    "If something essential is missing, reply with up to TWO more focused, self-contained "
+    "search queries (one per line) for JUST the missing facts — nothing already covered."
+)
+
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
 _AFFIRMATIVE = (
     "yes",
@@ -656,42 +680,26 @@ class ResponseGenerator:
         available = offered_tools(prompt, dispatcher.tools_for(context))
         if not any(t.id == "web_search" for t in available):
             return None
-        query = await self._build_search_query(prompt)
         # Carry the utterance so the search handler can tell a user-requested year from a
         # model-invented stale one when it cleans the query (see core_tools.web_search_tool).
         search_ctx = context.model_copy(update={"utterance": prompt.utterance})
-        try:
-            result = await dispatcher.run_inline(
-                ToolCall(tool_id="web_search", args={"query": query}), search_ctx
-            )
-        except Exception as exc:  # degrade gracefully — keep the model's own words
-            logger.warning("capability-repair search failed: %s", exc)
+        # PROGRESSIVE retrieval: plan the distinct facets this question needs, search them
+        # (concurrently, so N lookups cost ~one round of latency), then — only if something
+        # essential is still missing — do ONE more bounded round for the gaps. A simple
+        # question plans a single query and behaves exactly as before.
+        queries = await self._plan_search_queries(prompt)
+        findings = await self._run_searches(queries, dispatcher, search_ctx)
+        if not findings:
             return None
-        output = getattr(result, "output", {}) or {}
-        summary = str(output.get("summary") or "").strip()
-        if not summary or not output.get("found"):
-            return None
-        # Trace it the same shape a dispatcher-issued call takes, so a search forced by
-        # the backstop is countable and visible alongside the model's own tool calls.
-        self._span(
-            "tool",
-            tool="web_search",
-            phase="request",
-            mode="capability_repair",
-            args={"query": query},
-        )
-        self._span(
-            "tool",
-            tool="web_search",
-            phase="result",
-            mode="capability_repair",
-            result=summary[:300],
-        )
+        gaps = await self._missing_facets(prompt, findings)
+        if gaps:
+            findings += await self._run_searches(gaps, dispatcher, search_ctx)
+        combined = "\n\n".join(f"[{q}]\n{s}" for q, s in findings)
         try:
             completion = await self._llm.complete(
                 prompt.user_id,
                 [
-                    {"role": "system", "content": _REPAIR_INSTRUCTIONS + summary},
+                    {"role": "system", "content": _REPAIR_INSTRUCTIONS + combined},
                     {"role": "user", "content": prompt.utterance},
                 ],
                 "simple",
@@ -699,13 +707,119 @@ class ResponseGenerator:
                 purpose="response_repair",
             )
         except LLMUnavailable:
-            return summary  # at least hand them the real facts
+            return findings[0][1]  # at least hand them the real facts from the first facet
         answer = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
-        # The model sometimes writes the search query itself into the draft ("I'll check
-        # that for you right now. OP NEPSE LTP current price Nepal stock exchange The
-        # current LTP of OP is NPR 308.90..."). The user must never hear the query.
-        answer = _strip_query_echo(answer, query)
-        return answer or summary
+        # The model sometimes writes a search query itself into the draft; the user must
+        # never hear it. Strip every facet query we issued.
+        for q, _s in findings:
+            answer = _strip_query_echo(answer, q)
+        return answer or findings[0][1]
+
+    async def _run_searches(
+        self,
+        queries: "list[str]",
+        dispatcher: "ToolDispatch",
+        search_ctx: "ToolContext",
+    ) -> "list[tuple[str, str]]":
+        """Run each facet query, concurrently, returning (query, summary) for the ones that
+        found something. Concurrency keeps N lookups at ~one round of latency; a single
+        failing facet never sinks the others (each degrades to nothing, not a raise)."""
+
+        async def _one(query: str) -> "tuple[str, str] | None":
+            self._span(
+                "tool",
+                tool="web_search",
+                phase="request",
+                mode="progressive",
+                args={"query": query},
+            )
+            try:
+                result = await dispatcher.run_inline(
+                    ToolCall(tool_id="web_search", args={"query": query}), search_ctx
+                )
+            except Exception as exc:  # one facet failing must not sink the turn
+                logger.warning("progressive search facet failed (%s): %s", query, exc)
+                return None
+            output = getattr(result, "output", {}) or {}
+            summary = str(output.get("summary") or "").strip()
+            if not summary or not output.get("found"):
+                return None
+            self._span(
+                "tool", tool="web_search", phase="result", mode="progressive", result=summary[:300]
+            )
+            return (query, summary)
+
+        results = await asyncio.gather(*(_one(q) for q in queries))
+        return [r for r in results if r is not None]
+
+    async def _plan_search_queries(self, prompt: AssembledPrompt) -> "list[str]":
+        """Decompose the question into the distinct facets to look up — one focused query
+        each. A simple question yields one; a multi-part/news question yields 2-3. Degrades
+        to the single disambiguated query on any failure, so it is never worse than before."""
+        base = await self._build_search_query(prompt)
+        context_bits = [
+            prompt.sections.get(name, "").strip()
+            for name in ("entities", "facts", "project", "episodic")
+        ]
+        user_context = "\n".join(b for b in context_bits if b)[:1000]
+        user = (
+            (f"USER CONTEXT:\n{user_context}\n" if user_context else "")
+            + f"PRIMARY QUERY (already disambiguated): {base}\n"
+            + f"QUESTION: {prompt.utterance}"
+        )
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [
+                    {"role": "system", "content": _MULTIQ_PLAN_INSTRUCTIONS},
+                    {"role": "user", "content": user},
+                ],
+                "simple",
+                session_id=prompt.session_id,
+                temperature=0.0,
+                max_tokens=120,
+                reasoning={"enabled": False},
+                purpose="search_plan",
+            )
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:  # planning is an enhancement — fall back to the single query
+            return [base]
+        queries = _clean_query_list(completion.text)
+        return queries or [base]
+
+    async def _missing_facets(
+        self, prompt: AssembledPrompt, findings: "list[tuple[str, str]]"
+    ) -> "list[str]":
+        """Given the first round's findings, name up to two more queries for any ESSENTIAL
+        fact still missing — or none if it's enough. Bounded (one extra round) so progressive
+        retrieval can never loop; degrades to no extra searches on any failure."""
+        gathered = "\n\n".join(f"[{q}]\n{s}" for q, s in findings)
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [
+                    {"role": "system", "content": _MULTIQ_GAP_INSTRUCTIONS},
+                    {
+                        "role": "user",
+                        "content": f"QUESTION: {prompt.utterance}\n\nFINDINGS:\n{gathered}",
+                    },
+                ],
+                "simple",
+                session_id=prompt.session_id,
+                temperature=0.0,
+                max_tokens=80,
+                reasoning={"enabled": False},
+                purpose="search_gap",
+            )
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:
+            return []
+        text = _strip_fences(completion.text).strip()
+        if not text or text.upper().startswith("ENOUGH"):
+            return []
+        return _clean_query_list(text)[:2]
 
     async def _build_search_query(self, prompt: AssembledPrompt) -> str:
         """Construct the web query from the RESOLVED INTENT + the user's own context (S2).
@@ -1722,6 +1836,20 @@ def _strip_all_tags(text: str) -> str:
     """
     cleaned = _BRACKET_TOKEN.sub("", text)
     return re.sub(r"\s{2,}", " ", cleaned).strip()
+
+
+def _clean_query_list(text: str, *, cap: int = 3) -> list[str]:
+    """Parse a model's one-query-per-line reply into clean queries: strip bullets,
+    numbering and quotes, drop empties/dupes, cap the count. Used for progressive-search
+    planning so an unbounded model reply can never fan out into unbounded searches."""
+    out: list[str] = []
+    for raw in _strip_fences(text).splitlines():
+        line = re.sub(r"^\s*(?:\d+[.)]|[-*•])\s*", "", raw).strip().strip('"').strip()
+        if line and line.upper() != "ENOUGH" and line.lower() not in {q.lower() for q in out}:
+            out.append(line)
+        if len(out) >= cap:
+            break
+    return out
 
 
 # Capability-refusal detector (brief §8.8): the whole class of bug where a weak
