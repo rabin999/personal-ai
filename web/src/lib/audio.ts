@@ -222,6 +222,11 @@ export class AudioPlayer {
   // *after* a gap → an audible click/garble between clauses. An ~120ms cushion
   // absorbs the jitter so playback stays gapless.
   private static readonly LEAD_S = 0.12;
+  // A historical-reply replay source (transcript play/stop button), tracked separately
+  // from the live playback `sources` so stopping a replay never touches a live reply.
+  private replaySource: AudioBufferSourceNode | null = null;
+  // Fired when a replay finishes or is stopped, so the UI can flip the button back to play.
+  onReplayEnd: () => void = () => {};
 
   constructor(
     private onLevel: (level: number) => void,
@@ -367,11 +372,33 @@ export class AudioPlayer {
     const channel = buffer.getChannelData(0);
     for (let i = 0; i < merged.length; i++) channel[i] = merged[i] / 0x8000;
     if (this.ctx.state === "suspended") void this.ctx.resume();
+    this.stopReplay(); // only one replay at a time
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
     src.playbackRate.value = this.speed; // C7: replay at the user's rate too
     src.connect(this.analyser); // → analyser (meter tap) → speaker route
+    this.replaySource = src;
+    src.onended = () => {
+      if (this.replaySource === src) {
+        this.replaySource = null;
+        this.onReplayEnd();
+      }
+    };
     src.start();
+  }
+
+  /** Stop a transcript replay in progress (the play→stop button). No-op if none. */
+  stopReplay(): void {
+    if (!this.replaySource) return;
+    const s = this.replaySource;
+    this.replaySource = null;
+    try {
+      s.onended = null;
+      s.stop();
+    } catch {
+      /* already stopped */
+    }
+    this.onReplayEnd();
   }
 
   /** Release the media-routing element + audio context (call on disconnect). */

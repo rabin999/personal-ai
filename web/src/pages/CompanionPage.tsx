@@ -51,6 +51,7 @@ export default function CompanionPage() {
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [level, setLevel] = useState(0);
   const [turns, setTurns] = useState<TurnGroup[]>([]);
+  const [playingIndex, setPlayingIndex] = useState<number | null>(null); // transcript replay
   const [profileOpen, setProfileOpen] = useState(false);
   const [traceOpen, setTraceOpen] = useState(false); // mobile trace drawer
   const [showSetup, setShowSetup] = useState(false); // mobile: collapse config so the orb + Start are the hero
@@ -204,6 +205,8 @@ export default function CompanionPage() {
         }
       },
     );
+    // A transcript replay finished (or was stopped) → flip the play/stop button back.
+    playerRef.current.onReplayEnd = () => setPlayingIndex(null);
 
     // Identity rides the session cookie sent on the WS handshake (Google SSO);
     // the first message only carries the voice selection.
@@ -356,8 +359,14 @@ export default function CompanionPage() {
     if (next) setLevel(0);
   };
 
-  const replay = (turn: TurnGroup) =>
-    playerRef.current?.replay(turn.audio, sampleRateRef.current);
+  const replay = (turn: TurnGroup) => {
+    void playerRef.current?.replay(turn.audio, sampleRateRef.current);
+    setPlayingIndex(turn.index);
+  };
+  const stopReplay = () => {
+    playerRef.current?.stopReplay();
+    setPlayingIndex(null);
+  };
 
   const signOut = async () => {
     setProfileOpen(false);
@@ -569,6 +578,8 @@ export default function CompanionPage() {
       <TraceLog
         turns={turns}
         onReplay={replay}
+        onStopReplay={stopReplay}
+        playingIndex={playingIndex}
         mobileOpen={traceOpen}
         onCloseMobile={() => setTraceOpen(false)}
       />

@@ -4,6 +4,8 @@ import type { TurnGroup } from "../lib/types";
 interface Props {
   turns: TurnGroup[];
   onReplay: (turn: TurnGroup) => void;
+  onStopReplay: () => void;
+  playingIndex: number | null; // turn.index currently replaying, or null
   mobileOpen: boolean;
   onCloseMobile: () => void;
 }
@@ -14,6 +16,17 @@ interface Line {
   turn: TurnGroup;
   role: "user" | "companion";
   text: string;
+  ts: number; // when this line was said (ms epoch), for the message timestamp
+}
+
+// "08:42:36 PM" — clock time a line was said, shown under each message.
+function fmtTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
 }
 
 // LIVE conversation transcript: nothing but what was SAID, streaming in as it
@@ -21,7 +34,14 @@ interface Line {
 // moment it's generated. No pipeline steps here; the rich per-step trace lives
 // on the dedicated Trace page. Desktop: a persistent right column; mobile: a
 // slide-in drawer toggled from the header.
-export function TraceLog({ turns, onReplay, mobileOpen, onCloseMobile }: Props) {
+export function TraceLog({
+  turns,
+  onReplay,
+  onStopReplay,
+  playingIndex,
+  mobileOpen,
+  onCloseMobile,
+}: Props) {
   // Flatten grouped turns into an ordered list of spoken lines: the user line
   // (from STT) then the companion line (from the reply), turn by turn. Each
   // appears as soon as its source event has arrived — a true live transcript.
@@ -30,8 +50,18 @@ export function TraceLog({ turns, onReplay, mobileOpen, onCloseMobile }: Props) 
     for (const t of [...turns].sort((a, b) => a.index - b.index)) {
       const heard = clean(t.heard);
       const reply = clean(t.reply);
-      if (heard) out.push({ key: `${t.index}-u`, turn: t, role: "user", text: heard });
-      if (reply) out.push({ key: `${t.index}-c`, turn: t, role: "companion", text: reply });
+      const at = (stage: string) =>
+        t.events.find((e) => e.stage === stage)?.ts ?? t.events[t.events.length - 1]?.ts ?? Date.now();
+      if (heard)
+        out.push({ key: `${t.index}-u`, turn: t, role: "user", text: heard, ts: at("stt") });
+      if (reply)
+        out.push({
+          key: `${t.index}-c`,
+          turn: t,
+          role: "companion",
+          text: reply,
+          ts: at("response"),
+        });
     }
     return out;
   }, [turns]);
@@ -92,7 +122,13 @@ export function TraceLog({ turns, onReplay, mobileOpen, onCloseMobile }: Props) 
             </div>
           )}
           {lines.map((line) => (
-            <Bubble key={line.key} line={line} onReplay={onReplay} />
+            <Bubble
+            key={line.key}
+            line={line}
+            onReplay={onReplay}
+            onStopReplay={onStopReplay}
+            playing={playingIndex === line.turn.index}
+          />
           ))}
           <div ref={endRef} />
         </div>
@@ -103,7 +139,17 @@ export function TraceLog({ turns, onReplay, mobileOpen, onCloseMobile }: Props) 
 
 // One transcript line. User: right-aligned, sky. Companion: left-aligned,
 // neutral, with an unobtrusive replay control when its audio is available.
-function Bubble({ line, onReplay }: { line: Line; onReplay: (turn: TurnGroup) => void }) {
+function Bubble({
+  line,
+  onReplay,
+  onStopReplay,
+  playing,
+}: {
+  line: Line;
+  onReplay: (turn: TurnGroup) => void;
+  onStopReplay: () => void;
+  playing: boolean;
+}) {
   const isUser = line.role === "user";
   const canReplay = !isUser && line.turn.audio.length > 0;
   return (
@@ -125,16 +171,24 @@ function Bubble({ line, onReplay }: { line: Line; onReplay: (turn: TurnGroup) =>
         {line.text}
         {canReplay && (
           <button
-            onClick={() => onReplay(line.turn)}
-            title="Replay reply audio"
-            aria-label="Replay reply audio"
+            onClick={() => (playing ? onStopReplay() : onReplay(line.turn))}
+            title={playing ? "Stop playback" : "Replay reply audio"}
+            aria-label={playing ? "Stop playback" : "Replay reply audio"}
             className="ml-2 inline-flex translate-y-px items-center text-emerald-600 transition-colors hover:text-emerald-500 dark:text-emerald-400"
           >
             <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-              <path d="M8 5v14l11-7z" />
+              {playing ? <rect x="6" y="6" width="12" height="12" rx="1.5" /> : <path d="M8 5v14l11-7z" />}
             </svg>
           </button>
         )}
+        {/* clock time the line was said — bottom-right, its own line */}
+        <div
+          className={`mt-1 text-right text-[10px] tabular-nums ${
+            isUser ? "text-sky-100/80" : "text-slate-400 dark:text-slate-500"
+          }`}
+        >
+          {fmtTime(line.ts)}
+        </div>
       </div>
     </div>
   );

@@ -413,14 +413,24 @@ function StepBody({ event }: { event: TraceEvent }) {
 }
 
 function Cell({ value }: { value: unknown }) {
+  const [expanded, setExpanded] = useState(false);
   if (Array.isArray(value)) {
     const items = value.filter((x) => str(x).trim());
     if (items.length === 0) return <span className="text-neutral-500 dark:text-neutral-400">none</span>;
-    const shown = items.slice(0, 6);
+    const shown = expanded ? items : items.slice(0, 6);
     return (
       <ul className="space-y-0.5">
         {shown.map((it, i) => <li key={i} className="break-words">• {clean(str(it))}</li>)}
-        {items.length > shown.length && <li className="text-neutral-500 dark:text-neutral-400">+{items.length - shown.length} more</li>}
+        {items.length > 6 && (
+          <li>
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="text-neutral-500 underline hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
+            >
+              {expanded ? "show less" : `+${items.length - 6} more`}
+            </button>
+          </li>
+        )}
       </ul>
     );
   }
