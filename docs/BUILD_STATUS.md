@@ -26,7 +26,7 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 > in-process bg task); the **serving edge** refreshes an in-memory copy on a slow tick; the live
 > `_dynamic_ack`/`_emit_progress_ack`/greeting read is a **pure in-memory dict lookup**. Global
 > (fillers carry no user data → isolation-trivial). Config (§3.6): `phrases_dynamic_enabled`,
-> `phrase_regen_interval_s` (40s), `phrase_refresh_interval_s` (20s), `phrase_pool_size`,
+> `phrase_regen_interval_s` (10 min), `phrase_refresh_interval_s` (5 min), `phrase_pool_size`,
 > `phrase_regen_tier`. **Proven by real call** (`scripts/phrase_regen_probe.py`): regenerated 63
 > lines across 8 pools, **all pass the live scrubber**, on-brand & varied; **hot-path pick = 0.12 µs**
 > (no I/O) after applying the fresh pools. 22 unit tests (`tests/unit/test_phrase_catalog.py` +

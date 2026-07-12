@@ -143,10 +143,11 @@ class Settings(BaseSettings):
     # tick; the filler pick stays a pure in-memory lookup with the static defaults as fallback.
     phrases_dynamic_enabled: bool = True
     # How often the WORKER regenerates the pools (one cheap LLM call). Low = fresher but more
-    # cost/trace noise; a regen no user perceives faster than this is wasted spend.
-    phrase_regen_interval_s: float = 40.0
+    # cost/trace noise; a regen no user perceives faster than this is wasted spend — 10 min is
+    # plenty for variety without continuous spend.
+    phrase_regen_interval_s: float = 600.0
     # How often the SERVING EDGE reloads the stored pools into its in-memory catalog.
-    phrase_refresh_interval_s: float = 20.0
+    phrase_refresh_interval_s: float = 300.0
     # Lines generated per pool, and the (cheap) tier the regenerator runs on.
     phrase_pool_size: int = 8
     phrase_regen_tier: str = "simple"

@@ -75,7 +75,7 @@ const STAGES: { emoji: string; title: string; body: string }[] = [
   { emoji: "🧩", title: "Assemble context", body: "Before reasoning, it READS your memory — recent turns, facts, people, preferences — and builds the prompt." },
   { emoji: "🧠", title: "Think (ReAct)", body: "It reasons about what you meant, decides if it needs memory or a web search, acts, and observes — then answers." },
   { emoji: "🪞", title: "Self-reflect", body: "It critiques its own draft — warm, human, honest, on-topic — and revises before a single word is spoken." },
-  { emoji: "🗣️", title: "Speak the reply", body: "The answer is streamed back as voice in small chunks — a quick reaction first, then the full reply." },
+  { emoji: "🗣️", title: "Speak the reply", body: "The answer is streamed back as voice in small chunks — a quick reaction first, then the full reply. If a lookup runs long, it keeps you in the loop instead of going quiet." },
   { emoji: "💾", title: "Remember (after)", body: "Off your conversation, it extracts what's worth keeping and consolidates it into long-term memory." },
 ];
 
@@ -132,7 +132,7 @@ const PRINCIPLES: { title: string; body: string }[] = [
   { title: "Reflects on itself", body: "It judges its own draft against a warm, human standard and fixes it before speaking." },
   { title: "Remembers properly", body: "It decides what's worth storing and where, and never re-saves something it's only recalling." },
   { title: "Private & isolated", body: "Every read and write is scoped to you alone — and you can wipe everything anytime." },
-  { title: "Fast, in chunks", body: "A quick reaction lands in a few seconds; the full answer streams right after." },
+  { title: "Fast, in chunks", body: "A quick reaction lands in a few seconds; the full answer streams right after — and it never leaves you in silence while it works." },
   { title: "Honest", body: "It looks things up when it should, and says plainly when it doesn't know." },
 ];
 
