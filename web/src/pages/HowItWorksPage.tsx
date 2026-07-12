@@ -139,7 +139,7 @@ const PRINCIPLES: { title: string; body: string }[] = [
 export default function HowItWorksPage() {
   const { pref, resolved, setPref } = useTheme();
   return (
-    <div className="min-h-[100dvh] bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Top bar */}
       <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-slate-50/80 backdrop-blur-md dark:border-slate-800/70 dark:bg-slate-950/70">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4 sm:px-8">
@@ -168,17 +168,19 @@ export default function HowItWorksPage() {
           then reply — and learns from the conversation afterward. Here's the whole system.
         </p>
 
-        {/* Architecture diagram */}
-        <section className="mt-12">
-          <SectionTitle n="01" title="System architecture" />
-          <div className="mt-6 rounded-3xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900/50">
-            <Mermaid chart={ARCHITECTURE} dark={resolved === "dark"} />
+        {/* Architecture diagram — full-bleed so it uses the whole page width */}
+        <section className="relative left-1/2 mt-12 w-screen -translate-x-1/2 px-5 sm:px-8">
+          <div className="mx-auto max-w-[1600px]">
+            <SectionTitle n="01" title="System architecture" />
+            <div className="mt-6 rounded-3xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900/50">
+              <Mermaid chart={ARCHITECTURE} dark={resolved === "dark"} />
+            </div>
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              The voice runtime handles the real-time conversation; the reasoning core decides
+              what to say; memory makes it personal. Everything money-costing is logged and never
+              blocks your reply — slow work goes to background workers.
+            </p>
           </div>
-          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-            The voice runtime handles the real-time conversation; the reasoning core decides
-            what to say; memory makes it personal. Everything money-costing is logged and never
-            blocks your reply — slow work goes to background workers.
-          </p>
         </section>
 
         {/* Per-turn timeline */}

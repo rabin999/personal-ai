@@ -176,6 +176,12 @@ def _mount_web(app: FastAPI) -> None:
     async def _worklet() -> FileResponse:
         return FileResponse(WEB_DIST / "pcm-worklet.js", media_type="text/javascript")
 
+    @app.get("/og.png")
+    async def _og() -> FileResponse:
+        # Social-share preview image (LinkedIn/WhatsApp/Twitter). Served explicitly so the
+        # SPA fallback doesn't return index.html for it.
+        return FileResponse(WEB_DIST / "og.png", media_type="image/png")
+
     @app.get("/")
     async def _index() -> FileResponse:
         return FileResponse(WEB_DIST / "index.html")

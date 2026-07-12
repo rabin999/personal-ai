@@ -104,7 +104,7 @@ export function Mermaid({ chart, dark }: { chart: string; dark: boolean }) {
         onPointerMove={onMove}
         onPointerUp={onUp}
         onPointerLeave={onUp}
-        className={`h-[440px] touch-none select-none overflow-hidden rounded-xl bg-slate-50/40 sm:h-[560px] dark:bg-slate-950/30 ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
+        className={`h-[460px] touch-none select-none overflow-hidden rounded-xl bg-slate-50/40 sm:h-[620px] lg:h-[720px] dark:bg-slate-950/30 ${dragging ? "cursor-grabbing" : "cursor-grab"}`}
       >
         <div
           className="flex h-full w-full items-center justify-center"

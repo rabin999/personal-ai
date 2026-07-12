@@ -48,7 +48,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
   const failed = new URLSearchParams(window.location.search).get("error");
 
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900 lg:flex lg:h-screen lg:overflow-hidden dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative flex min-h-[100dvh] flex-col overflow-x-hidden bg-slate-50 text-slate-900 lg:h-screen lg:flex-row lg:overflow-hidden dark:bg-slate-950 dark:text-slate-100">
       <div className="absolute right-4 top-4 z-20">
         <ThemeToggle pref={themePref} onChange={onThemeChange} />
       </div>
@@ -59,7 +59,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
         <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-sky-400/20 blur-3xl dark:bg-sky-500/10" />
         <div className="pointer-events-none absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-cyan-300/15 blur-3xl dark:bg-cyan-500/10" />
 
-        <div className="relative mx-auto w-full max-w-2xl lg:mx-0 lg:my-auto">
+        <div className="relative mx-auto w-full max-w-2xl lg:my-auto">
           {/* What it can do */}
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
             What{" "}
@@ -114,7 +114,7 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
       </section>
 
       {/* ── RIGHT: isolated sign-in panel (fixed, does not scroll) ─────────── */}
-      <section className="relative order-1 flex items-center justify-center border-slate-200 bg-white px-5 py-12 lg:order-2 lg:h-screen lg:w-[26rem] lg:shrink-0 lg:border-l xl:w-[28rem] dark:border-slate-800 dark:bg-slate-900/60">
+      <section className="relative order-1 flex items-center justify-center border-slate-200 bg-white px-5 py-12 lg:order-2 lg:h-screen lg:w-[35%] lg:min-w-[22rem] lg:shrink-0 lg:border-l dark:border-slate-800 dark:bg-slate-900/60">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(14,165,233,0.10),transparent_70%)]" />
         <div className="relative w-full max-w-sm">
           {/* Brand + intro live WITH the sign-in (this side), so the auth panel carries the

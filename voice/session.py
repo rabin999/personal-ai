@@ -69,9 +69,12 @@ _DELIVERY_POLL_FRAMES = 40
 # Rolling pre-roll ring buffer (spec §19 fix): the VAD gate only fires
 # ``speech_start`` after START_FRAMES of consecutive speech, so the frames that
 # opened the gate — plus the quiet onset before them — precede the event. Without
-# a pre-roll the first phoneme/word is clipped. 10 frames ≈ 320ms at 512-sample
-# (32ms) frames, comfortably covering the START_FRAMES(3) gate latency + onset.
-_PREROLL_FRAMES = 10
+# a pre-roll the first phoneme/word is clipped. 320ms (10 frames) turned out too
+# short when the onset is SOFT or the confidence ramps slowly (VAD fires late), so
+# the first word still clipped sometimes (user report). ~576ms (18 frames at 32ms)
+# covers a slow/soft onset with margin; the extra leading near-silence costs STT
+# nothing (it trims quiet lead-in itself).
+_PREROLL_FRAMES = 18
 # Barge-in needs *sustained* fresh speech, not the 3-frame gate onset: a brief
 # residual-echo blip (even with browser AEC on) can flip 3 frames and falsely
 # cancel the reply. ~8 frames ≈ 256ms — longer than an echo transient, shorter
