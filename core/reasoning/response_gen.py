@@ -625,6 +625,23 @@ class ResponseGenerator:
             offered = offered_tools(prompt, dispatcher.tools_for(context))
             action_ids = {t.id for t in offered if t.type == "action"}
 
+        # FAST PATH for a clearly-VOLATILE turn (officeholder / price / news / weather): the
+        # model CANNOT answer it from memory, so making it draft-judge-refuse-retry-plain first
+        # is ~13s of pure wasted latency (real trace on "who is the PM of Nepal"). Go STRAIGHT
+        # to search + compose. Only when tools are available, nothing's pending, and the turn is
+        # unambiguously volatile — otherwise fall through to the normal reasoning loop.
+        if (
+            can_use_tools
+            and prompt.session_id not in self._pending
+            and not prompt.suppress_live_search
+            and (prompt.needs_live_info is True or is_volatile_question(prompt.utterance))
+        ):
+            direct = await self._capability_repair(prompt, dispatcher, context)  # type: ignore[arg-type]
+            if direct:
+                self._span("reasoning", node="volatile_fast_path", grounded=True)
+                return await self._finish_gated(prompt, direct)
+            # search couldn't ground it → fall through to the normal loop (honest fallback etc.)
+
         last_draft = ""
         turn: LLMTurn | None = None
         seen_calls: set[str] = set()  # dedup identical tool calls within the turn
@@ -789,17 +806,23 @@ class ResponseGenerator:
         # Carry the utterance so the search handler can tell a user-requested year from a
         # model-invented stale one when it cleans the query (see core_tools.web_search_tool).
         search_ctx = context.model_copy(update={"utterance": prompt.utterance})
-        # PROGRESSIVE retrieval: plan the distinct facets this question needs, search them
-        # (concurrently, so N lookups cost ~one round of latency), then — only if something
-        # essential is still missing — do ONE more bounded round for the gaps. A simple
-        # question plans a single query and behaves exactly as before.
-        queries = await self._plan_search_queries(prompt)
+        # A SINGLE-FACT question ("who is the PM of Nepal?") needs ONE search — running the
+        # multi-facet planner + gap round on it fired ~4-5 searches, each fetching+extracting
+        # pages, which is why a trivial officeholder lookup made 13 retrieval_extract calls and
+        # took 40s+ (real trace). Only pay for progressive multi-search when the question is
+        # genuinely multi-part. Same quality on simple facts, a fraction of the LLM calls.
+        multipart = _is_multipart_question(prompt.utterance)
+        if multipart:
+            queries = await self._plan_search_queries(prompt)
+        else:
+            queries = [await self._build_search_query(prompt)]
         findings = await self._run_searches(queries, dispatcher, search_ctx)
         if not findings:
             return None
-        gaps = await self._missing_facets(prompt, findings)
-        if gaps:
-            findings += await self._run_searches(gaps, dispatcher, search_ctx)
+        if multipart:  # gap-fill only matters when several facets were needed
+            gaps = await self._missing_facets(prompt, findings)
+            if gaps:
+                findings += await self._run_searches(gaps, dispatcher, search_ctx)
         combined = "\n\n".join(f"[{q}]\n{s}" for q, s in findings)
         try:
             completion = await self._llm.complete(
@@ -2011,6 +2034,23 @@ def _strip_stale_datestamp(text: str) -> str:
 
     cleaned = re.sub(r"\s{2,}", " ", _STALE_DATESTAMP.sub(_drop, text))
     return cleaned.lstrip(" ,;—-").strip()
+
+
+_MULTIPART = re.compile(
+    r"\b(and also|as well as|along with|and what|and how|and when|and who|and where|and why|"
+    r"breakdown|each of|both of|list of|top \d|pros and cons|compare|versus|\bvs\b)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_multipart_question(utterance: str) -> bool:
+    """Cheap heuristic: does this need SEVERAL distinct facts (→ progressive multi-search), or
+    is it ONE fact (→ a single search)? Single-fact is the common, latency-critical case, and
+    running the multi-facet planner on it is what made a trivial 'who is the PM' lookup fan out
+    into ~13 page extractions. Multi-part = more than one question, or an explicit conjunction/
+    comparison/list ask."""
+    u = (utterance or "").strip()
+    return u.count("?") > 1 or bool(_MULTIPART.search(u))
 
 
 def _clean_query_list(text: str, *, cap: int = 3) -> list[str]:

@@ -227,33 +227,29 @@ class _SearchDispatcher:
 
 
 async def test_a_volatile_turn_still_searches_when_the_judgment_json_breaks() -> None:
-    """The fallback used to `return` before the capability backstop, so a JSON glitch on a
-    volatile turn shipped the model's TRAINING-DATA answer.
-
-    Observed live while fixing D-14: "who is the current prime minister of Nepal?" ->
-    both judgment attempts returned malformed JSON -> the plain-reply fallback answered
-    "Balendra Shah is still the Prime Minister", confidently, with zero searches. It happened
-    to be right. Nothing in the engine knew that.
+    """A volatile turn takes the FAST PATH: it goes straight to search + compose and never
+    runs the judgment round-trip — so it can't answer from training data no matter what the
+    model would have drafted (the old D-14 bug: broken judgment JSON -> a confident stale
+    "Balendra Shah is still the PM" with zero searches), AND it saves the wasted judgment
+    latency. The compose is the first LLM call here (`_build_search_query` makes none with no
+    entities/context to disambiguate against).
     """
     from core.tools.registry import ToolContext
 
     dispatcher = _SearchDispatcher({"found": True, "summary": "Sushila Karki is the current PM."})
     ctx = ToolContext(user_id=USER, session_id="enf")
-    # `_build_search_query` makes no LLM call here: with no resolved entities and no user
-    # context there is nothing to disambiguate the query against, so it uses the utterance.
     llm = FakeLLM(
         [
-            "not json",  # judgment attempt 1
-            "still not json",  # judgment attempt 2
-            "Balendra Shah is still the Prime Minister.",  # _plain_reply, from training data
-            "Right now it's Sushila Karki.",  # response_repair, from the search result
+            "Right now it's Sushila Karki.",  # response_repair, composed from the search result
         ]
     )
     prompt = _prompt("who is the current prime minister of Nepal?", needs_live_info=True)
 
     result = await _generator(llm, _SpanLog()).generate(prompt, dispatcher, ctx)
 
-    assert dispatcher.inline_calls, "a volatile turn answered from training data after a glitch"
+    assert dispatcher.inline_calls, (
+        "a volatile turn answered from training data instead of searching"
+    )
     assert "Sushila Karki" in result.final_text
 
 
