@@ -151,14 +151,19 @@ class Pipeline:
 def _build_stt(settings: Settings, ledger: CostLedger) -> STT:
     """Pick the STT engine (#18): xAI Grok STT (vendor-grade) or local faster-whisper
     ($0, default), by ``settings.stt_engine`` — one wiring line, ``core/`` untouched."""
-    if settings.stt_engine == "grok":
-        logger.info("STT engine: Grok STT (xAI)")
-        return GrokSTT(settings, ledger=ledger)
-    return FasterWhisperSTT(
+    whisper = FasterWhisperSTT(
         model_size=settings.stt_model_size,
         final_model_size=settings.stt_final_model_size,
         ledger=ledger,
     )
+    if settings.stt_engine == "grok":
+        # Grok STT (fast, vendor-grade) with local faster-whisper as a fallback: xAI STT
+        # intermittently ReadTimeouts from the box, and without a net a dropped utterance reads
+        # as "it didn't hear me" + a long wait (real prod incident). preload() warms the whisper
+        # fallback so it answers fast the first time Grok fails.
+        logger.info("STT engine: Grok STT (xAI) with local whisper fallback")
+        return GrokSTT(settings, ledger=ledger, fallback=whisper)
+    return whisper
 
 
 async def build_pipeline(settings: Settings) -> Pipeline:

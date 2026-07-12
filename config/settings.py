@@ -89,7 +89,10 @@ class Settings(BaseSettings):
     stt_model_size: str = "base"  # streaming-partial (fast draft) model
     stt_final_model_size: str = "small"  # final-transcript (accurate) model
     stt_language: str = "en"  # Grok STT language hint (empty = auto-detect)
-    stt_timeout_s: float = 20.0  # Grok STT request timeout
+    # Grok STT request timeout. Kept SHORT so an intermittently-slow xAI endpoint fails FAST to
+    # the local whisper fallback instead of hanging the turn (a 20s timeout meant a stalled
+    # transcription froze the whole turn — real prod incident); a healthy call returns in ~1.5s.
+    stt_timeout_s: float = 8.0
 
     # SER (§22): self-hosted emotion2vec microservice on a small GPU box
     # (design doc §17.3) — separate service, its own hardware. Empty means

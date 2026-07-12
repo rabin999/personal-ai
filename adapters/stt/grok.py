@@ -21,9 +21,15 @@ import httpx
 
 from config.settings import Settings
 from core.cost import CostEntry, CostLedger, CostMetadata
-from ports.stt import TranscriptPiece, WordConfidence
+from ports.stt import STT, TranscriptPiece, WordConfidence
 
 logger = logging.getLogger(__name__)
+
+
+async def _once(pcm: bytes) -> AsyncIterator[bytes]:
+    """Re-present an already-buffered utterance as a one-shot frame stream for the fallback."""
+    yield pcm
+
 
 SAMPLE_RATE = 16_000  # PCM16 mono the pipeline feeds us
 _COST_PER_SECOND_USD = 0.10 / 3600  # xAI Grok STT batch pricing ($0.10/hr)
@@ -36,12 +42,25 @@ _DEFAULT_WORD_CONFIDENCE = 0.95
 class GrokSTT:
     name = "grok-stt"
 
-    def __init__(self, settings: Settings, ledger: CostLedger | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        ledger: CostLedger | None = None,
+        fallback: "STT | None" = None,
+    ) -> None:
         self._settings = settings
         self._ledger = ledger
+        # Local safety net: xAI STT intermittently ReadTimeouts from the box, and a dropped
+        # utterance reads to the user as "it didn't hear me" plus a long wait. When the remote
+        # call fails we transcribe the SAME audio locally instead of losing the turn.
+        self._fallback = fallback
 
     def preload(self) -> None:
-        """No-op: Grok STT is a remote HTTP endpoint, so there is no model to warm."""
+        """Warm the local FALLBACK model at startup so the first time Grok times out, the
+        fallback answers fast instead of paying a cold model load then (Grok itself is remote —
+        nothing to warm)."""
+        if self._fallback is not None:
+            self._fallback.preload()
 
     async def transcribe_stream(
         self,
@@ -51,19 +70,30 @@ class GrokSTT:
         user_id: str,
         session_id: str | None = None,
     ) -> AsyncIterator[TranscriptPiece]:
-        """Buffer the utterance's PCM frames, transcribe once, yield the final piece."""
+        """Buffer the utterance's PCM frames, transcribe once, yield the final piece. If the
+        remote call FAILS (timeout/error), transcribe the same audio with the local fallback so
+        the utterance is never silently dropped."""
         buffer = bytearray()
         async for frame in frames:
             buffer.extend(frame)
         if not buffer:
             return
-        text, words, _dur = await self._transcribe(bytes(buffer), vocab, user_id, session_id)
+        result = await self._transcribe(bytes(buffer), vocab, user_id, session_id)
+        if result is None:  # remote failure → don't drop the turn, transcribe locally
+            if self._fallback is not None:
+                logger.warning("Grok STT failed; falling back to local whisper for this utterance")
+                async for piece in self._fallback.transcribe_stream(
+                    _once(bytes(buffer)), vocab, user_id=user_id, session_id=session_id
+                ):
+                    yield piece
+            return
+        text, words, _dur = result
         if text.strip():
             yield TranscriptPiece(text=text.strip(), words=words, is_final=True)
 
     async def _transcribe(
         self, pcm: bytes, vocab: list[str] | None, user_id: str, session_id: str | None
-    ) -> tuple[str, list[WordConfidence], float]:
+    ) -> tuple[str, list[WordConfidence], float] | None:
         # Multipart: raw PCM16 needs audio_format + sample_rate; keyterm biases the
         # user's own names/terms (from Semantic Memory, §20 vocab-boost) so it stops
         # mangling names it's never heard. A dict with a LIST value for keyterm is how
@@ -89,8 +119,8 @@ class GrokSTT:
                 resp.raise_for_status()
                 body = resp.json()
         except Exception:
-            logger.exception("Grok STT request failed")
-            return "", [], 0.0
+            logger.warning("Grok STT request failed (will fall back locally if configured)")
+            return None  # signal FAILURE (vs a genuinely empty transcript) → caller falls back
         text = str(body.get("text") or "")
         duration = float(body.get("duration") or (len(pcm) / (SAMPLE_RATE * 2)))
         words = [
