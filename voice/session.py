@@ -417,6 +417,9 @@ class VoiceSession:
                     lull_ms += frame_ms
                     if idle_frames >= _DELIVERY_POLL_FRAMES and self._delivery is not None:
                         idle_frames = 0
+                        # New turn index so a delivered result is its OWN transcript line,
+                        # never overwriting the previous companion message (user report).
+                        self._trace.begin_turn()
                         turn = asyncio.create_task(self._deliver_pending(out))
                     # §3.6.4: after a long unbroken silence — the user having ALREADY
                     # spoken this session — gently check in ONCE (dynamic, never canned).
@@ -429,6 +432,9 @@ class VoiceSession:
                         and lull_ms >= _LULL_MS
                     ):
                         self._lull_checked = True
+                        # New turn index so the check-in is its OWN transcript line, not an
+                        # overwrite of the last companion reply (user report).
+                        self._trace.begin_turn()
                         turn = asyncio.create_task(self._lull_check_in(out))
                     continue  # §19 idle gate: nothing paid runs during silence
                 idle_frames = 0
