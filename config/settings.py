@@ -122,6 +122,21 @@ class Settings(BaseSettings):
     # pause before we summarize-and-offer instead of dumping them (anti-machine-gun).
     delivery_max_interjections: int = 2
 
+    # Progress fillers (§8.12): a slow turn speaks ONE interjection ("let me check")
+    # then the search/generation runs in silence — on a 13s live lookup the user hears
+    # a long dead-air gap (report). While the answer is still being produced, if the
+    # audio has been silent this many seconds, speak a short honest progress line
+    # ("still on it — almost there") to keep the user in the loop, then re-arm. Every
+    # real spoken chunk resets the clock, so it never talks over the streaming answer.
+    progress_filler_gap_s: float = 3.0
+    # Cap on how many progress lines a single turn may emit (so a very slow turn can't
+    # turn into a comedic "still searching…" loop). 0 disables progress fillers.
+    progress_filler_max: int = 5
+    # After this many BRIEF progress nudges ("still on it"), the tone softens to a gentle
+    # apology ("so sorry it's taking longer than expected — I'm trying my best") — the way a
+    # person eases up when they've kept you waiting longer than they promised.
+    progress_filler_apology_after: int = 2
+
     # Deferred memory routing (Item 9): when True (default), the live turn only
     # writes the raw log; the episodic/semantic/procedural routing is done by the
     # background worker via the raw-log cursor (kills double-writes, off the latency

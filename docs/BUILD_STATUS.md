@@ -11,8 +11,29 @@ isolation + cost-logging + ports-boundary checks pass, and `uv run ruff check &&
 && lint-imports && pytest` is green. (See CLAUDE.md §6.) Track test levels per module
 with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 
-**Last updated:** 2026-07-11
+**Last updated:** 2026-07-12
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
+
+> ## 2026-07-12 — Progress fillers on slow turns (§8.12 "keep the user in the loop"). ✅ (not deployed)
+> A slow voice turn spoke ONE interjection ("On it — let me check.") then ran the search/generation
+> in **silence** — on a real live lookup that was **8.2 s of dead air** before the answer (user report).
+> Added a silence watchdog in `ResponseGenerator._speak_with_fillers`: while the answer is still being
+> produced, each time the audio has been quiet past `progress_filler_gap_s` (config, default 3.0s) it
+> speaks a short, honest, **fact-free** progress line (`_ACK_PROGRESS_*`, e.g. "Still on it — almost
+> there.") and flushes it as its own utterance, capped at `progress_filler_max` (default 5). The tone
+> **escalates with the wait**: the first `progress_filler_apology_after` (default 2) nudges are brisk,
+> then it softens to a gentle apology (`_ACK_PROGRESS_APOLOGY`, "Sorry for the wait — I'm trying my best
+> to pin this down.") the way a person eases up when they've kept you waiting longer than promised. Every
+> real spoken chunk resets the clock (via a tracked `speak`), and a `tts_lock` serializes filler-vs-answer
+> on the shared TTS session, so a filler **never talks over the streaming answer**. Deterministic templates
+> (never LLM-written) for the same reason the first ack is — a filler must not state a result we don't
+> have yet. Wired into both slow branches of `generate_spoken` (live-info search + agentic `generate`).
+> **Proven by real conversation** (`scripts/progress_filler_probe.py`): "who is the PM of Nepal?" plays
+> `ack@3ms → progress@3004ms → progress@6008ms → apology@9012ms → answer@9589ms`; trace purposes
+> `['ack','search_query','progress_ack','progress_ack','search_summarize','progress_ack','response_repair']`.
+> 8 new unit tests (`tests/unit/test_progress_fillers.py`); ruff/mypy(changed)/lint-imports green; affected
+> unit suites green. Config over code (§3.6): `progress_filler_gap_s` / `progress_filler_max` /
+> `progress_filler_apology_after` in settings.
 
 > ## 2026-07-11 (later) — Verified Retrieval (Crawl4AI) shipped to PRODUCTION. ✅
 > New standalone module `adapters/retrieval/` behind `ports/retrieval.py` (`VerifiedResult`):

@@ -323,6 +323,9 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         max_turn_cost_usd=settings.max_turn_cost_usd,
         reasoning_tier=settings.reasoning_tier,  # A2: mature model for the main turn
         prompts=prompts,  # F13: managed self-reflection prompt (Langfuse or bundled)
+        progress_filler_gap_s=settings.progress_filler_gap_s,  # §8.12: fill dead air on slow turns
+        progress_filler_max=settings.progress_filler_max,
+        progress_filler_apology_after=settings.progress_filler_apology_after,
     )
     # A1/A1.5: the reasoning engine sits behind the Orchestrator port. LangGraph is
     # one adapter (imported only in adapters/), the native loop is the other —

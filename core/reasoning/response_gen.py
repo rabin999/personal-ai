@@ -19,9 +19,10 @@ import json
 import logging
 import random
 import re
+import time
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, Protocol
+from typing import Annotated, Any, Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
 
@@ -49,6 +50,8 @@ from ports.prompt import PromptProvider
 logger = logging.getLogger(__name__)
 
 Action = Literal["respond", "clarify", "curious_followup", "disambiguate"]
+
+T = TypeVar("T")
 
 # Agentic tool loop (§8/§14.11): max tool round-trips before the model must answer.
 MAX_TOOL_STEPS = 4
@@ -206,6 +209,37 @@ _ACK_RECALL = (
     "Give me a sec to dig through our conversation.",
     "Let me pull up what we discussed.",
     "One moment — checking back over our chats.",
+)
+
+# PROGRESS fillers (§8.12): the FIRST interjection ("let me check") already played; these
+# fill the SECOND (and later) beats when the search/generation is still running and the audio
+# has gone quiet. Honest and fact-free — never state a result we don't have yet (same reason
+# the acks are curated, not LLM-written: a template can't hallucinate a contradicting fact).
+_ACK_PROGRESS_LOOKUP = (
+    "Still on it — almost there.",
+    "Still digging, one more sec.",
+    "Still pulling it together — hang tight.",
+    "Nearly there, still gathering the details.",
+    "Still searching — won't be long.",
+    "Just checking a couple more sources.",
+)
+_ACK_PROGRESS_THINKING = (
+    "Still thinking it through.",
+    "Almost got it — one more beat.",
+    "Still piecing it together.",
+    "Hang tight, nearly there.",
+    "Still working it out — won't be long.",
+)
+# When the wait really drags (after the first couple of brief nudges), soften the tone:
+# apologize gently and reassure that we're still trying — the way a person would if they'd
+# kept you waiting longer than promised. Used for the LATER progress beats, not the first.
+_ACK_PROGRESS_APOLOGY = (
+    "Sorry, this is taking longer than I expected — still on it.",
+    "Apologies for the wait — I'm digging as fast as I can.",
+    "So sorry it's taking a while — I want to get this right.",
+    "Sorry to keep you waiting — almost there, I promise.",
+    "Sorry for the wait — I'm trying my best to pin this down.",
+    "Still going — sorry it's slow, I want to get it right for you.",
 )
 
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
@@ -636,6 +670,9 @@ class ResponseGenerator:
         max_turn_cost_usd: float = 0.50,
         reasoning_tier: Tier = "complex",
         prompts: "PromptProvider | None" = None,
+        progress_filler_gap_s: float = 3.0,
+        progress_filler_max: int = 5,
+        progress_filler_apology_after: int = 2,
     ) -> None:
         self._llm = llm
         self._self_model = self_model
@@ -644,6 +681,12 @@ class ResponseGenerator:
         self._logs = logs
         self._prompts = prompts  # F13: runtime-managed self-reflection prompt
         self._max_turn_cost_usd = max_turn_cost_usd
+        # §8.12: keep the user in the loop through a slow turn's dead air. After the
+        # first interjection, a progress line fires each time the audio has been silent
+        # this long while the answer is still being produced (see _fill_silence).
+        self._progress_gap_s = progress_filler_gap_s
+        self._progress_max = progress_filler_max
+        self._progress_apology_after = progress_filler_apology_after
         # A2: the main user-facing reasoning turn runs on this (mature) tier, not the
         # flashy fast tier — quality of thought over speed.
         self._reasoning_tier = reasoning_tier
@@ -1261,7 +1304,16 @@ class ResponseGenerator:
             except Exception:  # the filler is optional — the answer is not
                 logger.warning("dynamic ack failed; continuing to the answer", exc_info=True)
             # Search + STREAM the answer in chunks straight to TTS (already spoken on return).
-            grounded = await self._capability_repair(prompt, dispatcher, context, speak=speak)  # type: ignore[arg-type]
+            # The (slow) search runs silent between the first ack and the first answer chunk;
+            # `_speak_with_fillers` keeps the user in the loop with progress lines in that gap,
+            # and the streamed clauses reset its silence clock so it never talks over them.
+            grounded = await self._speak_with_fillers(
+                prompt,
+                speak,
+                flush,
+                lambda s: self._capability_repair(prompt, dispatcher, context, speak=s),  # type: ignore[arg-type]
+                is_lookup=True,
+            )
             if grounded:
                 # Record/gate the full text for memory + trace; the chunks were already spoken.
                 return await self._finish_gated(prompt, grounded)
@@ -1288,7 +1340,12 @@ class ResponseGenerator:
                 raise
             except Exception:
                 logger.warning("reaction filler failed; continuing to the answer", exc_info=True)
-            result = await gen_task
+            # `generate()` is non-streaming (the reply is spoken once below) and already running
+            # concurrently — keep the user in the loop with progress lines if it drags past the
+            # gap. `generate` ignores the tracked speak (nothing streams until the reply below).
+            result = await self._speak_with_fillers(
+                prompt, speak, flush, lambda _s: gen_task, is_lookup=False
+            )
         else:
             result = await self.generate(prompt, dispatcher, context)
         await speak(result.voice_text or result.final_text)
@@ -1326,6 +1383,108 @@ class ResponseGenerator:
         self._last_ack[prompt.session_id] = line
         self._span("llm", purpose="ack", ack=line, deterministic=True)
         await self._speak_clean(line, speak)
+
+    async def _emit_progress_ack(
+        self,
+        prompt: AssembledPrompt,
+        speak: "Callable[[str], Awaitable[None]]",
+        *,
+        is_lookup: bool,
+        emitted: int = 0,
+    ) -> None:
+        """Speak ONE short honest progress line ("still on it — almost there") during a slow
+        turn's dead air — the beat AFTER the first interjection, when the search/generation is
+        still running (§8.12). Same design as `_dynamic_ack`: a curated, fact-free, zero-cost
+        template (never LLM-written, so it can't state a result we don't have yet). Avoids
+        repeating the session's previous ack. Traced as `purpose=progress_ack`.
+
+        ``emitted`` is how many progress lines this turn has already spoken: once it reaches
+        ``_progress_apology_after``, the tone SOFTENS from a brisk nudge to a gentle apology
+        ("so sorry it's taking longer than expected — I'm trying my best"), the way a person
+        eases up when they've kept you waiting longer than promised."""
+        pool: tuple[str, ...]
+        if emitted >= self._progress_apology_after:
+            pool = _ACK_PROGRESS_APOLOGY  # the wait has really dragged — be gentle
+        else:
+            pool = _ACK_PROGRESS_LOOKUP if is_lookup else _ACK_PROGRESS_THINKING
+        last = self._last_ack.get(prompt.session_id)
+        choices = [c for c in pool if c != last] or list(pool)
+        line = random.choice(choices)
+        self._last_ack[prompt.session_id] = line
+        self._span("llm", purpose="progress_ack", ack=line, deterministic=True)
+        await self._speak_clean(line, speak)
+
+    async def _speak_with_fillers(
+        self,
+        prompt: AssembledPrompt,
+        speak: "Callable[[str], Awaitable[None]]",
+        flush: "Callable[[], Awaitable[None]] | None",
+        make_work: "Callable[[Callable[[str], Awaitable[None]]], Awaitable[T]]",
+        *,
+        is_lookup: bool,
+    ) -> "T":
+        """Run the real search/generation while keeping the user in the loop through its dead
+        air (§8.12).
+
+        ``make_work`` is handed a *tracked* speak and returns the awaitable that does the real
+        work (a live search that streams the answer, or the agentic generation). A watchdog
+        runs alongside: each time the audio has been silent for ``_progress_gap_s`` while the
+        work is still running, it speaks a short honest progress line (`_emit_progress_ack`)
+        and flushes it as its own utterance. Every real spoken chunk goes through the tracked
+        speak and resets the silence clock — so a progress line only fires in a genuine gap and
+        NEVER talks over the answer as it streams. Capped at ``_progress_max`` lines so a very
+        slow turn can't loop. The watchdog is always cancelled when the work completes (or
+        raises)."""
+        last_spoke = time.monotonic()
+        # Serialize ALL TTS access: a progress filler (speak + flush, which retires and reopens
+        # the TTS session) must never interleave with the answer streaming clause-by-clause on
+        # the same session — asyncio can resume the work task mid-flush otherwise. The lock
+        # makes each a critical section, so a filler only ever plays in a true gap.
+        tts_lock = asyncio.Lock()
+
+        async def tracked(text: str) -> None:
+            nonlocal last_spoke
+            async with tts_lock:
+                last_spoke = time.monotonic()
+                await speak(text)
+
+        if self._progress_max <= 0 or self._progress_gap_s <= 0:
+            return await make_work(tracked)  # progress fillers disabled by config
+
+        async def watch() -> None:
+            nonlocal last_spoke
+            emitted = 0
+            while emitted < self._progress_max:
+                remaining = self._progress_gap_s - (time.monotonic() - last_spoke)
+                if remaining > 0:
+                    await asyncio.sleep(remaining)
+                    continue  # something may have been spoken while we waited → re-check
+                try:
+                    async with tts_lock:
+                        # A real chunk may have landed while we waited for the lock — don't
+                        # speak a filler on top of a turn that just started answering.
+                        if time.monotonic() - last_spoke < self._progress_gap_s:
+                            continue
+                        await self._emit_progress_ack(
+                            prompt, speak, is_lookup=is_lookup, emitted=emitted
+                        )
+                        if flush is not None:
+                            await flush()
+                        last_spoke = time.monotonic()
+                except PROGRAMMING_ERRORS:
+                    raise
+                except Exception:  # a filler is optional — the answer is not
+                    logger.warning("progress filler failed; continuing", exc_info=True)
+                    return
+                emitted += 1
+
+        work_task = asyncio.ensure_future(make_work(tracked))
+        watch_task = asyncio.create_task(watch())
+        try:
+            return await work_task
+        finally:
+            watch_task.cancel()
+            await asyncio.gather(watch_task, return_exceptions=True)
 
     async def _stream_reply(
         self,
