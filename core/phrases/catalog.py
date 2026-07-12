@@ -10,6 +10,7 @@ falls back to the hand-written defaults, so `get` can never return empty.
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 
 from core.phrases.defaults import DEFAULT_POOLS, POOL_SPECS, PoolSpec
 
@@ -25,6 +26,11 @@ class PhraseCatalog:
         # A private copy so a caller's dict can't mutate us after construction.
         self._defaults: dict[str, tuple[str, ...]] = dict(DEFAULT_POOLS)
         self._pools: dict[str, tuple[str, ...]] = dict(self._defaults)
+        # In-memory use counts, keyed (pool, line). Incremented on the hot path (a plain dict
+        # bump — no I/O) and periodically DRAINED to the shared store by the edge refresher, so
+        # the worker can refresh the lines the user has actually worn out. Kept here, not in the
+        # store, precisely so counting never touches the network on the turn.
+        self._uses: dict[tuple[str, str], int] = defaultdict(int)
         if pools:
             self.apply(pools)
 
@@ -51,6 +57,18 @@ class PhraseCatalog:
             if clean:
                 merged[name] = clean
         self._pools = merged  # single-reference swap → readers never see a half-applied set
+
+    def record_use(self, pool: str, line: str) -> None:
+        """Count that ``line`` from ``pool`` was just spoken. A plain in-memory increment — safe
+        on the hot path; the counts are flushed to the shared store off-path (see drain_uses)."""
+        self._uses[(pool, line)] += 1
+
+    def drain_uses(self) -> dict[tuple[str, str], int]:
+        """Return the accumulated use counts and clear them (the edge flushes these to the store
+        so the worker can act on them, then starts a fresh local tally)."""
+        drained = dict(self._uses)
+        self._uses.clear()
+        return drained
 
     def snapshot(self) -> dict[str, list[str]]:
         """The current pools as plain lists — for the store to serialize."""

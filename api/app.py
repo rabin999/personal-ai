@@ -127,6 +127,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
         )
         if settings.run_worker_in_process:
+            from core.phrases.refresh import refresh_worn_forever
+
             bg_tasks.append(
                 asyncio.create_task(
                     regenerate_forever(
@@ -134,6 +136,17 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
                         pipeline.phrase_store,
                         pipeline.phrases,
                         settings.phrase_regen_interval_s,
+                    )
+                )
+            )
+            bg_tasks.append(
+                asyncio.create_task(
+                    refresh_worn_forever(
+                        pipeline.phrase_generator,
+                        pipeline.phrase_store,
+                        pipeline.phrases,
+                        settings.phrase_use_threshold,
+                        settings.phrase_use_check_interval_s,
                     )
                 )
             )

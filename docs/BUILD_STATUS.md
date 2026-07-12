@@ -14,7 +14,21 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-12
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
-> ## 2026-07-12 (later) — Dynamic phrase catalog: fillers + greetings regenerated in the background. ✅ (not deployed)
+> ## 2026-07-12 (latest) — Usage-driven phrase refresh: replace the lines the user wore out. ✅
+> On top of the dynamic catalog below, refresh is now **demand-driven** instead of a blind timer.
+> The live pick records an **in-memory** use count (a plain dict bump — still ~0.12 µs, no I/O);
+> the edge flushes those counts to a shared Redis hash on its slow tick; the worker reads the
+> aggregate and, for each line used more than `phrase_use_threshold` (10) times, generates ONE
+> fresh replacement (`PhraseGenerator.regenerate_replacements`, same scrubber, distinct from the
+> current lines), swaps it in **1:1 so the pool keeps its size and its fresher lines**, and resets
+> that line's count. A line with no available replacement stays put (retried next tick — never
+> silently dropped). The all-pools regeneration is kept only as a **daily floor** so rarely-heard
+> lines still drift. Idle-cheap: no uses → no regeneration. **Proven by real call**
+> (`scripts/phrase_worn_probe.py`): a line at 11 uses is replaced by one fresh scrubber-valid line,
+> the other 5 untouched, size preserved, count reset. 28 unit tests (`test_phrase_catalog.py`).
+> Config (§3.6): `phrase_use_threshold` (10), `phrase_use_check_interval_s` (5 min). Not deployed.
+
+> ## 2026-07-12 (later) — Dynamic phrase catalog: fillers + greetings regenerated in the background. ✅ (deployed eecbe58)
 > The interjection/progress/greeting pools were static forever. Now they're **periodically
 > regenerated off-path** so they don't feel canned — with a hard guarantee the voice turn never
 > waits on it. New `core/phrases/` (`PhraseCatalog` in-memory holder seeded from
@@ -26,7 +40,7 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 > in-process bg task); the **serving edge** refreshes an in-memory copy on a slow tick; the live
 > `_dynamic_ack`/`_emit_progress_ack`/greeting read is a **pure in-memory dict lookup**. Global
 > (fillers carry no user data → isolation-trivial). Config (§3.6): `phrases_dynamic_enabled`,
-> `phrase_regen_interval_s` (10 min), `phrase_refresh_interval_s` (5 min), `phrase_pool_size`,
+> `phrase_regen_interval_s` (daily floor), `phrase_refresh_interval_s` (5 min), `phrase_pool_size`,
 > `phrase_regen_tier`. **Proven by real call** (`scripts/phrase_regen_probe.py`): regenerated 63
 > lines across 8 pools, **all pass the live scrubber**, on-brand & varied; **hot-path pick = 0.12 µs**
 > (no I/O) after applying the fresh pools. 22 unit tests (`tests/unit/test_phrase_catalog.py` +

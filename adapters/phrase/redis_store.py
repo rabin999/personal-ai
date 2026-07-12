@@ -28,6 +28,9 @@ class RedisPhraseStore:
         self._redis: aioredis.Redis = aioredis.from_url(settings.redis_url, decode_responses=True)
         ns = namespace or settings.queue_namespace
         self._key = f"{ns}:phrases:catalog"
+        # A Redis hash of use counts: field = "pool<US>line" → count. Shared so multiple api
+        # processes tally into one place and the worker reads the aggregate.
+        self._uses_key = f"{ns}:phrases:uses"
 
     async def load(self) -> dict[str, list[str]] | None:
         try:
@@ -57,6 +60,56 @@ class RedisPhraseStore:
             await self._redis.set(self._key, payload, ex=_CATALOG_TTL_S)
         except Exception:  # a failed save just means the edge keeps its current pools
             logger.warning("phrase store save failed; catalog not updated", exc_info=True)
+
+    # (pool, line) ↔ hash field. A unit-separator can't appear in a spoken line, so it's a safe
+    # delimiter to split back on.
+    _SEP = "\x1f"
+
+    def _field(self, pool: str, line: str) -> str:
+        return f"{pool}{self._SEP}{line}"
+
+    async def bump_uses(self, counts: dict[tuple[str, str], int]) -> None:
+        if not counts:
+            return
+        try:
+            pipe = self._redis.pipeline()
+            for (pool, line), n in counts.items():
+                if n:
+                    pipe.hincrby(self._uses_key, self._field(pool, line), n)
+            # The hash outlives normal gaps but not a long idle stretch, so counts don't accrue
+            # forever against lines no longer in a pool.
+            pipe.expire(self._uses_key, _CATALOG_TTL_S)
+            await pipe.execute()
+        except Exception:  # a lost tally just delays a refresh — never fail the caller
+            logger.warning("phrase store bump_uses failed", exc_info=True)
+
+    async def used_over(self, threshold: int) -> dict[str, list[str]]:
+        try:
+            raw = await self._redis.hgetall(self._uses_key)
+        except Exception:
+            logger.warning("phrase store used_over failed", exc_info=True)
+            return {}
+        worn: dict[str, list[str]] = {}
+        for field, count in raw.items():
+            try:
+                if int(count) <= threshold:
+                    continue
+            except (TypeError, ValueError):
+                continue
+            # decode_responses=True yields str at runtime; coerce for the type-checker.
+            key = field.decode() if isinstance(field, bytes) else str(field)
+            pool, _, line = key.partition(self._SEP)
+            if line:
+                worn.setdefault(pool, []).append(line)
+        return worn
+
+    async def reset_uses(self, keys: list[tuple[str, str]]) -> None:
+        if not keys:
+            return
+        try:
+            await self._redis.hdel(self._uses_key, *[self._field(p, ln) for p, ln in keys])
+        except Exception:
+            logger.warning("phrase store reset_uses failed", exc_info=True)
 
     async def aclose(self) -> None:
         try:

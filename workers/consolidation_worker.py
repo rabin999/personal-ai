@@ -53,19 +53,33 @@ async def main() -> None:
         _route_memory_forever(pipeline),
     ]
     # §8.12: this process OWNS phrase regeneration in production (the edge only reads the store).
+    # Two drivers: usage-driven (replace lines the user wore out) + a daily floor (regenerate all).
     if pipeline.settings.phrases_dynamic_enabled:
-        from core.phrases.refresh import regenerate_forever
+        from core.phrases.refresh import refresh_worn_forever, regenerate_forever
 
+        s = pipeline.settings
+        coros.append(
+            refresh_worn_forever(
+                pipeline.phrase_generator,
+                pipeline.phrase_store,
+                pipeline.phrases,
+                s.phrase_use_threshold,
+                s.phrase_use_check_interval_s,
+            )
+        )
         coros.append(
             regenerate_forever(
                 pipeline.phrase_generator,
                 pipeline.phrase_store,
                 pipeline.phrases,
-                pipeline.settings.phrase_regen_interval_s,
+                s.phrase_regen_interval_s,
             )
         )
         logger.info(
-            "phrase regeneration running (every %.0fs)", pipeline.settings.phrase_regen_interval_s
+            "phrase refresh running (usage-driven >%d uses / %.0fs; daily floor %.0fs)",
+            s.phrase_use_threshold,
+            s.phrase_use_check_interval_s,
+            s.phrase_regen_interval_s,
         )
     try:
         await asyncio.gather(*coros)

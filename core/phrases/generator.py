@@ -165,3 +165,60 @@ class PhraseGenerator:
                 pools={k: len(v) for k, v in accepted.items()},
             )
         return accepted
+
+    async def regenerate_replacements(
+        self, pool_name: str, keep: list[str], n: int, user_id: str = "_system"
+    ) -> list[str]:
+        """Generate up to ``n`` FRESH lines for one pool to swap in for worn-out ones — used by
+        the usage-driven refresh. New lines are validated by the same scrubber and must be
+        DISTINCT from ``keep`` (the pool's current lines) so a replacement isn't a duplicate.
+        Returns [] on any provider/parse failure so the caller leaves the worn lines in place."""
+        spec = next((s for s in self._specs if s.name == pool_name), None)
+        if spec is None or n <= 0:
+            return []
+        keep_lower = {k.strip().lower() for k in keep}
+        avoid = ", ".join(f'"{k}"' for k in keep[:8])
+        kind = "spoken line" if spec.spoken else "stage direction (NOT spoken verbatim)"
+        user = (
+            f"Write {n + 2} NEW {kind}s (≤{spec.max_words} words each) for the pool "
+            f'"{spec.name}": {spec.intent}.\n'
+            f"They must be DISTINCT from these existing ones: {avoid}.\n"
+            'Return JSON shaped as {"lines": ["...", ...]}.'
+        )
+        try:
+            result = await self._llm.complete(
+                user_id,
+                [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user}],
+                self._tier,
+                response_format={"type": "json_object"},
+                temperature=1.0,
+                purpose="phrase_regen",
+            )
+        except LLMUnavailable:
+            logger.warning("phrase replace: LLM unavailable; keeping worn lines")
+            return []
+        raw = result.text.strip()
+        if raw.startswith("```"):
+            raw = raw.strip("`")
+            raw = raw[raw.find("{") : raw.rfind("}") + 1]
+        try:
+            data = json.loads(raw)
+            lines = data.get("lines", data) if isinstance(data, dict) else data
+            candidates = _dedupe_keep_order([str(x) for x in lines])
+        except (json.JSONDecodeError, TypeError, AttributeError, ValueError):
+            logger.warning("phrase replace: unparseable JSON; keeping worn lines")
+            return []
+        fresh: list[str] = []
+        for c in candidates:
+            if c.strip().lower() in keep_lower:
+                continue  # not actually new
+            ok = (
+                _acceptable_spoken(c, spec.max_words)
+                if spec.spoken
+                else 0 < len(c.split()) <= spec.max_words
+            )
+            if ok:
+                fresh.append(c.strip())
+            if len(fresh) >= n:
+                break
+        return fresh

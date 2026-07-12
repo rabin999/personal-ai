@@ -16,6 +16,7 @@ class _FakeStore:
     def __init__(self, pools: dict[str, list[str]] | None = None) -> None:
         self.saved: dict[str, list[str]] | None = pools
         self.loads = 0
+        self.uses: dict[tuple[str, str], int] = {}
 
     async def load(self) -> dict[str, list[str]] | None:
         self.loads += 1
@@ -23,6 +24,21 @@ class _FakeStore:
 
     async def save(self, pools: dict[str, list[str]]) -> None:
         self.saved = pools
+
+    async def bump_uses(self, counts: dict[tuple[str, str], int]) -> None:
+        for k, n in counts.items():
+            self.uses[k] = self.uses.get(k, 0) + n
+
+    async def used_over(self, threshold: int) -> dict[str, list[str]]:
+        worn: dict[str, list[str]] = {}
+        for (pool, line), n in self.uses.items():
+            if n > threshold:
+                worn.setdefault(pool, []).append(line)
+        return worn
+
+    async def reset_uses(self, keys: list[tuple[str, str]]) -> None:
+        for k in keys:
+            self.uses.pop(k, None)
 
 
 # ── catalog ──────────────────────────────────────────────────────────────────
@@ -142,6 +158,97 @@ async def test_regenerate_once_noop_when_generator_returns_nothing() -> None:
     assert await regenerate_once(gen, store, cat) == 0
     assert store.saved is None  # nothing persisted
     assert cat.get("ack_lookup") == DEFAULT_POOLS["ack_lookup"]  # defaults intact
+
+
+# ── usage-driven worn-line refresh ─────────────────────────────────────────────
+
+
+def test_record_use_and_drain() -> None:
+    cat = PhraseCatalog()
+    cat.record_use("ack_lookup", "Let me look that up.")
+    cat.record_use("ack_lookup", "Let me look that up.")
+    cat.record_use("progress_lookup", "Still on it — almost there.")
+    drained = cat.drain_uses()
+    assert drained[("ack_lookup", "Let me look that up.")] == 2
+    assert drained[("progress_lookup", "Still on it — almost there.")] == 1
+    assert cat.drain_uses() == {}  # cleared after draining
+
+
+async def test_replace_worn_swaps_only_the_worn_line_and_keeps_size() -> None:
+    from core.phrases.refresh import replace_worn_once
+
+    cat = PhraseCatalog()
+    original = list(DEFAULT_POOLS["ack_lookup"])
+    store = _FakeStore({"ack_lookup": list(original)})
+    worn_line = original[0]
+    store.uses = {("ack_lookup", worn_line): 11}  # over the threshold of 10
+    gen = PhraseGenerator(FakeLLM([json.dumps({"lines": ["A shiny brand-new lookup line."]})]))
+
+    n = await replace_worn_once(gen, store, cat, threshold=10)
+    assert n == 1
+    new_pool = store.saved["ack_lookup"]
+    assert len(new_pool) == len(original)  # size preserved (1:1 swap)
+    assert worn_line not in new_pool  # the worn line is gone
+    assert "A shiny brand-new lookup line." in new_pool  # the fresh one is in
+    assert all(ln in new_pool for ln in original[1:])  # the other lines were untouched
+    assert store.uses == {}  # the replaced line's count was reset
+
+
+async def test_replace_worn_keeps_worn_line_when_no_replacement() -> None:
+    """A provider hiccup (no fresh line) must leave the worn line in place and its count intact,
+    so it's retried — never silently dropped."""
+    from core.phrases.refresh import replace_worn_once
+
+    cat = PhraseCatalog()
+    original = list(DEFAULT_POOLS["ack_lookup"])
+    store = _FakeStore({"ack_lookup": list(original)})
+    worn_line = original[0]
+    store.uses = {("ack_lookup", worn_line): 11}
+    gen = PhraseGenerator(FakeLLM(["garbage not json"]))
+
+    n = await replace_worn_once(gen, store, cat, threshold=10)
+    assert n == 0
+    assert store.uses == {("ack_lookup", worn_line): 11}  # untouched → retried next tick
+
+
+async def test_replace_worn_noop_below_threshold() -> None:
+    from core.phrases.refresh import replace_worn_once
+
+    store = _FakeStore({"ack_lookup": list(DEFAULT_POOLS["ack_lookup"])})
+    store.uses = {("ack_lookup", DEFAULT_POOLS["ack_lookup"][0]): 5}  # ≤ threshold
+    gen = PhraseGenerator(FakeLLM([json.dumps({"lines": ["unused"]})]))
+    assert await replace_worn_once(gen, store, PhraseCatalog(), threshold=10) == 0
+
+
+async def test_regenerate_replacements_are_distinct_and_valid() -> None:
+    keep = list(DEFAULT_POOLS["ack_lookup"])
+    # One duplicate of an existing line, one assistant-speak, one clean new line.
+    resp = json.dumps({"lines": [keep[0], "How can I help you?", "Fresh clean lookup line."]})
+    gen = PhraseGenerator(FakeLLM([resp]))
+    out = await gen.regenerate_replacements("ack_lookup", keep=keep, n=2)
+    assert "Fresh clean lookup line." in out
+    assert keep[0] not in out  # duplicate rejected
+    assert "How can I help you?" not in out  # assistant-speak rejected
+
+
+async def test_edge_refresh_flushes_uses_to_store() -> None:
+    """One edge tick drains the catalog's in-memory use counts into the shared store."""
+    import asyncio
+
+    from core.phrases.refresh import refresh_forever
+
+    cat = PhraseCatalog()
+    cat.record_use("ack_lookup", "Let me look that up.")
+    store = _FakeStore({"ack_lookup": list(DEFAULT_POOLS["ack_lookup"])})
+    task = asyncio.create_task(refresh_forever(store, cat, interval_s=0.01))
+    for _ in range(200):
+        if store.uses.get(("ack_lookup", "Let me look that up.")):
+            break
+        await asyncio.sleep(0.005)
+    task.cancel()
+    await asyncio.gather(task, return_exceptions=True)
+    assert store.uses[("ack_lookup", "Let me look that up.")] == 1
+    assert cat.drain_uses() == {}  # counts were drained, not left to double-count
 
 
 async def test_refresh_forever_loads_store_into_catalog_once() -> None:

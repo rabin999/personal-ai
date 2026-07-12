@@ -1334,6 +1334,7 @@ class ResponseGenerator:
         choices = [c for c in pool if c != last] or list(pool)
         line = random.choice(choices)
         self._last_ack[prompt.session_id] = line
+        self._phrases.record_use(name, line)  # in-memory tally → usage-driven refresh (off-path)
         self._span("llm", purpose="ack", ack=line, deterministic=True)
         await self._speak_clean(line, speak)
 
@@ -1364,6 +1365,7 @@ class ResponseGenerator:
         choices = [c for c in pool if c != last] or list(pool)
         line = random.choice(choices)
         self._last_ack[prompt.session_id] = line
+        self._phrases.record_use(name, line)  # in-memory tally → usage-driven refresh (off-path)
         self._span("llm", purpose="progress_ack", ack=line, deterministic=True)
         await self._speak_clean(line, speak)
 

@@ -20,3 +20,16 @@ class PhraseStore(Protocol):
     async def save(self, pools: dict[str, list[str]]) -> None:
         """Persist the regenerated pools as the new shared catalog."""
         ...
+
+    async def bump_uses(self, counts: dict[tuple[str, str], int]) -> None:
+        """Add the edge's accumulated (pool, line) → count tallies to the shared use counts."""
+        ...
+
+    async def used_over(self, threshold: int) -> dict[str, list[str]]:
+        """Lines used STRICTLY MORE than ``threshold`` times, grouped by pool — the worn-out
+        lines the worker should replace."""
+        ...
+
+    async def reset_uses(self, keys: list[tuple[str, str]]) -> None:
+        """Clear the use count for these (pool, line) keys (called after a line is replaced)."""
+        ...

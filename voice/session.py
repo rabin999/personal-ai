@@ -938,6 +938,7 @@ class VoiceSession:
             note = await self._last_seen_note()
             avoid = await self._recent_greetings()
             angle = random.choice(self._phrases.get("greeting_angles") or _GREETING_ANGLES)
+            self._phrases.record_use("greeting_angles", angle)  # usage-driven refresh (off-path)
             instr = (
                 "[The user just opened the app to talk with you. Greet them first, warmly and "
                 "CASUALLY, in ONE short natural spoken line — like a friend genuinely glad they "

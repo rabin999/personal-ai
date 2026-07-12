@@ -142,12 +142,19 @@ class Settings(BaseSettings):
     # this — a worker regenerates + stores; the edge refreshes an in-memory copy on a slow
     # tick; the filler pick stays a pure in-memory lookup with the static defaults as fallback.
     phrases_dynamic_enabled: bool = True
-    # How often the WORKER regenerates the pools (one cheap LLM call). Low = fresher but more
-    # cost/trace noise; a regen no user perceives faster than this is wasted spend — 10 min is
-    # plenty for variety without continuous spend.
-    phrase_regen_interval_s: float = 600.0
-    # How often the SERVING EDGE reloads the stored pools into its in-memory catalog.
+    # The PRIMARY refresh is usage-driven (below): a line the user has actually heard past
+    # `phrase_use_threshold` times is swapped for a fresh one. This is only the daily FLOOR —
+    # regenerate every pool once a day so rarely-heard lines still drift over time.
+    phrase_regen_interval_s: float = 86_400.0
+    # How often the SERVING EDGE reloads the stored pools into its in-memory catalog AND flushes
+    # the in-memory use counts to the shared store for the worker to act on.
     phrase_refresh_interval_s: float = 300.0
+    # Usage-driven refresh: once a spoken line has been used MORE than this many times, the
+    # worker replaces just that worn-out line (keeping the pool's fresher lines) and resets its
+    # count. Demand-driven — no regeneration happens while the app is idle.
+    phrase_use_threshold: int = 10
+    # How often the WORKER checks the shared use counts and refreshes worn-out lines.
+    phrase_use_check_interval_s: float = 300.0
     # Lines generated per pool, and the (cheap) tier the regenerator runs on.
     phrase_pool_size: int = 8
     phrase_regen_tier: str = "simple"
