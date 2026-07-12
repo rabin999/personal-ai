@@ -26,17 +26,17 @@ from core.profile.models import LocaleProfile
 # 12th). Deliberately does NOT match a SCHEDULE question ("what time does the market open?",
 # "what time is the meeting?") — those are events, not the clock, and may genuinely need a lookup.
 _TIME_OF_DAY_QUERY = re.compile(
-    r"\b("
-    r"what(?:'?s| is)?\s+the\s+time"  # what's the time
-    r"|what\s+time\s+is\s+it"  # what time is it (in X)
-    r"|what\s+time\s+do\s+you\s+have"
-    r"|(?:the\s+)?(?:current|local)\s+time"  # (the) current/local time
-    r"|time\s+(?:right\s+)?now"  # time now / time right now
-    r"|(?:current\s+)?time\s+(?:in|at|of)\s+[a-z]"  # time in nepal / time at ...
-    r"|what(?:'?s| is)?\s+(?:the|today'?s)\s+date"  # what's the date / today's date
-    r"|what\s+day\s+is\s+it"  # what day is it (today)
-    r"|what(?:'?s| is)?\s+the\s+day\s+today"
-    r")\b",
+    r"\bwhat(?:'?s| is)?\s+the\s+time\b"  # what's the time
+    r"|\bwhat\s+time\s+is\s+it\b"  # what time is it (in X)
+    r"|\bwhat\s+time\s+do\s+you\s+have\b"
+    r"|\b(?:current|local)\s+time\b"  # current/local time
+    r"|\btime\s+(?:right\s+)?now\b"  # time now / time right now
+    r"|\btime\s+(?:in|at|of)\s+\w"  # time in nepal / time at ... (no trailing \b: N is mid-word)
+    r"|\bdate\s+(?:and\s+)?time\b"  # date and time / date time
+    r"|\btime\s+(?:and\s+)?date\b"  # time and date / time date
+    r"|\bwhat(?:'?s| is)?\s+(?:the\s+)?(?:current\s+|today'?s\s+)?date\b"  # what's the date
+    r"|\bwhat\s+day\s+is\s+it\b"  # what day is it (today)
+    r"|\bwhat(?:'?s| is)?\s+the\s+day\s+today\b",
     re.IGNORECASE,
 )
 
@@ -175,23 +175,34 @@ def _relative(delta_minutes: int) -> str:
     return f"{span} {direction} you"
 
 
-def world_clock(user_local: datetime, now: datetime | None = None) -> list[str]:
-    """The current local time in each common place, and its offset from the USER (D-17).
+def world_clock(user_local: datetime | None, now: datetime | None = None) -> list[str]:
+    """The current local DATE+time in each common place, and (when the USER's own timezone
+    is known) its offset from them (D-17).
 
     Timezone arithmetic is done here, in code, with `zoneinfo`. The model is handed answers,
     not a puzzle. Asked "what time is it in Spain?" at 3:04 PM Thursday, it previously replied
     "It's still just past midnight on Wednesday" (5 of 10 runs) and gave the relative offset as
     "six hours behind", "three hours behind" and "3 hours ahead" for one true value of
     3h45m behind. It was completing the prompt's worked examples, not computing.
+
+    ``user_local`` is None when the user's OWN timezone isn't known: the ABSOLUTE times are
+    still exact and are always emitted (so "what time is it in Nepal?" is answerable), just
+    without the "relative to you" note. Regression fixed: these lines used to appear only when
+    the user's tz was set, so a no-locale user asking the Nepal time got a fabricated "5:45am"
+    (the +5:45 offset read as a clock) once the web-search fallback was removed.
     """
     base = now or datetime.now(UTC)
-    user_offset = int((user_local.utcoffset() or timedelta()).total_seconds() // 60)
+    user_offset = (
+        int((user_local.utcoffset() or timedelta()).total_seconds() // 60)
+        if user_local is not None
+        else None
+    )
     lines = []
     for name, tz in _WORLD_CLOCK_PLACES:
         there = base.astimezone(ZoneInfo(tz))
-        offset = int((there.utcoffset() or timedelta()).total_seconds() // 60)
-        lines.append(
-            f"- {name}: {there.strftime('%H:%M')} on {there.strftime('%A')} "
-            f"({_relative(offset - user_offset)})"
-        )
+        line = f"- {name}: {there.strftime('%H:%M')} on {there.strftime('%A, %d %b')}"
+        if user_offset is not None:
+            offset = int((there.utcoffset() or timedelta()).total_seconds() // 60)
+            line += f" ({_relative(offset - user_offset)})"
+        lines.append(line)
     return lines

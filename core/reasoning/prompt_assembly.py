@@ -28,7 +28,13 @@ from core.memory.semantic import SemanticMemory
 from core.memory.working import Turn, WorkingMemory
 from core.profile import ProfileService, TraitDef, TraitRegistry
 from core.profile.models import LocaleProfile
-from core.reasoning.localtime import day_part, local_now, resolve_timezone, world_clock
+from core.reasoning.localtime import (
+    day_part,
+    is_time_of_day_query,
+    local_now,
+    resolve_timezone,
+    world_clock,
+)
 from core.reasoning.recall import (
     ConversationRecall,
     classify_recall,
@@ -304,7 +310,7 @@ class PromptAssembler:
         # U5/C4/C5: identity + the user's LOCAL time (+ explicit day-part) + how-to-
         # answer-them are pinned into the identity block so they're never trimmed and
         # shape every reply. The local-time signal is recorded on the trace as proof.
-        now_section, local_signal = _now_section(locale)
+        now_section, local_signal = _now_section(locale, utterance)
         if local_signal:
             ctx_signals = [*ctx_signals, local_signal]
         # Prompt caching (L6): keep the STABLE prefix (identity + how-to-answer-them)
@@ -550,13 +556,22 @@ def _prompt_version(traits: list[TraitDef]) -> str:
     return f"pt{PROMPT_TEMPLATE_VERSION}.{digest}"
 
 
-def _now_section(locale: "LocaleProfile | None" = None) -> tuple[str, str | None]:
+def _now_section(
+    locale: "LocaleProfile | None" = None, utterance: str | None = None
+) -> tuple[str, str | None]:
     """Inject the current time so the companion answers time/date questions directly
     (no flaky web lookup) and knows 'today'. Crucially (brief U5), it anchors ALL
     time-of-day references to the USER's local clock — not the server's — computing
     the user's local time + explicit day-part (morning/evening) from their timezone,
     DERIVING that timezone from city/country when the IANA field isn't set. When the
-    local time truly can't be determined, it forbids guessing a time-of-day.
+    local time truly can't be determined, it forbids guessing THEIR time-of-day.
+
+    The full world clock (13 places) is EXACT but ~700 chars, so it's injected only when
+    the turn is actually a "what time/date is it in <place>?" question (the same detector
+    that suppresses the web search for it) — lean on every other turn, exact when asked.
+    It never needs the user's own locale, so a no-locale user gets the right answer too
+    (the reported bug: a no-locale user got a fabricated "5:45am" for Nepal = the +5:45
+    offset, because the clock only appeared when their OWN tz was set).
 
     Returns ``(section_text, user_local_signal)`` — the signal (e.g.
     'localtime=2026-07-08 18:12 evening Asia/Kathmandu') is recorded in the trace as
@@ -581,28 +596,36 @@ def _now_section(locale: "LocaleProfile | None" = None) -> tuple[str, str | None
         "never deflect."
     )
     local = local_now(locale, now)
+    is_time_q = is_time_of_day_query(utterance)
+    # The full world clock is only worth its ~700 chars on an actual time/date question.
+    clock_block = ""
+    if is_time_q:
+        clock = "\n".join(world_clock(local, now))
+        clock_block = (
+            f"\n\nCurrent local date+time by place, already converted — read the matching line "
+            f"off, do NOT calculate:\n{clock}\n"
+            "If they ask about a place not listed here, say plainly you're not sure of the exact "
+            "time there rather than guessing."
+        )
     if local is not None:
         tz = resolve_timezone(locale)
         part = day_part(local)
-        clock = "\n".join(world_clock(local, now))
         base += (
             f"\n**FOR THE USER it is currently {local.strftime('%H:%M')} on "
             f"{local.strftime('%A, %d %b')} — it is {part} where they are** ({tz}). "
             "Anchor EVERY time-of-day reference to THIS: greet and refer to the time of day "
             f"by their clock (it is {part} for them, not whatever it is on the server), and "
             "resolve 'tonight', 'tomorrow', 'in 2 hours', 'earlier today' against their local "
-            "time."
-            f"\n\nCurrent local time elsewhere, already converted — read these off, do not "
-            f"calculate:\n{clock}\n"
-            "If they ask about a place not on this list, say plainly that you're not sure of "
-            "the exact time there rather than guessing."
+            "time." + clock_block
         )
         return base, f"localtime={local.strftime('%Y-%m-%d %H:%M')} {part} {tz}"
-    # No resolvable timezone → never guess a time of day (the U5 bug: "good morning"
-    # at the user's 6pm). Stay time-of-day-neutral until it's known.
+    # The USER's OWN timezone is unknown → don't assume THEIR time of day for a greeting
+    # (the U5 bug: "good morning" at their 6pm). A "what time is it in <place>?" question is
+    # still answered exactly from the world clock above — that never needed their locale.
     base += (
-        "\nYou do NOT know the user's local time — do NOT greet or assume a time of day "
-        "('good morning'/'evening'); stay time-of-day-neutral or ask once if it matters."
+        "\nYou do NOT know the USER'S OWN local time, so do NOT assume THEIR time of day or "
+        "greet with 'good morning'/'evening'; stay time-of-day-neutral or ask once if it "
+        "matters." + clock_block
     )
     return base, None
 

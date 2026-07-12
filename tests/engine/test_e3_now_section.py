@@ -132,6 +132,30 @@ def test_the_user_appears_in_their_own_world_clock_as_the_same_time() -> None:
 
 def test_a_place_not_on_the_clock_is_admitted_to_rather_than_guessed() -> None:
     """§16. The list is finite; the world is not. Say so, instead of doing the arithmetic that
-    produced "just past midnight on Wednesday"."""
-    section, _signal = _now_section(KATHMANDU)
+    produced "just past midnight on Wednesday". The world clock (with this guidance) is injected
+    only on a time question."""
+    section, _signal = _now_section(KATHMANDU, "what time is it in Iceland?")
     assert "not sure of the exact time there" in section
+
+
+def test_world_clock_is_injected_only_on_a_time_question() -> None:
+    """The full 13-place clock is ~700 chars, so it's lean: present on a time/date question,
+    absent otherwise (the anchor for the user's OWN time-of-day stays either way)."""
+    on_time, _ = _now_section(KATHMANDU, "what's the date and time in Japan?")
+    off_time, _ = _now_section(KATHMANDU, "i had a rough day at work")
+    assert "- Japan:" in on_time and "- Nepal:" in on_time
+    assert "- Japan:" not in off_time  # not carried on a non-time turn
+    assert "FOR THE USER" in off_time  # but the user's own local anchor still is
+
+
+def test_no_locale_user_still_gets_an_exact_country_time() -> None:
+    """The reported bug: a user with NO locale asking the Nepal time got a fabricated "5:45am"
+    (the +5:45 offset). The absolute clock needs nothing from their profile."""
+    from datetime import UTC, datetime
+    from zoneinfo import ZoneInfo
+
+    now = datetime.now(UTC)
+    section, signal = _now_section(None, "what time is it in nepal right now")
+    assert signal is None  # their own time-of-day is unknown → no greeting anchor
+    nepal_hhmm = now.astimezone(ZoneInfo("Asia/Kathmandu")).strftime("%H:%M")
+    assert f"- Nepal: {nepal_hhmm}" in section  # exact, no offset-as-clock fabrication
