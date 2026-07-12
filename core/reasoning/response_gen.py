@@ -17,6 +17,7 @@ defaults — final feel is tuned by a human (contract §7).
 import asyncio
 import json
 import logging
+import random
 import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
@@ -161,6 +162,39 @@ _MULTIQ_GAP_INSTRUCTIONS = (
     "If the findings are enough to answer, reply with exactly: ENOUGH\n"
     "If something essential is missing, reply with up to TWO more focused, self-contained "
     "search queries (one per line) for JUST the missing facts — nothing already covered."
+)
+
+# Deterministic interjection pools (§8.12 progressive delivery). Curated, FACT-FREE lines —
+# spoken to fill the beat before the real answer lands, so they can never contradict it (an
+# LLM-written ack once hallucinated a temperature that clashed with the real answer). Picked at
+# random (avoiding a back-to-back repeat) so it stays lively without a model call.
+_ACK_EMPATHY = (
+    "Oh no…",
+    "Ugh, that's a lot.",
+    "Oh, that's really rough.",
+    "Aw, I'm sorry.",
+    "Oh man…",
+    "That sounds heavy.",
+    "Oof, that's tough.",
+    "Hey — that's a lot to carry.",
+)
+_ACK_LOOKUP = (
+    "On it — let me check.",
+    "One sec, pulling that up.",
+    "Let me look that up.",
+    "Hang on, checking now.",
+    "Give me a sec to find that.",
+    "Let me dig into that.",
+    "Alright, let me see.",
+    "Checking on that right now.",
+)
+_ACK_THINKING = (
+    "Hmm, let me think.",
+    "Ooh, good one — one sec.",
+    "Let me chew on that.",
+    "Hang on, thinking it over.",
+    "Good question — give me a beat.",
+    "Let me sit with that a sec.",
 )
 
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
@@ -521,6 +555,7 @@ class ResponseGenerator:
         self._reasoning_tier = reasoning_tier
         # Action tools awaiting the user's yes/no, keyed by session (§8.3).
         self._pending: dict[str, ConfirmRequest] = {}
+        self._last_ack: dict[str, str] = {}  # last interjection per session (avoid repeats)
 
     async def generate(
         self,
@@ -1026,17 +1061,14 @@ class ResponseGenerator:
             except Exception:  # the filler is optional — the answer is not
                 logger.warning("dynamic ack failed; continuing to the answer", exc_info=True)
             result = await gen_task
-        elif (
-            can_use_tools
-            and prompt.session_id not in self._pending
-            and read_register(prompt.emotion) in ("down", "stressed")
-        ):
-            # A slow, substantive turn where the person is HURTING — the branch that used to
-            # run in dead air while a tool/reasoning turn worked. Meet the feeling FIRST with a
-            # brief empathetic interjection that commits to NO facts, concurrently with the real
-            # generation so it adds no wall-clock; the fuller reply streams next and continues
-            # the thread the interjection opened (§8.12). Gated to emotional turns so a plain
-            # tool turn doesn't grow a repetitive "let me think" tic (prior user feedback).
+        elif can_use_tools and prompt.session_id not in self._pending:
+            # Any slow, substantive turn (a tool call or complex reasoning) that isn't a live
+            # lookup — the branch that used to run in DEAD AIR. Fill the beat with a brief,
+            # DETERMINISTIC, fact-free reaction (empathy if they're hurting, else "let me
+            # think"), concurrently with the real generation so it adds no wall-clock; the
+            # fuller reply streams next. Now that the ack is fact-free + costs no model call,
+            # it fires on every slow turn (not only emotional ones) — the prior "repetitive
+            # tic" risk is gone because it's a varied, no-fact one-liner, not an LLM ramble.
             gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             try:
                 await self._dynamic_ack(prompt, speak, is_lookup=False)
@@ -1058,65 +1090,29 @@ class ResponseGenerator:
         *,
         is_lookup: bool = True,
     ) -> None:
-        """Speak a SHORT, freshly-generated backchannel the instant a slow turn starts —
-        streamed in chunks so it begins immediately, run CONCURRENTLY with the real work so
-        it only fills the beat that work already costs, and committing to NO facts so it can
-        never contradict the answer that lands next. It ADAPTS to the moment: empathy first
-        if the person is hurting; "on it" if a lookup is coming; "let me think" otherwise.
-        Never a static phrase (user feedback: dynamic sentences that keep it engaged)."""
+        """Speak a SHORT backchannel the instant a slow turn starts, to fill the beat before
+        the real answer lands. It is picked from a fixed, curated pool — NOT written by the
+        LLM — for two reasons proven in testing: (1) an LLM-written ack IGNORED "commit to no
+        facts" and hallucinated a temperature ('27°C') that then CONTRADICTED the real answer
+        ('22°C'); a template can't state a fact it doesn't have. (2) it adds ZERO latency (no
+        extra model call) on a path that is already slow. It adapts to the moment — empathy if
+        the person is hurting, 'on it' for a lookup, 'let me think' otherwise — and varies so
+        it doesn't repeat the session's previous line back-to-back. Emitted on the trace as
+        `purpose=ack` for inspectability."""
         register = read_register(prompt.emotion)
+        pool: tuple[str, ...]
         if register in ("down", "stressed"):
-            # Empathetic interjection for emotional input — meet the feeling in a few genuine
-            # words BEFORE the fuller reply; commit to no facts, ask nothing yet.
-            instr = (
-                "[The user just said something that carries real FEELING (pain, worry, grief, "
-                "or big excitement). Say ONE short, genuine SPOKEN line that simply MEETS that "
-                "feeling right now — like a friend's first reaction — and nothing else. No "
-                "facts, no advice, no question yet; the fuller reply comes next. Make it fresh, "
-                "never a stock phrase. The vibe (do NOT reuse the words): 'oh no…', 'ugh, that's "
-                "a lot', 'oh that's wonderful'.]"
-            )
+            pool = _ACK_EMPATHY
         elif is_lookup:
-            instr = (
-                "[The user just asked something you need to look up online, which takes a "
-                "moment. Say ONE short, natural, SPOKEN line acknowledging you're on it right "
-                "now and gently echoing their topic — like a friend already reaching for the "
-                "answer. Make it fresh; never a stock phrase. Don't ask a question and don't "
-                "answer yet. The vibe (do NOT reuse the words): 'Ooh, that missing plane near "
-                "Pakistan — let me dig in.', 'Hang on, pulling the latest on that now.']"
-            )
+            pool = _ACK_LOOKUP
         else:
-            instr = (
-                "[The user asked something that takes you a beat to think through. Say ONE "
-                "short, natural SPOKEN line that shows you're genuinely considering it right "
-                "now — like a friend thinking out loud — committing to NO facts and asking "
-                "nothing yet; the real answer comes next. Fresh, never a stock phrase. The "
-                "vibe (do NOT reuse the words): 'hmm, let me think for a sec', 'ooh, good one…']"
-            )
-        messages = [
-            *prompt.messages[:-1],
-            {"role": "system", "content": instr},
-            prompt.messages[-1],
-        ]
-        text = ""
-        spoken = 0
-        async for delta in self._llm.stream(
-            prompt.user_id,
-            messages,
-            "simple",
-            session_id=prompt.session_id,
-            model=prompt.model_override,
-            temperature=0.9,  # high: variety so it never sounds canned
-            reasoning={"enabled": False},  # P4: no thinking on a throwaway filler
-            cache_prefix=prompt.cache_prefix,
-            purpose="ack",
-        ):
-            text += delta
-            while (b := _sentence_end(text, spoken)) is not None:
-                await self._speak_clean(text[spoken:b], speak)
-                spoken = b
-        if spoken < len(text):  # flush the tail (usually the whole one-liner)
-            await self._speak_clean(text[spoken:], speak)
+            pool = _ACK_THINKING
+        last = self._last_ack.get(prompt.session_id)
+        choices = [c for c in pool if c != last] or list(pool)
+        line = random.choice(choices)
+        self._last_ack[prompt.session_id] = line
+        self._span("llm", purpose="ack", ack=line, deterministic=True)
+        await self._speak_clean(line, speak)
 
     async def _stream_reply(
         self,
