@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -35,9 +36,38 @@ from core.observability.logger import StructuredLogger
 from core.reasoning.prompt_assembly import AssembledPrompt, DisambiguationRequest
 from core.reasoning.prosody import emotion_from_text
 from core.reasoning.response_gen import GenerationResult, ResponseGenerator, ToolDispatch
+from core.reasoning.volatility import is_volatile_question
 from core.tools.registry import ToolContext
 from ports.llm import LLM, LLMUnavailable
 from ports.prompt import PromptProvider
+
+# A WHOLE-utterance pure greeting / social pleasantry. These are never volatile and carry no
+# reference to resolve, so the context/intent verdict is deterministically needs_live_info=False
+# — we can skip the ~1.6s LLM call and keep a trivial turn fast. Deliberately NARROW (anchored,
+# whole-utterance) so it can never swallow a real question the way the old complexity-hint skip
+# did ("who is the current PM of Nepal?" is "simple" by word count — that was D-2).
+_TRIVIAL_SOCIAL = re.compile(
+    r"^\s*(?:hi+|hey+|hello+|yo|sup|hiya|howdy|heya|"
+    r"good\s+(?:morning|afternoon|evening|day)|mornin[g']?|evenin[g']?|"
+    r"how(?:'s| is| are| r)?\s+(?:it going|you(?:\s+doing)?|u|things|life)|"
+    r"what'?s\s+up|wh?a[sz]+up|"
+    r"thank\s*(?:you|s)?(?:\s+(?:so much|a lot))?|thanks|ty|cheers|"
+    r"ok(?:ay)?|kk|cool|nice|sweet|awesome|great|got it|gotcha|sounds good|alright|right|"
+    r"lol|haha+|hmm+|yeah|yep|yup|nope|nah|"
+    r"(?:good\s*)?(?:bye+|night|nite)|see\s+(?:ya|you)(?:\s+later)?|later|take care|"
+    r"i'?m\s+(?:good|fine|okay|ok|alright|great)"
+    r")(?:\s+(?:there|you|man|buddy|friend|mate|everyone|all))?[\s,!.?…—-]*$",
+    re.IGNORECASE,
+)
+
+
+def _is_trivial_social(utterance: str) -> bool:
+    """True for a whole-utterance greeting / social pleasantry with nothing to look up or
+    resolve — safe to skip the context/intent LLM call. Guarded against any volatile phrasing."""
+    return bool(_TRIVIAL_SOCIAL.match(utterance or "")) and not is_volatile_question(
+        utterance or ""
+    )
+
 
 logger = logging.getLogger(__name__)
 
@@ -167,7 +197,12 @@ class LangGraphOrchestrator:
                 prompt, dispatcher, context, speak, temperature=temperature
             )
         self._perceive_span(prompt)
-        res = await self._resolve_note(prompt)
+        # Skip the ~1.6s context/intent call on a pure greeting/social line (same safe skip as
+        # the text node) so a trivial voice turn stays fast; never on a volatile/question turn.
+        if _is_trivial_social(prompt.utterance):
+            res = _Resolution(needs_live_info=False)
+        else:
+            res = await self._resolve_note(prompt)
         # S1: ALWAYS augment — the volatility verdict must reach the reasoning core even
         # when there is no context note to inject. Previously `if note else prompt` threw
         # `needs_live_info` away on exactly the turns that had no prior context.
@@ -230,8 +265,22 @@ class LangGraphOrchestrator:
         The shortcut is deleted rather than duplicated into the voice path: symmetry is the
         invariant, and the cost is one `simple`-tier LLM call on a greeting. Latency work
         belongs behind a cache or a cheaper model, not behind a caller-dependent skip.
+
+        The ONE safe exception: a whole-utterance greeting/social pleasantry ("hi", "thanks",
+        "how are you"). It is never volatile and has no reference to resolve, so the verdict is
+        deterministically needs_live_info=False — we skip the ~1.6s call and keep it fast. This
+        is NOT the D-2 shortcut: that keyed on the broad "simple" word-count hint (which matched
+        "who is the current PM of Nepal?"); this matches only a closed set of social phrases and
+        is double-guarded against any volatile phrasing.
         """
-        return {"resolution": await self._resolve_note(state["prompt"])}
+        prompt = state["prompt"]
+        if _is_trivial_social(prompt.utterance):
+            if self._logs is not None:
+                self._logs.log(
+                    "info", "context_intent", stage="resolve_context", skipped="trivial_social"
+                )
+            return {"resolution": _Resolution(needs_live_info=False)}
+        return {"resolution": await self._resolve_note(prompt)}
 
     async def _resolve_note(self, prompt: AssembledPrompt) -> _Resolution:
         """A3 + F5 + S1: reason about how this utterance connects to the conversation,
