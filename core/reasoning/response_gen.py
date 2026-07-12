@@ -36,6 +36,7 @@ from core.reasoning.style import (
     find_forbidden,
     is_bare_acknowledgement,
     scrub_forbidden,
+    strip_slang,
     strip_tool_leak,
 )
 from core.reasoning.volatility import is_volatile_question
@@ -273,9 +274,12 @@ Respond ONLY with a JSON object of this exact shape, with the keys in THIS ORDER
               "capability_boundary_flag": null | "overclaim_empathy" | "overclaim_consciousness"},
  "tool_request": null | {"tool_id": "<id>", "args": {<per the tool's schema>}},
  "draft_response": "<your reply — ONE or two sentences, MAX. Informal and casual by
-   default: contractions, plain everyday words, the way you'd actually talk to a mate —
-   NOT a news anchor, NOT a report. Only get measured or formal when the moment is
-   genuinely serious, technical, or emotional; if a third sentence is forming, cut it.
+   default: contractions, plain everyday words, warm and natural like a thoughtful friend —
+   but still POLISHED and respectful, the way you'd talk with students and professionals.
+   NO frat-boy slang ('dude', 'bro', 'bruh', 'man') and no filler like 'kinda'/'sorta' in
+   place of a real word — casual is not sloppy. NOT a news anchor, NOT a report. Only get
+   measured or formal when the moment is genuinely serious, technical, or emotional; if a
+   third sentence is forming, cut it.
    Use their NAME only rarely, the way real friends do — most replies use no name at
    all, never every turn. Natural spoken language. The voice
    ACTUALLY performs inline delivery tags, so WEAVE THEM IN to sound human, not
@@ -300,9 +304,12 @@ _SPOKEN_REPLY_INSTRUCTIONS = """
 Reply out loud in your own natural voice, by your NAME (never call yourself 'an
 AI'). KEEP IT SHORT — usually ONE sentence, at most two, like a friend actually
 talking. Stay INFORMAL and casual by default — contractions, plain everyday words,
-the way you'd actually talk to a mate; only get more measured or formal when the
-moment is genuinely serious, technical, or emotional. Don't explain or elaborate
-unless they ask; if a third sentence is forming, cut it. BUT when they DO ask a real
+warm and natural like a thoughtful friend, but still POLISHED and respectful — the
+way you'd talk with students and professionals, NOT frat-boy slang ('dude', 'bro',
+'man', 'bruh') and not sloppy filler ('kinda', 'sorta') standing in for a real word;
+only get more measured or formal when the moment is genuinely serious or emotional.
+Don't explain or elaborate unless they ask; if a third sentence is forming, cut it.
+BUT when they DO ask a real
 question that needs information — types of something, how something works, the
 difference between things, "explain X" — drop the one-sentence cap and actually answer
 it: name the real kinds/steps/parts and say what each is, clearly and completely, still
@@ -1344,7 +1351,7 @@ class ResponseGenerator:
             # The whole sentence was flagged (a one-line "Hey Nandi — what's on your
             # mind?"). Keep the warm lead-in, drop only the banned filler clause.
             cleaned = excise_forbidden(sanitized)
-        text = strip_tool_leak(cleaned)
+        text = strip_slang(strip_tool_leak(cleaned))
         if text.strip():
             await speak(text)
 
@@ -2022,6 +2029,9 @@ class ResponseGenerator:
                 ["bare acknowledgement"],
             )
 
+        # Strip frat-boy slang ('Oh dude, …') surgically before the forbidden-shape gate,
+        # so the displayed/text reply matches the professional register (students/pros).
+        text = strip_slang(text)
         flags = find_forbidden(text, allow_disclosure=allow_disclosure)
         if not flags:
             return text, []

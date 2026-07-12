@@ -499,6 +499,31 @@ def is_bare_acknowledgement(text: str, *, allow_disclosure: bool = False) -> boo
     return _is_promise(text)
 
 
+# Frat-boy slang vocatives/interjections. Removed SURGICALLY (not by dropping the whole
+# sentence like scrub_forbidden) so the real content survives: "Oh dude, that's great" →
+# "That's great". The instruction forbids these for a students/professionals audience
+# (design §12 response standard); this is the deterministic backstop. "man" is deliberately
+# excluded — too many legitimate uses ("the man", "man-made") to strip safely.
+_SLANG_LEAD = re.compile(
+    r"^\s*(?:oh|ah|hey|yo|ayy?)?[\s,]*\b(?:dude|bro|bruh|homie|fam|mate)\b[\s,!.–—-]*",  # noqa: RUF001 — en/em dash both intended
+    re.IGNORECASE,
+)
+_SLANG_VOCATIVE = re.compile(
+    r"\s*,\s*\b(?:dude|bro|bruh|homie|fam)\b(?=[\s,.!?]|$)",
+    re.IGNORECASE,
+)
+
+
+def strip_slang(text: str) -> str:
+    """Surgically remove slang vocatives ('dude', 'bro', …), preserving the real
+    content and re-capitalizing the new opening. Backstop to the no-slang instruction."""
+    out = _SLANG_VOCATIVE.sub("", _SLANG_LEAD.sub("", text))
+    out = re.sub(r"\s{2,}", " ", out).strip()
+    if out and out[0].islower() and text[:1].isupper():
+        out = out[0].upper() + out[1:]
+    return out or text  # never empty the reply to nothing
+
+
 def scrub_forbidden(text: str, *, allow_disclosure: bool = False) -> str:
     """Deterministic safety net: drop whole sentences that contain forbidden
     phrasing, keeping the rest. Returns "" if that would empty the reply (caller

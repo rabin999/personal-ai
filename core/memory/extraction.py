@@ -21,6 +21,7 @@ Runs off the latency path (the caller awaits it in the background). Every write 
 
 import json
 import logging
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ValidationError
@@ -141,6 +142,19 @@ def _looks_transient(fact: str) -> bool:
     return any(marker in lowered for marker in _TRANSIENT_MARKERS)
 
 
+# A "fact" whose subject is the companion, not the user — "assistant is built on Google's
+# LLM", "the companion suggested rest". Semantic memory holds facts about the USER (spec §6),
+# so these must never be stored. Backstop to the user-turns-only consolidation feed.
+_COMPANION_SUBJECT = re.compile(
+    r"^\s*(?:the\s+)?(?:assistant|companion|ai|a\.?i\.?|bot|chatbot|model)\b", re.IGNORECASE
+)
+
+
+def _about_companion(fact: str) -> bool:
+    """True if the 'fact' is about the assistant/companion rather than the user."""
+    return bool(_COMPANION_SUBJECT.match(fact))
+
+
 class ExtractedTrade(BaseModel):
     ticker: str
     side: Literal["buy", "sell"]
@@ -239,6 +253,9 @@ class MemoryExtractor:
         durable_facts: list[str] = []
         events = list(extraction.episodic_events)
         for fact in extraction.semantic_facts:
+            if _about_companion(fact):
+                logger.info("dropping companion-subject 'fact' (not about the user): %s", fact)
+                continue
             if _looks_transient(fact):
                 logger.info("demoting transient 'fact' to episodic: %s", fact)
                 events.append(fact)

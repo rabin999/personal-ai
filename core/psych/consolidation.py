@@ -106,11 +106,20 @@ class Consolidator:
         report = ConsolidationReport()
         if not transcript:
             return report
+        # Full transcript (both roles) is used for psych/style ANALYSIS below, where the
+        # assistant's turns are legitimate context. But it must NOT be fed verbatim to the
+        # semantic graph: Graphiti extracts an edge from every clause, so the assistant's own
+        # dialogue became "facts" like "assistant asks Cylinder what Cylinder has been up to"
+        # and "assistant is built on Google's LLM" — meta-conversation, not facts about the
+        # USER (spec §6: semantic memory holds durable facts about the user). Feed only the
+        # user's own utterances to the graph so the extracted facts are about them.
         text = "\n".join(f"{t.role}: {t.text}" for t in transcript)
+        user_text = "\n".join(t.text for t in transcript if t.role == "user").strip()
 
-        # (a) semantic facts with validity windows — Graphiti extraction.
-        await self._semantic.add_episode(user_id, text)
-        report.facts_extracted = True
+        # (a) semantic facts with validity windows — Graphiti extraction (user turns only).
+        if user_text:
+            await self._semantic.add_episode(user_id, user_text)
+            report.facts_extracted = True
 
         # (a2) episodic dedup (§5): collapse near-duplicate events accreted across
         # sessions so retrieval doesn't surface the same fact 2-3 times. Off the

@@ -120,6 +120,7 @@ _USER_COLLECTIONS = [
     "self_model_log",
     "psych_model",
     "psych_correlations",
+    "persona",  # the dynamic "how I've learned to talk with you" memory (was surviving deletion)
     "projects",
     "pending_insights",
     "entities",
@@ -165,9 +166,15 @@ async def delete_account(request: Request) -> JSONResponse:
             await pipeline.preferences.delete_all(user_id)  # Mem0 personalization memory
         except Exception:
             logger.warning("delete_account: Mem0 wipe failed", exc_info=True)
-    try:  # the account record itself lives in the accounts store (Mongo)
-        await pipeline.docs.delete_many("accounts", {"user_id": user_id})
-        await pipeline.docs.delete_many("accounts", {"_id": user_id})
+    try:
+        # The account record lives in the "users" collection (USERS_COLLECTION),
+        # keyed by _id=user_id — NOT a collection named "accounts" (which never
+        # existed, so the record survived and re-login reused the same user_id with
+        # its orphaned data). Delete by _id and user_id to be safe.
+        await pipeline.docs.delete_many("users", {"_id": user_id})
+        await pipeline.docs.delete_many("users", {"user_id": user_id})
+        # Outbox (welcome-email queue) nests the id under payload.user_id.
+        await pipeline.docs.delete_many("outbox", {"payload.user_id": user_id})
     except Exception:
         logger.warning("delete_account: account delete failed", exc_info=True)
     request.session.clear()
