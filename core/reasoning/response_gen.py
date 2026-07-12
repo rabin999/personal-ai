@@ -502,6 +502,20 @@ def _wants_substance(question: str) -> bool:
     return bool(_WANTS_SUBSTANCE.search(question))
 
 
+def _recent_convo(prompt: "AssembledPrompt", n: int = 6) -> str:
+    """The last few conversation turns (excluding the current question) as plain text, so
+    search-query building and answer composition can resolve implicit references — e.g. the
+    COUNTRY when the user has been discussing Nepal/NEPSE and then asks about 'the new
+    government'. Reads the assembled message list, which already holds the recent turns."""
+    prior = prompt.messages[:-1][-n:]  # drop the current utterance; keep the n before it
+    lines = [
+        f"{m.get('role', 'user')}: {m.get('content', '')}"
+        for m in prior
+        if m.get("role") in ("user", "assistant") and str(m.get("content", "")).strip()
+    ]
+    return "\n".join(lines)
+
+
 def _wants_quick_ack(prompt: "AssembledPrompt") -> bool:
     """True when a plain (streamable) turn is likely to make the user WAIT — a recall turn
     reads back through stored conversations, and a substantive/explanatory question takes a
@@ -916,9 +930,13 @@ class ResponseGenerator:
             if gaps:
                 findings += await self._run_searches(gaps, dispatcher, search_ctx)
         combined = "\n\n".join(f"[{q}]\n{s}" for q, s in findings)
+        # Include the RECENT CONVERSATION, not just the bare question — otherwise a question
+        # that leans on prior context ("the new government after the Gen Z protest — how's it
+        # hitting the share market?") loses the country we'd been discussing (Nepal) and the
+        # model asks "which country?" instead of just answering (user report).
         messages = [
             {"role": "system", "content": _REPAIR_INSTRUCTIONS + combined},
-            {"role": "user", "content": prompt.utterance},
+            *prompt.messages,
         ]
         if speak is not None:
             answer = await self._compose_streamed(prompt, messages, speak)
@@ -1030,10 +1048,13 @@ class ResponseGenerator:
         to the single disambiguated query on any failure, so it is never worse than before."""
         base = await self._build_search_query(prompt)
         context_bits = [
-            prompt.sections.get(name, "").strip()
-            for name in ("entities", "facts", "project", "episodic")
+            _recent_convo(prompt),  # the thread we're in — resolves the implicit topic/country
+            *(
+                prompt.sections.get(name, "").strip()
+                for name in ("entities", "facts", "project", "episodic")
+            ),
         ]
-        user_context = "\n".join(b for b in context_bits if b)[:1000]
+        user_context = "\n".join(b for b in context_bits if b)[:1200]
         user = (
             (f"USER CONTEXT:\n{user_context}\n" if user_context else "")
             + f"PRIMARY QUERY (already disambiguated): {base}\n"
@@ -1106,21 +1127,29 @@ class ResponseGenerator:
         """
         fallback = prompt.live_query.strip() or prompt.utterance
         entities = [f"{c.name} ({c.entity_type})" for c in prompt.resolved_entities]
-        # The user's own data, already assembled into this turn's prompt.
+        # The user's own data + the recent conversation, already assembled into this turn's
+        # prompt. The recent thread is what resolves an implicit topic/country — "the new
+        # government" → Nepal, when that's what we've been talking about.
         context_bits = [
-            prompt.sections.get(name, "").strip()
-            for name in ("entities", "facts", "project", "episodic")
+            _recent_convo(prompt),
+            *(
+                prompt.sections.get(name, "").strip()
+                for name in ("entities", "facts", "project", "episodic")
+            ),
         ]
-        user_context = "\n".join(b for b in context_bits if b)[:1200]
+        user_context = "\n".join(b for b in context_bits if b)[:1400]
         if not entities and not user_context:
             return fallback  # nothing to disambiguate with
         instr = (
             "Turn the user's question into ONE precise web-search query.\n"
-            "Their question may name something that is AMBIGUOUS on the open web (a "
-            "ticker, an abbreviation, a nickname). Use the USER CONTEXT below to qualify "
-            "it so the search finds THEIR thing, not the most popular match. E.g. if they "
-            "ask about 'OP' and their portfolio holds OP as a NEPSE share, the query is "
-            "about the NEPSE share, never a crypto token.\n"
+            "Their question may name something AMBIGUOUS on the open web (a ticker, an "
+            "abbreviation, a nickname) OR leave a key qualifier IMPLICIT — a country, a "
+            "company, a person — that the conversation has clearly established. Use the USER "
+            "CONTEXT below to qualify it so the search finds THEIR thing, not the most popular "
+            "match. Examples: they ask about 'OP' and their portfolio holds OP as a NEPSE "
+            "share → query the NEPSE share, never a crypto token. They've been discussing "
+            "Nepal / NEPSE and ask about 'the new government after the Gen Z protest' → the "
+            "query MUST include 'Nepal' (not Bangladesh or anywhere else the phrase also fits).\n"
             "Reply with ONLY the query text — no quotes, no explanation."
         )
         user = (
