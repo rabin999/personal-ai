@@ -269,3 +269,19 @@ wall-clock); reply chunk-streaming already existed. Real voice drive of a grief 
 "Man, that's really rough." then a caring follow-up (streamed, judged warm).
 
 ## STATUS: all user-reported issues + designed features done & deployed. Remaining: #8 eval bundle.
+
+## #8 eval bundle + verify-before-answer hardening — DEPLOYED (265e1d8)
+The eval bundle already had: golden sets GS1–GS5 (memory/entities/behavior/judge/learning/isolation),
+a 174-row labeled volatility set with per-class precision/recall, coverage matrix. ADDED a data-driven
+MULTI-TURN scenario harness (multiturn_scenarios.jsonl + runner) — proof-by-conversation with per-turn
+assertions. It immediately caught and drove fixes for FOUR real defects:
+  1. silent empty reply when the model burns its tool budget without answering → compose from gathered
+     results, else honest miss, never empty;
+  2. stale "as of <past year>" stamp stripped at the exit;
+  3. garbage-query stale leak — a volatile turn now checks a search actually RETURNED results
+     (found=true); if not grounded, re-search cleanly → no stale "Prachanda is PM";
+  4. hedged guesses ("I don't have anything recent, but <stale>") trip the honest-miss path.
+All 4 scenarios pass end-to-end against the real model. Freshness proven: "who is the current PM of
+Nepal?" → "Balendra Shah" (fresh), never stale.
+
+## ALL TASKS COMPLETE. Every user-reported issue + every designed feature is built, tested, deployed.
