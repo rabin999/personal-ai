@@ -13,8 +13,6 @@ import {
 import { fetchMe, logout, type Me } from "../lib/session";
 import {
   getModels,
-  getVoices,
-  type VoiceItem,
   setVoiceEngine as saveVoiceEngine,
 } from "../lib/api";
 import type { ConnState, TraceEvent, TurnGroup, TurnState } from "../lib/types";
@@ -31,7 +29,7 @@ const CONN_LABEL: Record<ConnState, string> = {
   error: "Error",
 };
 
-const DEFAULT_VOICE = "helix"; // the app's companion voice (26 available, fetched live)
+const DEFAULT_VOICE = "helix"; // the app's fixed companion voice (not user-selectable in the UI)
 
 // Live caption is a single-line ticker: only the last N words (yours or the
 // reply's) are shown at once, so it never wraps or grows into a paragraph.
@@ -43,8 +41,9 @@ const CAPTION_WINDOW = 8;
 export default function CompanionPage() {
   const navigate = useNavigate();
   const [me, setMe] = useState<Me | null>(null);
-  const [voice, setVoice] = useState(DEFAULT_VOICE);
-  const [voices, setVoices] = useState<VoiceItem[]>([]);
+  // The companion voice is fixed to the app default; it's the voice ENGINE that's
+  // user-selectable, not the individual voice (kept so the WS auth still sends one).
+  const [voice] = useState(DEFAULT_VOICE);
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [micId, setMicId] = useState<string>();
   const [conn, setConn] = useState<ConnState>("idle");
@@ -97,10 +96,6 @@ export default function CompanionPage() {
   // Tear down the caption reveal timer on unmount.
   useEffect(() => () => {
     if (captionIvRef.current !== null) clearInterval(captionIvRef.current);
-  }, []);
-  // Load the full live voice roster (#19) for the picker.
-  useEffect(() => {
-    getVoices().then((r) => setVoices(r.voices)).catch(() => {});
   }, []);
   const turnStateRef = useRef<TurnState>("idle");
 
@@ -513,8 +508,7 @@ export default function CompanionPage() {
               className="mb-3 flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-600 lg:hidden dark:border-slate-800 dark:text-slate-300"
             >
               <span>
-                Setup · <span className="font-medium capitalize">{voice}</span> ·{" "}
-                {runtime === "pipecat" ? "Pipecat" : "Native"}
+                Setup · {runtime === "pipecat" ? "Pipecat" : "Native"}
               </span>
               <svg
                 viewBox="0 0 24 24"
@@ -532,21 +526,6 @@ export default function CompanionPage() {
               className={`min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 lg:grid ${showSetup && !active ? "grid" : "hidden lg:grid"}`}
             >
               <MicPicker devices={devices} value={micId} onChange={setMicId} disabled={active} />
-              <label className="flex min-w-0 flex-col gap-1.5">
-                <span className={FIELD_LABEL}>Voice</span>
-                <select
-                  value={voice}
-                  onChange={(e) => setVoice(e.target.value)}
-                  disabled={active}
-                  className={FIELD}
-                >
-                  {(voices.length ? voices : [{ voice_id: DEFAULT_VOICE, name: "Helix", gender: "male" }]).map((v) => (
-                    <option key={v.voice_id} value={v.voice_id}>
-                      {v.name}{v.gender ? ` (${v.gender})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <label className="flex min-w-0 flex-col gap-1.5">
                 <span className={FIELD_LABEL}>Voice engine</span>
                 <select
