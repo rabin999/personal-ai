@@ -95,12 +95,30 @@ def _trim_messages(
     return trimmed
 
 
-# Fallback chains if provider_config carries no llm_router document.
+# Fallback chains if provider_config carries no llm_router document. The FREE gpt-oss model
+# is the last-resort tail on every tier: when the paid models are down (outage / out of
+# credits), the companion still answers rather than going dark. It's slower and reasoning-
+# mandatory (see below), but a working reply beats an apology.
 DEFAULT_TIERS: dict[str, list[str]] = {
-    "simple": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini", "google/gemini-3.1-flash-lite"],
-    "moderate": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini"],
-    "complex": ["anthropic/claude-sonnet-4.5", "openai/gpt-4.1-mini"],
+    "simple": [
+        "anthropic/claude-haiku-4.5",
+        "openai/gpt-4.1-mini",
+        "google/gemini-3.1-flash-lite",
+        "openai/gpt-oss-20b:free",
+    ],
+    "moderate": ["anthropic/claude-haiku-4.5", "openai/gpt-4.1-mini", "openai/gpt-oss-20b:free"],
+    "complex": ["anthropic/claude-sonnet-4.5", "openai/gpt-4.1-mini", "openai/gpt-oss-20b:free"],
 }
+
+# Endpoints that REJECT a disabled-reasoning request ("Reasoning is mandatory for this
+# endpoint") — the free gpt-oss models. For these we must (a) never forward reasoning:
+# {enabled: false} (our fast paths send that), and (b) give the reply enough token headroom
+# that the mandatory reasoning tokens don't starve the actual answer (measured: ~2s of
+# reasoning before the first content token). See the free-model fallback evaluation.
+_REASONING_MANDATORY: frozenset[str] = frozenset(
+    {"openai/gpt-oss-20b:free", "openai/gpt-oss-120b:free"}
+)
+_REASONING_MIN_TOKENS = 512
 
 
 class OpenRouterLLM:
@@ -291,7 +309,11 @@ class OpenRouterLLM:
         wall_start = time.time()
         started = time.perf_counter()
         extra_body: dict[str, Any] = {"usage": {"include": True}}
-        if reasoning is not None:  # P4: thinking-budget control per call
+        # P4: thinking-budget control — but never force-disable reasoning on an endpoint that
+        # rejects it (gpt-oss:free), same as the non-streamed path.
+        if reasoning is not None and not (
+            model_id in _REASONING_MANDATORY and not dict(reasoning).get("enabled", True)
+        ):
             extra_body["reasoning"] = dict(reasoning)
         kwargs: dict[str, Any] = {
             "model": model_id,
@@ -377,8 +399,13 @@ class OpenRouterLLM:
         reasoning: Mapping[str, Any] | None = None,
         seed: int | None = None,
     ) -> CompletionResult:
+        mandatory_reasoning = model in _REASONING_MANDATORY
         extra_body: dict[str, Any] = {"usage": {"include": True}}
-        if reasoning is not None:  # P4: control the model's thinking budget per call
+        # P4: control the model's thinking budget per call — but NEVER send a disabled-
+        # reasoning directive to an endpoint that rejects it (gpt-oss:free 400s otherwise).
+        if reasoning is not None and not (
+            mandatory_reasoning and not dict(reasoning).get("enabled", True)
+        ):
             extra_body["reasoning"] = dict(reasoning)
         kwargs: dict[str, Any] = {
             "model": model,
@@ -389,7 +416,12 @@ class OpenRouterLLM:
         if response_format is not None:
             kwargs["response_format"] = response_format
         if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+            # A reasoning-mandatory model spends tokens THINKING before it writes a word; a
+            # tight fast-path budget (an ack's ~60, a query's ~48) would be consumed by
+            # reasoning and return empty. Give it a floor so the actual reply survives.
+            kwargs["max_tokens"] = (
+                max(max_tokens, _REASONING_MIN_TOKENS) if mandatory_reasoning else max_tokens
+            )
         if temperature is not None:
             kwargs["temperature"] = temperature
         if seed is not None:  # P5: reproducible TEST runs only (never set in prod)

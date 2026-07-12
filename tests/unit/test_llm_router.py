@@ -144,3 +144,32 @@ async def test_verify_models_flags_missing_and_no_fallback() -> None:
     assert "strong/model" in result["missing"]  # in TIERS but not in catalog
     assert "complex" in result["no_fallback"]  # single-model tier
     assert "simple" not in result["no_fallback"]
+
+
+async def test_reasoning_mandatory_model_strips_disable_and_floors_max_tokens() -> None:
+    """A free gpt-oss endpoint REJECTS a disabled-reasoning request and needs token headroom
+    (its mandatory reasoning tokens would otherwise starve the reply). The adapter must NOT
+    forward reasoning:{enabled:false} to it, and must floor max_tokens — so the credit-outage
+    fallback to the free model actually returns words, not a 400 / empty."""
+    router = OpenRouterLLM(
+        Settings(_env_file=None, open_router_api_key="test-key"),
+        tiers={"simple": ["openai/gpt-oss-20b:free"], "moderate": ["mid/model"], "complex": ["s"]},
+    )
+    fake = FakeCompletions()
+    router._client = SimpleNamespace(chat=SimpleNamespace(completions=fake))  # type: ignore[assignment]
+
+    await router.complete("u", MESSAGES, "simple", reasoning={"enabled": False}, max_tokens=48)
+
+    call = fake.calls[0]
+    assert "reasoning" not in call["extra_body"], "forwarded a disable gpt-oss rejects"
+    assert call["max_tokens"] == 512, f"did not floor the token budget: {call['max_tokens']}"
+
+
+async def test_non_mandatory_model_keeps_reasoning_and_max_tokens() -> None:
+    """The reasoning-mandatory handling must NOT affect normal models: their reasoning
+    directive and exact token budget pass through unchanged."""
+    router, fake = _router()
+    await router.complete("u", MESSAGES, "simple", reasoning={"enabled": False}, max_tokens=48)
+    call = fake.calls[0]
+    assert call["extra_body"]["reasoning"] == {"enabled": False}
+    assert call["max_tokens"] == 48
