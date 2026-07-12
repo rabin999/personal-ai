@@ -48,48 +48,57 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
   const failed = new URLSearchParams(window.location.search).get("error");
 
   return (
-    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      {/* Ambient wash */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(55%_45%_at_50%_0%,rgba(14,165,233,0.16),transparent_70%)]" />
-
-      <div className="absolute right-4 top-4 z-10">
+    <div className="relative min-h-[100dvh] overflow-x-hidden bg-slate-50 text-slate-900 lg:flex dark:bg-slate-950 dark:text-slate-100">
+      <div className="absolute right-4 top-4 z-20">
         <ThemeToggle pref={themePref} onChange={onThemeChange} />
       </div>
 
-      <div className="relative mx-auto flex min-h-[100dvh] max-w-5xl flex-col items-center justify-center gap-12 px-5 py-14 lg:flex-row lg:items-center lg:gap-16">
-        {/* ── Story: what it is / can do / how it helps ───────────────────── */}
-        <div className="w-full max-w-xl lg:flex-1">
+      {/* ── LEFT: the story — what it is / can do / how it helps ───────────── */}
+      <section className="relative order-2 flex flex-1 items-start overflow-hidden px-6 py-16 sm:px-10 lg:order-1 lg:items-center lg:px-16 lg:py-20 xl:px-24">
+        {/* Soft decorative glow for depth (Dribbble-ish), kept subtle */}
+        <div className="pointer-events-none absolute -left-24 -top-24 h-96 w-96 rounded-full bg-sky-400/20 blur-3xl dark:bg-sky-500/10" />
+        <div className="pointer-events-none absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-cyan-300/15 blur-3xl dark:bg-cyan-500/10" />
+
+        <div className="relative mx-auto w-full max-w-2xl lg:mx-0">
+          {/* Eyebrow: brand */}
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/20">
-              <AsaathiMark className="h-7 w-7" />
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/25">
+              <AsaathiMark className="h-6 w-6" />
             </div>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Meet Asaathi</h1>
-              <p className="text-sm text-sky-600 dark:text-sky-400">
-                Nepali for “friend” — your voice-first AI companion
-              </p>
-            </div>
+            <span className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+              Asaathi
+            </span>
           </div>
 
-          <p className="mt-5 text-base leading-relaxed text-slate-600 dark:text-slate-300">
-            Asaathi is someone to <span className="font-medium text-slate-900 dark:text-slate-100">talk</span> to.
-            You speak, it listens, thinks before it answers, remembers you between
-            conversations, and replies warmly in a real human voice — a companion, not an
+          {/* Hero */}
+          <h1 className="mt-8 text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl xl:text-6xl">
+            A friend you can
+            <br className="hidden sm:block" />{" "}
+            just{" "}
+            <span className="bg-gradient-to-r from-sky-500 to-cyan-500 bg-clip-text text-transparent">
+              talk
+            </span>{" "}
+            to.
+          </h1>
+
+          <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600 sm:text-xl dark:text-slate-300">
+            You speak, it listens — thinks before it answers, remembers you between
+            conversations, and replies warmly in a real human voice. A companion, not an
             assistant.
           </p>
 
           {/* What it can do */}
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+          <div className="mt-10 grid gap-4 sm:grid-cols-2">
             {FEATURES.map((f) => (
               <div
                 key={f.title}
-                className="rounded-2xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/50"
+                className="group rounded-2xl border border-slate-200/80 bg-white/70 p-5 backdrop-blur-sm transition-all hover:-translate-y-0.5 hover:border-sky-300/70 hover:shadow-lg hover:shadow-sky-600/5 dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-sky-500/40"
               >
-                <div className="mb-2 grid h-9 w-9 place-items-center rounded-xl bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-400">
+                <div className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-sky-500/10 text-sky-600 dark:bg-sky-400/10 dark:text-sky-400">
                   {f.icon}
                 </div>
-                <h3 className="text-sm font-semibold">{f.title}</h3>
-                <p className="mt-1 text-[13px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <h3 className="text-base font-semibold">{f.title}</h3>
+                <p className="mt-1.5 text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
                   {f.body}
                 </p>
               </div>
@@ -97,13 +106,13 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
           </div>
 
           {/* How it helps */}
-          <div className="mt-6">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <div className="mt-10">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
               How it helps you
             </h2>
-            <ul className="mt-3 space-y-2">
+            <ul className="mt-4 space-y-3">
               {BENEFITS.map((b) => (
-                <li key={b} className="flex items-start gap-2.5 text-sm text-slate-600 dark:text-slate-300">
+                <li key={b} className="flex items-start gap-3 text-base text-slate-600 dark:text-slate-300">
                   <CheckIcon />
                   <span>{b}</span>
                 </li>
@@ -111,37 +120,44 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
             </ul>
           </div>
         </div>
+      </section>
 
-        {/* ── Sign in ─────────────────────────────────────────────────────── */}
-        <div className="w-full max-w-sm lg:w-[22rem] lg:shrink-0">
-          <div className="rounded-3xl border border-slate-200/80 bg-white/80 p-6 shadow-xl shadow-slate-900/5 backdrop-blur-md sm:p-7 dark:border-slate-800 dark:bg-slate-900/60">
-            <h2 className="text-lg font-semibold tracking-tight">Start talking</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+      {/* ── RIGHT: isolated sign-in panel ─────────────────────────────────── */}
+      <section className="relative order-1 flex items-center justify-center border-slate-200 bg-white px-5 py-12 lg:sticky lg:top-0 lg:order-2 lg:h-screen lg:w-[26rem] lg:shrink-0 lg:self-start lg:border-l xl:w-[28rem] dark:border-slate-800 dark:bg-slate-900/60">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(14,165,233,0.10),transparent_70%)]" />
+        <div className="relative w-full max-w-sm">
+          {/* Brand mark lives in the sign-in panel so the mobile-first (top) view is branded */}
+          <div className="mb-8 flex flex-col items-center text-center">
+            <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/25">
+              <AsaathiMark className="h-8 w-8" />
+            </div>
+            <h2 className="text-2xl font-semibold tracking-tight">Start talking</h2>
+            <p className="mt-2 text-base leading-relaxed text-slate-500 dark:text-slate-400">
               Sign in to begin — your companion remembers you from here on.
             </p>
-
-            {failed && (
-              <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-center text-xs font-medium text-red-600 dark:bg-red-950/40 dark:text-red-400">
-                Sign-in didn't complete. Please try again.
-              </p>
-            )}
-
-            <button
-              type="button"
-              onClick={onGoogle}
-              className="mt-5 flex w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700/70"
-            >
-              <GoogleIcon />
-              Continue with Google
-            </button>
-
-            <p className="mt-4 flex items-center justify-center gap-1.5 text-xs text-slate-400 dark:text-slate-500">
-              <LockIcon />
-              Private to you. Delete everything anytime.
-            </p>
           </div>
+
+          {failed && (
+            <p className="mb-4 rounded-lg bg-red-50 px-3 py-2.5 text-center text-sm font-medium text-red-600 dark:bg-red-950/40 dark:text-red-400">
+              Sign-in didn't complete. Please try again.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={onGoogle}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-4 text-base font-semibold text-slate-700 shadow-sm transition-all hover:bg-slate-50 hover:shadow-md active:scale-[0.99] dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700/70"
+          >
+            <GoogleIcon />
+            Continue with Google
+          </button>
+
+          <p className="mt-5 flex items-center justify-center gap-1.5 text-[13px] text-slate-400 dark:text-slate-500">
+            <LockIcon />
+            Private to you. Delete everything anytime.
+          </p>
         </div>
-      </div>
+      </section>
     </div>
   );
 }
