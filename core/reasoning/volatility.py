@@ -90,12 +90,14 @@ def is_volatile_question(utterance: str) -> bool:
         return False
     if "?" not in text and not _INTERROGATIVE.match(text):
         return False  # a statement, not a question ("I'm feeling low today")
-    if _SELF_DIRECTED.search(text) and not _EXTERNAL_MARKER.search(text):
-        return False  # "how are you doing today?", "do you actually care about me?"
-    return bool(
-        _ROLE_HOLDER.search(text)
-        or _ROLE_OF.search(text)
-        or _STILL.search(text)
-        or _DEIXIS.search(text)
-        or _MOVING_VALUE.search(text)
+    # An OPINION wrapper around a volatile fact is still volatile (bucket D): "what do YOU
+    # think about the current PM of Nepal?" must verify who the PM is first. So the
+    # self-directed exclusion ("how are you doing?") only fires when there's NO external
+    # volatile signal at all — checked against the real role/value detectors, not a narrower
+    # marker list that missed abbreviations like "PM".
+    external = bool(
+        _ROLE_HOLDER.search(text) or _ROLE_OF.search(text) or _MOVING_VALUE.search(text)
     )
+    if _SELF_DIRECTED.search(text) and not external and not _EXTERNAL_MARKER.search(text):
+        return False  # "how are you doing today?", "do you actually care about me?"
+    return bool(external or _STILL.search(text) or _DEIXIS.search(text))
