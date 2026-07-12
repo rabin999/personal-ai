@@ -142,6 +142,16 @@ class CompanionProcessor(FrameProcessor):
                 # runtime was only persisting traces, so the live transcript panel stayed empty).
                 await self._emit(turn, "stt", f"final: {text!r}", text=text)
                 prompt = await self._assembler.assemble(self._user_id, self._session_id, text)
+                # Trace parity with native: the assembled prompt (complexity + version) so a
+                # Pipecat turn is inspectable in the Trace tab, not just the bare stt/response.
+                complexity = getattr(prompt, "complexity_hint", None)
+                await self._emit(
+                    turn,
+                    "assembly",
+                    f"prompt assembled (complexity={complexity})",
+                    complexity=complexity,
+                    prompt_version=getattr(prompt, "prompt_version", None),
+                )
                 await self._emit(turn, "tts", "synthesizing reply audio")
                 await self.push_frame(LLMFullResponseStartFrame())
                 if isinstance(prompt, DisambiguationRequest):
@@ -168,6 +178,15 @@ class CompanionProcessor(FrameProcessor):
                     reply = result.final_text
                 await self.push_frame(LLMFullResponseEndFrame())
                 self._working.append(self._session_id, Turn(role="assistant", text=reply))
+                # `generation` marks the turn's reasoning done (native parity). The UI keys the
+                # audio-drain → idle transition off this + `response`, so without it a Pipecat
+                # turn flipped to "Thinking" after the reply finished (the reported typing-wave).
+                action = (
+                    getattr(result, "action", "respond")
+                    if not isinstance(prompt, DisambiguationRequest)
+                    else "disambiguate"
+                )
+                await self._emit(turn, "generation", f"action={action}", action=action)
                 await self._emit(turn, "response", reply, text=reply)
                 self._remember(text, reply)
                 if self._evaluator is not None:

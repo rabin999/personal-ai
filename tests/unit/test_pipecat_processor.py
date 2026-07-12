@@ -116,7 +116,9 @@ async def test_final_transcription_produces_a_reply_text_frame() -> None:
         and f.message.get("type") == "trace"
     ]
     stages = {t["stage"] for t in traces}
-    assert {"stt", "reply_chunk", "response"} <= stages, stages
+    # Full native parity: transcript, assembly, generation-done (drives the UI's turn-done
+    # state so it doesn't flip to "Thinking" after the reply), reply chunk, and response.
+    assert {"stt", "assembly", "reply_chunk", "generation", "response"} <= stages, stages
     stt = next(t for t in traces if t["stage"] == "stt")
     assert stt["data"]["text"] == "what's up"  # the UI shows exactly what the user said
     chunk = next(t for t in traces if t["stage"] == "reply_chunk")

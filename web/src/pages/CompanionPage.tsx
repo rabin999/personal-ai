@@ -168,7 +168,11 @@ export default function CompanionPage() {
     }
     if (["assembly", "router"].includes(e.stage)) setTurn("thinking");
     // Turn's generation is done — allow idle once the last audio finishes playing.
-    if (e.stage === "generation") turnDoneRef.current = true;
+    // `response` is the end of EVERY turn (a user reply, a greeting, a lull check-in) and,
+    // unlike `generation`, is emitted by BOTH runtimes and the proactive paths — so marking
+    // the turn done here stops the audio-drain from flipping to "Thinking" AFTER the reply is
+    // already delivered (the reported pipecat/greeting glitch: a typing-wave appears post-reply).
+    if (e.stage === "generation" || e.stage === "response") turnDoneRef.current = true;
     // `tts` fires BEFORE the (possibly slow) search/generation, so it must NOT flip the
     // UI to "Speaking" — that left it silently "Speaking" during the whole wait. Speaking
     // begins when a real chunk is actually being spoken (below) / audio arrives.
