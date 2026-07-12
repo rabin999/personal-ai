@@ -440,3 +440,23 @@ def test_clean_query_list_parses_bounds_and_dedupes() -> None:
     assert _clean_query_list("ENOUGH") == []
     # A simple single-line question yields exactly one query.
     assert _clean_query_list("who is the current PM of Nepal") == ["who is the current PM of Nepal"]
+
+
+def test_strip_stale_datestamp_removes_past_year_stamp_only() -> None:
+    """A freshly-searched answer must not read as stale because the model stamped it with
+    its training-cutoff year. A PAST "as of <year>" is removed; the current year and a bare
+    past year that's part of the content are left alone."""
+    from datetime import UTC, datetime
+
+    from core.reasoning.response_gen import _strip_stale_datestamp
+
+    this_year = datetime.now(UTC).year
+    assert (
+        _strip_stale_datestamp("Balendra Shah is the current PM of Nepal as of 2024.")
+        == "Balendra Shah is the current PM of Nepal."
+    )
+    assert _strip_stale_datestamp("X is the PM (as of 2024).") == "X is the PM."
+    assert _strip_stale_datestamp(f"The champion as of {this_year} is Z.") == (
+        f"The champion as of {this_year} is Z."
+    )
+    assert _strip_stale_datestamp("She won the 2019 election.") == "She won the 2019 election."

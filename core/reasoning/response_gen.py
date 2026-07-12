@@ -19,6 +19,7 @@ import json
 import logging
 import re
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, Protocol
 
 from pydantic import BaseModel, BeforeValidator, ValidationError
@@ -641,9 +642,16 @@ class ResponseGenerator:
         # earlier turn — a stale number, spoken as current. Never answer a volatile question
         # from memory alone.
         searched_web = _searched_web(seen_calls)
+        # Whether a search actually RETURNED grounded results — not just that one was attempted.
+        # The model can emit reasoning/garbage as its own query ("I understand your frustration…
+        # Let me search…"), which counts as searched_web yet finds nothing; its stale parametric
+        # draft ("Last I checked, Prachanda is PM") then leaked. So a volatile turn that searched
+        # but wasn't grounded is treated like it never searched → force a clean lookup (eval
+        # harness caught this). Structural, so it doesn't depend on catching every hedge phrase.
+        grounded = _search_grounded(tool_notes)
         needs_search = (
             can_use_tools
-            and not searched_web
+            and not (searched_web and grounded)
             and not prompt.suppress_live_search  # A3: answer carried in context → no re-search
             and (_requires_live_lookup(prompt) or _needs_capability_repair(turn.draft_response))
         )
@@ -661,15 +669,62 @@ class ResponseGenerator:
                 self._span("tool", tool="web_search", phase="result", status="required_but_failed")
                 turn.draft_response = _SEARCH_FAILED_TEXT
         # The searches ran but the model still ended on a promise/refusal ("I'll do my best
-        # to find that for you"). It cannot keep that promise — this turn is the answer.
+        # to find that for you") or a HEDGED GUESS ("I don't have anything recent, but
+        # Prachanda is PM…") — the searches didn't ground it, so its parametric answer must
+        # NOT ship as fact on a volatile turn (the stale-officeholder invariant). Fires for
+        # ANY volatile turn, not only when the LLM classifier said so — the model can emit
+        # garbage/reasoning as its own search query, which "counts" as searched_web yet
+        # returns nothing, and the stale draft then leaked (caught by the eval harness).
         elif (
-            prompt.needs_live_info is True
-            and searched_web
+            searched_web
+            and (prompt.needs_live_info is True or _requires_live_lookup(prompt))
             and _needs_capability_repair(turn.draft_response)
         ):
             self._span("tool", tool="web_search", phase="result", status="ran_but_nothing_usable")
             turn.draft_response = _NOT_FOUND_TEXT
+        # NO-SILENCE backstop: the model can spend its whole tool budget still requesting
+        # tools and never actually write an answer (empty draft) — the multi-search-then-
+        # empty failure the multi-turn eval harness caught on "how long have they been in
+        # office?". Compose an answer from what the tools already returned; if nothing is
+        # usable, an honest miss — but NEVER ship an empty reply (design doc §16).
+        if not turn.draft_response.strip():
+            self._span("reasoning", node="empty_draft_recovered", searched=searched_web)
+            composed = await self._answer_from_notes(prompt, tool_notes)
+            if composed:
+                turn.draft_response = composed
+            elif searched_web or _requires_live_lookup(prompt):
+                # A factual/volatile turn we couldn't ground: be HONEST about the miss, not a
+                # generic "what's going on?" that ignores what they actually asked.
+                turn.draft_response = _SEARCH_FAILED_TEXT
+            else:
+                turn.draft_response = _SAFE_FALLBACK_TEXT
         return await self._finalize(prompt, turn)
+
+    async def _answer_from_notes(self, prompt: AssembledPrompt, tool_notes: "list[str]") -> str:
+        """Compose an answer from the tool results already gathered this turn, for when the
+        model exhausted its tool budget without writing one. Returns "" if nothing usable was
+        gathered (the caller then falls back honestly) — never raises on a provider hiccup."""
+        # Keep the notes that actually carry TOOL RESULTS ("(tool '…' returned: …)"), not the
+        # bare procedural nudges — otherwise there's no real data to answer from.
+        notes = "\n\n".join(n for n in tool_notes if n and "returned:" in n)
+        if not notes.strip():
+            return ""
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [
+                    {"role": "system", "content": _REPAIR_INSTRUCTIONS + notes},
+                    {"role": "user", "content": prompt.utterance},
+                ],
+                "simple",
+                session_id=prompt.session_id,
+                purpose="response_from_notes",
+            )
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:
+            return ""
+        return _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
 
     async def _capability_repair(
         self, prompt: AssembledPrompt, dispatcher: "ToolDispatch", context: "ToolContext"
@@ -1711,6 +1766,10 @@ class ResponseGenerator:
         allow_disc = bool(judgment and judgment.requires_nature_disclosure)
         text, enforced_here = self._enforce(prompt, text, allow_disclosure=allow_disc)
         caught = list(caught or []) + enforced_here
+        # Strip a stale "as of <past year>" stamp the model tacks on from its training cutoff,
+        # which makes a freshly-searched answer read as out of date (eval harness caught
+        # "…the current PM of Nepal as of 2024"). The real date is already in the prompt.
+        text = _strip_stale_datestamp(text)
 
         # ``text`` still carries whitelisted delivery tags (for TTS); the chat UI
         # and stored memory get the tag-free version (brief §1.4).
@@ -1885,6 +1944,40 @@ def _strip_all_tags(text: str) -> str:
     return re.sub(r"\s{2,}", " ", cleaned).strip()
 
 
+_STALE_DATESTAMP = re.compile(
+    r"[\s,;(—-]*\bas of\b(?:\s+\w+){0,2}\s+((?:19|20)\d\d)\b\)?[,;]?",
+    re.IGNORECASE,
+)
+
+
+def _search_grounded(tool_notes: "list[str]") -> bool:
+    """True if a web_search this turn actually RETURNED results (found=true) — not merely
+    that a search was attempted. The model can pass reasoning/garbage as its own query,
+    which "searched" but found nothing; the answer would then be its stale guess, so a
+    volatile turn must re-search cleanly when no search was grounded."""
+    for note in tool_notes:
+        if (
+            "returned:" in note
+            and "web_search" in note
+            and re.search(r'"found"\s*:\s*true', note, re.IGNORECASE)
+        ):
+            return True
+    return False
+
+
+def _strip_stale_datestamp(text: str) -> str:
+    """Remove an "as of <year>" stamp the model appends from its training cutoff (e.g.
+    "…the current PM of Nepal as of 2024") when that year is already PAST — it makes a
+    fresh, searched answer read as stale/wrong. A current-or-future year is left alone."""
+    this_year = datetime.now(UTC).year
+
+    def _drop(m: re.Match[str]) -> str:
+        return "" if int(m.group(1)) < this_year else m.group(0)
+
+    cleaned = re.sub(r"\s{2,}", " ", _STALE_DATESTAMP.sub(_drop, text))
+    return cleaned.lstrip(" ,;—-").strip()
+
+
 def _clean_query_list(text: str, *, cap: int = 3) -> list[str]:
     """Parse a model's one-query-per-line reply into clean queries: strip bullets,
     numbering and quotes, drop empties/dupes, cap the count. Used for progressive-search
@@ -1914,6 +2007,12 @@ _CAPABILITY_REFUSAL = re.compile(
     r"|don'?t (recognize|know (of|what|who))"
     r"|can'?t (provide|give you|tell you|answer)"
     r"|(too|very) ambiguous|need to know what"
+    # A hedged GUESS on a volatile fact — the model admits it has no current data, then
+    # names a (stale) answer anyway. On a volatile turn this must yield to an honest miss,
+    # never ship as fact ("I don't have anything super recent, but Prachanda is PM…").
+    r"|don'?t have (?:anything|much|the)?\s*(?:super |very )?"
+    r"(?:recent|current|up[- ]?to[- ]?date|latest)"
+    r"|not (?:totally |entirely |100% )?(?:sure|certain) (?:who|what|of the current)"
     r"|i'?m (just )?an ai",
     re.IGNORECASE,
 )
