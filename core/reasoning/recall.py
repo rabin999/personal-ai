@@ -112,11 +112,14 @@ _CURRENT_HEADER = (
     '"before that" = further back).'
 )
 _PAST_HEADER = (
-    "## A past conversation you're being asked about (authoritative)\n"
-    "The user is asking about a PRIOR conversation (a different day/session). Answer "
-    "from the stored transcript(s) below — what you actually discussed — not from "
-    "long-term memory facts. If nothing here matches, say you don't have that "
-    "conversation rather than inventing one."
+    "## Past conversations you're being asked about (authoritative)\n"
+    "The user is asking about a PRIOR conversation (a different session). The blocks below "
+    "are ordered MOST RECENT FIRST, and each is labelled with how far back it is. "
+    '"Last time" / "last conversation" / "yesterday" / "when we last talked" = the '
+    "FIRST block (the most recent one) — answer from THAT one unless the question clearly "
+    "points further back or names something that's only in an older block. Answer from the "
+    "stored transcript(s) — what you actually discussed — not from long-term memory facts. "
+    "If nothing here matches, say you don't have that conversation rather than inventing one."
 )
 
 
@@ -152,13 +155,24 @@ class ConversationRecall:
             return "", []
         blocks: list[str] = []
         used: list[str] = []
+        # `past` is ordered most-recent-first (list_conversations sorts by last_ts desc), so
+        # index 0 is the LAST conversation. Label each block with its recency so the model can
+        # tell which one "last time" refers to — without the label it was answering from an
+        # older block (user report: recall pulled a conversation from a couple back).
         for header in past[:_MAX_PAST_SESSIONS]:
             sid = str(header.get("session_id", ""))
             when = str(header.get("last_at_iso") or header.get("started_at_iso") or "")[:10]
             turns = await self._store.turns(user_id, sid, limit=_MAX_PAST_TURNS)
             if not turns:
                 continue
-            lines = [f"### Conversation on {when or 'an earlier day'}"]
+            rank = len(blocks)  # 0 = the most recent conversation WITH content
+            if rank == 0:
+                recency = "MOST RECENT — this is our last conversation"
+            elif rank == 1:
+                recency = "the conversation before that"
+            else:
+                recency = f"{rank + 1} conversations ago"
+            lines = [f"### Conversation on {when or 'an earlier day'} — {recency}"]
             for t in turns:
                 u = (t.get("user_text") or "").strip()
                 a = (t.get("assistant_text") or "").strip()
