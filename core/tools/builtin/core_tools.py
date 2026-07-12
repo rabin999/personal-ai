@@ -121,9 +121,21 @@ def register_core_tools(
 
     async def web_search_tool(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
         query = _strip_unrequested_date(str(args.get("query", "")), ctx.utterance)
-        # §15 verified retrieval: read the pages + cross-check rather than trust a snippet.
-        # Degrade to the snippet search on a crawler/dependency failure so live info never
-        # regresses to nothing; our OWN bugs (VerifiedRetrievalError) still fail loud (D-9).
+        # SNIPPET-FIRST (§15, latency): the ranked snippets already summarised over the top
+        # results usually hold the answer, in ~3s. Paying to fetch + render + per-page
+        # cross-check EVERY query (verified retrieval) made a trivial lookup take ~9s — far
+        # over the voice budget. So run the fast snippet search first, and only escalate to the
+        # deeper verified-retrieval pipeline when the fast search comes back EMPTY, so accuracy
+        # is preserved exactly where snippets fail. (The summarise step still reads several
+        # ranked sources, so it's not a single-snippet trust.)
+        outcome = await web_search.run(query, ctx.user_id, ctx.session_id)
+        if outcome.sources and outcome.summary.strip():
+            return {
+                "summary": outcome.summary,
+                "sources": [s.url for s in outcome.sources][:5],
+                "found": True,
+            }
+        # Fast search found nothing usable → try the deeper verified-retrieval pipeline.
         if retrieval_builder is not None:
             try:
                 verified = await retrieval_builder(ctx.user_id, ctx.session_id).verify(query)
@@ -137,9 +149,8 @@ def register_core_tools(
                 raise
             except Exception:
                 logger.warning(
-                    "verified retrieval failed; falling back to snippet search", exc_info=True
+                    "verified retrieval failed after empty snippet search", exc_info=True
                 )
-        outcome = await web_search.run(query, ctx.user_id, ctx.session_id)
         return {
             "summary": outcome.summary,
             "sources": [s.url for s in outcome.sources][:5],

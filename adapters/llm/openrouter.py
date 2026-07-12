@@ -168,6 +168,16 @@ class OpenRouterLLM:
     def _embedder(self) -> TextEmbedding:
         return TextEmbedding(self._settings.embedding_model)
 
+    async def warmup(self) -> None:
+        """Pre-establish the HTTPS/TLS connection to OpenRouter so the FIRST real call of a
+        turn doesn't pay cold-connection setup (~0.5-1s, which shows up on context_intent).
+        Best-effort, 1 token, never raises — a warmup failure must not affect the app."""
+        chain = self._healthy_chain(list(self._tiers["simple"]))
+        try:
+            await self._call(chain[0], [{"role": "user", "content": "hi"}], None, 1, None, "", None)
+        except Exception:
+            logger.debug("LLM warmup ping failed (ignored)", exc_info=True)
+
     def _healthy_chain(self, chain: list[str]) -> list[str]:
         """Drop models whose circuit is open (recently hard-failed). If EVERY model is cooling
         down, return the full chain rather than nothing — better a slow try than no reply."""

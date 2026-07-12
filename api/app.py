@@ -87,7 +87,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
             except Exception:  # warmup is best-effort — never block/kill startup
                 logger.warning("%s warmup failed (non-fatal)", name, exc_info=True)
 
-    bg_tasks: list[asyncio.Task[None]] = [asyncio.create_task(_warm())]
+    # Also pre-establish the OpenRouter HTTPS connection so the first turn's first LLM call
+    # (context_intent) doesn't pay cold TLS setup. Async + best-effort, off the request path.
+    bg_tasks: list[asyncio.Task[None]] = [
+        asyncio.create_task(_warm()),
+        asyncio.create_task(pipeline.llm.warmup()),
+    ]
     if settings.run_worker_in_process:
         from workers.consolidation_worker import build_worker
         from workers.outbox_worker import OutboxWorker
