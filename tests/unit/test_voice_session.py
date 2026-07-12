@@ -153,6 +153,29 @@ async def test_greets_dynamically_on_open_even_before_the_user_speaks() -> None:
     assert recent[0].text.strip()  # a real, non-empty spoken line
 
 
+async def test_open_greeting_does_not_block_the_users_first_turn() -> None:
+    """The open greeting is a cancellable turn, not a blocking await — so a user who
+    speaks right after connecting is still heard (their turn is transcribed + handled),
+    instead of the companion talking over them (user report). Guards the greeting-as-task
+    wiring; the exact barge-in cancel moment is covered by the barge-in test."""
+    trace = TraceEmitter(SESSION)
+    working = WorkingMemory()
+    stt = FakeSTT("hey I actually had a question")
+    # Greeting on, and the user speaks (burst) then pauses enough to endpoint.
+    confidences = [0.05] * 3 + [0.9] * 20 + [0.02] * 40
+    session = _session(ScriptedVAD(confidences), stt, working, trace, greet=True)
+
+    async for _chunk in session.converse(_frames(confidences)):
+        pass
+    trace.close()
+
+    # The user's utterance was transcribed and produced a user turn — the greeting did
+    # not swallow it.
+    assert stt.calls >= 1
+    roles = [t.role for t in working.recent(SESSION)]
+    assert "user" in roles, f"the user's first turn was lost behind the greeting: {roles}"
+
+
 async def test_full_turn_traces_every_stage_and_streams_audio() -> None:
     trace = TraceEmitter(SESSION)
     working = WorkingMemory()

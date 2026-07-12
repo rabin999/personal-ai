@@ -216,6 +216,8 @@ class VoiceSession:
         # whether the in-flight turn has begun speaking (→ an addition is a barge-in).
         self._prev_endpoint: tuple[str, float] | None = None
         self._turn_spoke = False
+        self._capture_start_ms = 0.0  # monotonic ms when the current utterance began (A4 gap)
+        self._greeting_task: asyncio.Task[None] | None = None  # the open greeting, discardable
 
     async def converse(self, frames: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
         """Run a whole conversation over a continuous frame stream.
@@ -262,12 +264,6 @@ class VoiceSession:
             voice=self._voice,
             engine=self._engine,  # §11: which voice runtime produced this session
         )
-        # Speak a warm, contextual greeting the moment the conversation opens (the user
-        # explicitly wants a spoken hello — "welcome back" / "that was quick"). This is
-        # the design's post-open engagement (§3.6.3): the user opened the session, so
-        # greeting them is welcomed, not unprompted session-initiation. Best-effort.
-        if self._greet_on_open_enabled:
-            await self._greet_on_open(out)
         buffer: list[bytes] = []
         # Pre-roll ring of the most recent pre-speech frames (§19 first-word fix).
         preroll: deque[bytes] = deque(maxlen=_PREROLL_FRAMES)
@@ -282,6 +278,14 @@ class VoiceSession:
         speech_since_transcribe = False
         last_transcript = ""
         turn: asyncio.Task[None] | None = None
+        # Speak a warm, contextual hello the moment the session opens (§3.6.3) — but as a
+        # SEPARATE cancellable task, not a blocking await. The frame loop keeps running, so
+        # if the user is already talking (or starts the instant they connect) the greeting
+        # is discarded the moment real speech begins (see the speech_start handler) — an
+        # unsolicited greeting must never talk over them (user report), even when manual
+        # barge-in is off for replies.
+        if self._greet_on_open_enabled:
+            self._greeting_task = asyncio.create_task(self._greet_on_open(out))
         try:
             async for frame in self._pipeline.stream(frames):
                 frame_ms = len(frame.pcm) * _MS_PER_BYTE
@@ -293,6 +297,32 @@ class VoiceSession:
                     if not turn.cancelled() and (exc := turn.exception()) is not None:
                         raise exc
                     turn = None  # reply finished; back to listening
+
+                # The OPEN greeting yields to the user unconditionally: the instant real
+                # speech begins, discard the (unsolicited) greeting and listen — no barge-in
+                # threshold, independent of the barge_in setting, so the companion never
+                # talks over the user's opening words. Its audio still queued is flushed.
+                if self._greeting_task is not None:
+                    if self._greeting_task.done():
+                        if (
+                            not self._greeting_task.cancelled()
+                            and (gexc := self._greeting_task.exception()) is not None
+                        ):
+                            self._greeting_task = None
+                            raise gexc
+                        self._greeting_task = None
+                    elif frame.event == "speech_start" or frame.is_speech:
+                        self._greeting_task.cancel()
+                        await asyncio.gather(self._greeting_task, return_exceptions=True)
+                        self._greeting_task = None
+                        self._playback_until = 0.0  # greeting no longer playing → capture now
+                        flushed = self._drain(out)
+                        self._trace.emit(
+                            "barge_in",
+                            "user spoke over the open greeting — greeting discarded",
+                            phase="greeting_discarded",
+                            flushed_chunks=flushed,
+                        )
 
                 # Barge-in: user speaks while the companion is talking (§24). "Talking"
                 # means EITHER a turn task is still generating/streaming OR the client
@@ -349,6 +379,11 @@ class VoiceSession:
                     capturing, silence_ms, decided_incomplete = True, 0.0, False
                     speech_since_transcribe, last_transcript = True, ""  # fresh utterance
                     lull_ms, self._lull_checked = 0.0, False  # re-arm the lull check-in
+                    # A4: when this utterance STARTED, so the multi-utterance gap is the
+                    # SILENCE since the previous endpoint — not that silence plus however
+                    # long this sentence took to say (a long continuation used to always
+                    # exceed the gap and wrongly split into a second turn).
+                    self._capture_start_ms = time.monotonic() * 1000
                 if not capturing:
                     preroll.append(frame.pcm)  # keep the rolling pre-roll fresh
                     # §8.2: while idle, proactively deliver a finished background
@@ -442,10 +477,14 @@ class VoiceSession:
                 now_ms = time.monotonic() * 1000
                 if self._prev_endpoint is not None:
                     prev_text, prev_ms = self._prev_endpoint
+                    # The gap is the SILENCE between the previous endpoint and the moment
+                    # this utterance began — not up to when it finished. Falls back to the
+                    # endpoint time if onset wasn't recorded.
+                    onset_ms = self._capture_start_ms or now_ms
                     dec = classify_utterance(
                         prev_text,
                         transcript,
-                        now_ms - prev_ms,
+                        onset_ms - prev_ms,
                         response_started=self._turn_spoke,
                     )
                     self._trace.emit(
@@ -472,13 +511,22 @@ class VoiceSession:
             if turn is not None:
                 pending, turn = turn, None
                 await pending
+            # A silent session that was never interrupted: let the open greeting finish so
+            # it's actually spoken + logged (a programming error in it still propagates, F3).
+            if self._greeting_task is not None:
+                greeting, self._greeting_task = self._greeting_task, None
+                await greeting
         except asyncio.CancelledError:
             if turn is not None:
                 turn.cancel()
+            if self._greeting_task is not None:
+                self._greeting_task.cancel()
             raise
         finally:
             if turn is not None:
                 await asyncio.gather(turn, return_exceptions=True)
+            if self._greeting_task is not None:
+                await asyncio.gather(self._greeting_task, return_exceptions=True)
             out.put_nowait(None)
 
     def _drain(self, out: asyncio.Queue[bytes | None]) -> int:
