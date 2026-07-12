@@ -36,7 +36,15 @@ _TIME_OF_DAY_QUERY = re.compile(
     r"|\btime\s+(?:and\s+)?date\b"  # time and date / time date
     r"|\bwhat(?:'?s| is)?\s+(?:the\s+)?(?:current\s+|today'?s\s+)?date\b"  # what's the date
     r"|\bwhat\s+day\s+is\s+it\b"  # what day is it (today)
-    r"|\bwhat(?:'?s| is)?\s+the\s+day\s+today\b",
+    r"|\bwhat(?:'?s| is)?\s+the\s+day\s+today\b"
+    r"|\bwhat\s+time\s+of\s+(?:the\s+)?day\b"  # what time of day is it there
+    r"|\bo'?clock\b"  # "what o'clock", "past 10 o'clock"
+    # Implicit time-of-day STATE questions ("is it late in Nepal?", "is it night there?") —
+    # the reported miss: these went to web search (which rounded "10:59" to "11:00 PM") instead
+    # of the exact clock. A place/now anchor is required so "is it late to apply for the job"
+    # (advice, not a clock question) does not trip it.
+    r"|\bis\s+it\s+(?:late|early|night|night-?time|morning|evening|afternoon|noon|midnight|"
+    r"dark|daytime|dawn|dusk)\s+(?:in|there|here|now|right\s+now|yet|out|outside|over)\b",
     re.IGNORECASE,
 )
 

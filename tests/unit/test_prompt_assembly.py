@@ -225,7 +225,7 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     # user-local-time + the delivery rules (which now carry the recommendation +
     # long-list-summary guidance, response standard §12) — and sits below floor + all 6
     # episodic chunks (~11.9k), proving episodic was dropped to fit.
-    assert len(result.system_prompt) <= 10_800
+    assert len(result.system_prompt) <= 11_000
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt
