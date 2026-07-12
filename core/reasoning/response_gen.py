@@ -48,6 +48,12 @@ from core.reasoning.style import (
     strip_slang,
     strip_tool_leak,
 )
+from core.reasoning.voice_effects import (
+    apply_effect_override,
+    build_demo,
+    detect_demo_request,
+    detect_effect_override,
+)
 from core.reasoning.volatility import is_volatile_question
 from core.tools.builtin.core_tools import _strip_unrequested_date
 from core.tools.dispatcher import ConfirmRequest, QueuedHandle, ToolCall, ToolResult
@@ -733,6 +739,25 @@ class ResponseGenerator:
         self._pending: dict[str, ConfirmRequest] = {}
         self._last_ack: dict[str, str] = {}  # last interjection per session (avoid repeats)
 
+    def _voice_effect_demo(self, prompt: AssembledPrompt) -> GenerationResult | None:
+        """A deterministic voice-effect DEMO reply when the user asks to hear/see the
+        companion's delivery effects (design §10.2). Returns None for a normal turn.
+
+        Built directly (not through `_finish`) on purpose: `_finish` runs
+        `strip_inappropriate_tags`, which removes [laugh]/[chuckle] on a non-excited
+        register — exactly the tags a demo must keep. The examples are curated and
+        tag-safe, so they need neither the LLM (→ $0, exact count, always well-formed)
+        nor the assistant-speak gates. `voice_text` carries the tags for TTS; the
+        chat/memory `final_text` is the clean labelled list (brief §1.4)."""
+        demo = detect_demo_request(prompt.utterance)
+        if demo is None:
+            return None
+        display, voice = build_demo(demo.count)
+        self._span(
+            "voice_effect", purpose="demo", count=demo.count, deterministic=True, voice=voice[:400]
+        )
+        return GenerationResult(final_text=display, voice_text=voice, action="respond")
+
     async def generate(
         self,
         prompt: AssembledPrompt | DisambiguationRequest,
@@ -750,6 +775,11 @@ class ResponseGenerator:
         re-raise loudly."""
         if isinstance(prompt, DisambiguationRequest):
             return await self._disambiguate(prompt)
+        # A voice-effect demo ("show me your voice effects") is a fully-formed,
+        # deterministic reply — return it before the agentic machinery (§10.2).
+        demo = self._voice_effect_demo(prompt)
+        if demo is not None:
+            return demo
         try:
             return await self._run_turn(prompt, dispatcher, context)
         except PROGRAMMING_ERRORS:
@@ -1303,13 +1333,32 @@ class ResponseGenerator:
             await speak(result.voice_text or result.final_text)
             return result
 
+        # Voice-effect DEMO (§10.2): a deterministic, fully-tagged reply the user asked
+        # to HEAR — speak it as one utterance so every effect performs, and skip the
+        # brevity/tag-strip machinery that would gut the examples. Not on proactive turns.
+        if not proactive:
+            demo = self._voice_effect_demo(prompt)
+            if demo is not None:
+                await speak(demo.voice_text or demo.final_text)
+                return demo
+
+        # Whole-reply effect override ("answer in a whisper"): the reply is generated
+        # normally, then wrapped in the effect for TTS. Forcing the non-streamed path
+        # (below) lets us wrap the COMPLETE reply in one tag pair rather than per
+        # sentence, and the wrap is applied AFTER the gates so even a levity effect
+        # ([laugh]) the register-strip would remove is honoured when explicitly asked.
+        effect = None if proactive else detect_effect_override(prompt.utterance)
+
         can_use_tools = dispatcher is not None and context is not None
         # Stream only a plain reply: no pending confirmation, and nothing the REASONING
         # step judged volatile (those need a tool/search first). Tool turns and refusals
-        # go the full path so we never speak a holding line then re-answer.
-        streamable = not (
-            can_use_tools and prompt.session_id in self._pending
-        ) and not _requires_live_lookup(prompt)
+        # go the full path so we never speak a holding line then re-answer. An effect
+        # override also takes the full path so the whole reply is wrapped once.
+        streamable = (
+            not (can_use_tools and prompt.session_id in self._pending)
+            and not _requires_live_lookup(prompt)
+            and effect is None
+        )
         already_acked = False  # so a fall-through to the tool branch doesn't ack twice
         if streamable:
             try:
@@ -1348,6 +1397,7 @@ class ResponseGenerator:
             and can_use_tools
             and prompt.session_id not in self._pending
             and not proactive
+            and effect is None
         ):
             try:
                 await self._dynamic_ack(prompt, speak, is_lookup=True)  # chunk 1
@@ -1376,7 +1426,12 @@ class ResponseGenerator:
                 return await self._finish_gated(prompt, grounded)
             # Search couldn't ground it → the full path handles the honest miss, spoken once.
             result = await self.generate(prompt, dispatcher, context)
-        elif can_use_tools and prompt.session_id not in self._pending and not proactive:
+        elif (
+            can_use_tools
+            and prompt.session_id not in self._pending
+            and not proactive
+            and effect is None
+        ):
             # Any slow, substantive turn (a tool call or complex reasoning) that isn't a live
             # lookup — the branch that used to run in DEAD AIR. Fill the beat with a brief,
             # DETERMINISTIC, fact-free reaction (empathy if they're hurting, else "let me
@@ -1405,7 +1460,14 @@ class ResponseGenerator:
             )
         else:
             result = await self.generate(prompt, dispatcher, context)
-        await speak(result.voice_text or result.final_text)
+        spoken_text = result.voice_text or result.final_text
+        if effect is not None:
+            # Perform the whole reply in the requested effect (§10.2). Applied here,
+            # after all gates, so a levity effect survives the register-strip and the
+            # entire reply is wrapped in one tag pair.
+            spoken_text = apply_effect_override(spoken_text, effect)
+            self._span("voice_effect", purpose="override", effect=effect, deterministic=True)
+        await speak(spoken_text)
         return result
 
     async def _dynamic_ack(
@@ -2451,6 +2513,12 @@ _ALLOWED_TAGS = frozenset(
         "sniff",
         "beat",
         "clears throat",
+        # Additional Grok wrapping tags (volume / vocal-style categories, docs.x.ai
+        # audio/text-to-speech) exposed by the voice-effects capability (§10.2).
+        "loud",
+        "loudly",
+        "sing",
+        "singing",
     }
 )
 _BRACKET_TOKEN = re.compile(r"\[([^\[\]]{1,24})\]|<([^<>]{1,24})>")
