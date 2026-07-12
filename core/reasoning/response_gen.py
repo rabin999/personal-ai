@@ -935,12 +935,32 @@ class ResponseGenerator:
         ):
             gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             try:
-                await self._dynamic_ack(prompt, speak)
+                await self._dynamic_ack(prompt, speak, is_lookup=True)
             except PROGRAMMING_ERRORS:
                 gen_task.cancel()
                 raise  # F3: a bug in the ack path was previously swallowed silently
             except Exception:  # the filler is optional — the answer is not
                 logger.warning("dynamic ack failed; continuing to the answer", exc_info=True)
+            result = await gen_task
+        elif (
+            can_use_tools
+            and prompt.session_id not in self._pending
+            and read_register(prompt.emotion) in ("down", "stressed")
+        ):
+            # A slow, substantive turn where the person is HURTING — the branch that used to
+            # run in dead air while a tool/reasoning turn worked. Meet the feeling FIRST with a
+            # brief empathetic interjection that commits to NO facts, concurrently with the real
+            # generation so it adds no wall-clock; the fuller reply streams next and continues
+            # the thread the interjection opened (§8.12). Gated to emotional turns so a plain
+            # tool turn doesn't grow a repetitive "let me think" tic (prior user feedback).
+            gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
+            try:
+                await self._dynamic_ack(prompt, speak, is_lookup=False)
+            except PROGRAMMING_ERRORS:
+                gen_task.cancel()
+                raise
+            except Exception:
+                logger.warning("reaction filler failed; continuing to the answer", exc_info=True)
             result = await gen_task
         else:
             result = await self.generate(prompt, dispatcher, context)
@@ -948,20 +968,47 @@ class ResponseGenerator:
         return result
 
     async def _dynamic_ack(
-        self, prompt: AssembledPrompt, speak: "Callable[[str], Awaitable[None]]"
+        self,
+        prompt: AssembledPrompt,
+        speak: "Callable[[str], Awaitable[None]]",
+        *,
+        is_lookup: bool = True,
     ) -> None:
-        """Speak a SHORT, freshly-generated, topic-aware acknowledgement the instant a
-        live lookup starts — streamed in chunks so it begins immediately, and run
-        concurrently with the search so it only fills the beat the lookup already costs.
+        """Speak a SHORT, freshly-generated backchannel the instant a slow turn starts —
+        streamed in chunks so it begins immediately, run CONCURRENTLY with the real work so
+        it only fills the beat that work already costs, and committing to NO facts so it can
+        never contradict the answer that lands next. It ADAPTS to the moment: empathy first
+        if the person is hurting; "on it" if a lookup is coming; "let me think" otherwise.
         Never a static phrase (user feedback: dynamic sentences that keep it engaged)."""
-        instr = (
-            "[The user just asked something you need to look up online, which takes a "
-            "moment. Say ONE short, natural, SPOKEN line acknowledging you're on it right "
-            "now and gently echoing their topic — like a friend already reaching for the "
-            "answer. Make it fresh; never a stock phrase. Don't ask a question and don't "
-            "answer yet. The vibe (do NOT reuse the words): 'Ooh, that missing plane near "
-            "Pakistan — let me dig in.', 'Hang on, pulling the latest on that now.']"
-        )
+        register = read_register(prompt.emotion)
+        if register in ("down", "stressed"):
+            # Empathetic interjection for emotional input — meet the feeling in a few genuine
+            # words BEFORE the fuller reply; commit to no facts, ask nothing yet.
+            instr = (
+                "[The user just said something that carries real FEELING (pain, worry, grief, "
+                "or big excitement). Say ONE short, genuine SPOKEN line that simply MEETS that "
+                "feeling right now — like a friend's first reaction — and nothing else. No "
+                "facts, no advice, no question yet; the fuller reply comes next. Make it fresh, "
+                "never a stock phrase. The vibe (do NOT reuse the words): 'oh no…', 'ugh, that's "
+                "a lot', 'oh that's wonderful'.]"
+            )
+        elif is_lookup:
+            instr = (
+                "[The user just asked something you need to look up online, which takes a "
+                "moment. Say ONE short, natural, SPOKEN line acknowledging you're on it right "
+                "now and gently echoing their topic — like a friend already reaching for the "
+                "answer. Make it fresh; never a stock phrase. Don't ask a question and don't "
+                "answer yet. The vibe (do NOT reuse the words): 'Ooh, that missing plane near "
+                "Pakistan — let me dig in.', 'Hang on, pulling the latest on that now.']"
+            )
+        else:
+            instr = (
+                "[The user asked something that takes you a beat to think through. Say ONE "
+                "short, natural SPOKEN line that shows you're genuinely considering it right "
+                "now — like a friend thinking out loud — committing to NO facts and asking "
+                "nothing yet; the real answer comes next. Fresh, never a stock phrase. The "
+                "vibe (do NOT reuse the words): 'hmm, let me think for a sec', 'ooh, good one…']"
+            )
         messages = [
             *prompt.messages[:-1],
             {"role": "system", "content": instr},
