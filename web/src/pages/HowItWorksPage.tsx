@@ -1,11 +1,73 @@
 import { useTheme } from "../lib/theme";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { AsaathiMark } from "../components/AuthPage";
+import { Mermaid } from "../components/Mermaid";
 
-// URL-only explainer (/how-it-works): a visual walk-through of the app's architecture
-// and the per-turn loop. Intentionally NOT linked from anywhere in the app nav.
+// URL-only explainer (/how-it-works): a visual walk-through of the app's architecture,
+// the per-turn loop, and how it's evaluated. Intentionally NOT linked from the app nav.
 
-// The per-turn pipeline, in order. Each is one stage of a single conversational turn.
+// One comprehensive architecture diagram (Mermaid). Latest flowchart syntax.
+const ARCHITECTURE = `flowchart TB
+  U([🎙️ You speak]):::io
+
+  subgraph EDGE["API edge · FastAPI"]
+    direction TB
+    WS["WebSocket /ws/voice"]
+    AUTH["Google SSO → user_id"]
+  end
+
+  subgraph VOICE["Voice runtime · Pipecat"]
+    direction TB
+    VAD["VAD gate — idle is free"]
+    STT["STT + endpointing"]
+    TTS["Streaming TTS + barge-in"]
+  end
+
+  subgraph CORE["Reasoning core · every turn"]
+    direction TB
+    ASM["Assemble context"]
+    REACT["Think — ReAct loop"]
+    REF["Self-reflect & revise"]
+    ENF["Response standard + safety"]
+  end
+
+  subgraph MEM["Memory & knowledge"]
+    direction LR
+    WORK[("Working · Redis")]
+    EPI[("Episodic · Qdrant")]
+    SEM[("Semantic graph · Neo4j + Graphiti")]
+    PERS[("Personalization · Mem0")]
+    DOC[("Documents · Mongo")]
+  end
+
+  subgraph PROV["Tools & providers"]
+    direction LR
+    LLM["LLM · OpenRouter"]
+    SEARCH["Web search · Serper + Brave"]
+  end
+
+  subgraph BG["Background workers (async)"]
+    direction LR
+    EXT["Extraction"]
+    CON["Consolidation"]
+    LEDGER["Cost ledger + tracing"]
+  end
+
+  U --> WS --> VAD --> STT --> ASM
+  AUTH -. user_id .-> CORE
+  ASM -- reads --> MEM
+  ASM --> REACT --> REF --> ENF --> TTS --> OUT([🔊 You hear the reply]):::io
+  REACT -- tool --> SEARCH
+  REACT --> LLM
+  REF --> LLM
+  ENF -. after reply .-> BG
+  BG -- writes --> MEM
+  EXT --> CON
+
+  classDef io fill:#0ea5e9,stroke:#0284c7,color:#ffffff,font-weight:bold;
+`;
+
+// The per-turn pipeline, in order.
 const STAGES: { emoji: string; title: string; body: string }[] = [
   { emoji: "🎙️", title: "You speak", body: "You just talk — no push-to-talk. The mic streams continuously." },
   { emoji: "🔊", title: "Voice activity gate", body: "Silence is detected and stays free — no paid work runs while you're not speaking." },
@@ -17,13 +79,22 @@ const STAGES: { emoji: string; title: string; body: string }[] = [
   { emoji: "💾", title: "Remember (after)", body: "Off your conversation, it extracts what's worth keeping and consolidates it into long-term memory." },
 ];
 
-// The stores/knowledge the reasoning core reads before a turn and writes after it.
 const STORES: { name: string; tech: string; body: string }[] = [
   { name: "Working memory", tech: "Redis", body: "The live thread of the current conversation." },
   { name: "Episodic memory", tech: "Qdrant", body: "Things that happened, searchable by meaning." },
   { name: "Semantic graph", tech: "Neo4j · Graphiti", body: "Durable facts about you and how they connect." },
   { name: "Personalization", tech: "Mem0", body: "Your preferences and how you like to be talked to." },
   { name: "Documents", tech: "MongoDB", body: "Profiles, conversations, projects, and the cost ledger." },
+];
+
+// How the app is evaluated — the metrics that decide whether a reply is good enough.
+const METRICS: { title: string; how: string; body: string }[] = [
+  { title: "Response quality", how: "LLM-as-judge", body: "A separate, pinned model scores every reply against the standard — warm, human, concise, a companion not an assistant." },
+  { title: "Hard rules", how: "Deterministic checks", body: "No assistant-speak, disclosure never volunteered, no duplicated content, no promise it can't keep, and self-reflection actually ran." },
+  { title: "Retrieval quality", how: "RAGAS", body: "Faithfulness and relevance of what memory and web search feed into the answer — is it grounded in real context?" },
+  { title: "Multi-tenant isolation", how: "Two-user tests", body: "One person's data must never appear in another's context — every read and write is user-scoped and verified." },
+  { title: "Latency", how: "Per-turn TTFT", body: "The first spoken chunk lands within ~3–5s; per-call latency and time-to-first-audio are traced on every turn." },
+  { title: "Cost & tracing", how: "Cost ledger + spans", body: "Every paid call is logged; each turn has a full trace — tokens, cost, latency, tools, and the reflection step as its own span." },
 ];
 
 const PRINCIPLES: { title: string; body: string }[] = [
@@ -36,7 +107,7 @@ const PRINCIPLES: { title: string; body: string }[] = [
 ];
 
 export default function HowItWorksPage() {
-  const { pref, setPref } = useTheme();
+  const { pref, resolved, setPref } = useTheme();
   return (
     <div className="min-h-[100dvh] bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Top bar */}
@@ -54,51 +125,29 @@ export default function HowItWorksPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-5 pb-24 pt-12 sm:px-8 sm:pt-16">
-        {/* Hero */}
-        <div className="relative overflow-hidden">
-          <div className="pointer-events-none absolute -left-20 -top-24 h-80 w-80 rounded-full bg-sky-400/15 blur-3xl" />
-          <p className="relative text-sm font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-sky-400">
-            How it works
-          </p>
-          <h1 className="relative mt-3 max-w-3xl text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl">
-            A companion that thinks, remembers, and{" "}
-            <span className="bg-gradient-to-r from-sky-500 to-cyan-500 bg-clip-text text-transparent">
-              sounds human
-            </span>
-            .
-          </h1>
-          <p className="relative mt-5 max-w-2xl text-lg leading-relaxed text-slate-600 dark:text-slate-300">
-            Asaathi isn't a chatbot that fires back the first thing it generates. Every time
-            you speak, it runs a real loop — perceive, recall, reason, reflect, then reply —
-            and quietly learns from the conversation afterward. Here's the whole picture.
-          </p>
-        </div>
+      <main className="mx-auto max-w-5xl px-5 pb-24 pt-10 sm:px-8 sm:pt-14">
+        {/* Concise hero (the marketing intro lives on the sign-in page). */}
+        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-sky-600 dark:text-sky-400">
+          How it works
+        </p>
+        <h1 className="mt-3 max-w-3xl text-3xl font-bold leading-[1.12] tracking-tight sm:text-4xl">
+          The architecture behind the conversation
+        </h1>
+        <p className="mt-4 max-w-2xl text-lg leading-relaxed text-slate-600 dark:text-slate-300">
+          Every time you speak, Asaathi runs a real loop — perceive, recall, reason, reflect,
+          then reply — and learns from the conversation afterward. Here's the whole system.
+        </p>
 
-        {/* High-level architecture — three layers */}
-        <section className="mt-14">
-          <SectionTitle n="01" title="The big picture" />
-          <div className="mt-6 grid gap-4 md:grid-cols-3">
-            <LayerCard
-              tint="from-sky-500 to-cyan-500"
-              label="Voice runtime"
-              items={["Continuous listening", "Voice-activity gate", "Speech-to-text + endpointing", "Barge-in / interrupt", "Streaming text-to-speech"]}
-            />
-            <LayerCard
-              tint="from-violet-500 to-fuchsia-500"
-              label="Reasoning core"
-              items={["Context assembly", "ReAct reasoning loop", "Tool use (web search)", "Self-reflection & revision", "Response standard + safety"]}
-            />
-            <LayerCard
-              tint="from-emerald-500 to-teal-500"
-              label="Memory & knowledge"
-              items={["Working / episodic / semantic", "Personalization layer", "Per-user isolation", "Background consolidation", "Full per-turn tracing"]}
-            />
+        {/* Architecture diagram */}
+        <section className="mt-12">
+          <SectionTitle n="01" title="System architecture" />
+          <div className="mt-6 rounded-3xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900/50">
+            <Mermaid chart={ARCHITECTURE} dark={resolved === "dark"} />
           </div>
           <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
             The voice runtime handles the real-time conversation; the reasoning core decides
-            what to say; memory makes it personal — and everything money-costing is logged and
-            never blocks your reply.
+            what to say; memory makes it personal. Everything money-costing is logged and never
+            blocks your reply — slow work goes to background workers.
           </p>
         </section>
 
@@ -154,9 +203,36 @@ export default function HowItWorksPage() {
           </div>
         </section>
 
+        {/* Evaluation & metrics */}
+        <section className="mt-16">
+          <SectionTitle n="04" title="How we evaluate it" />
+          <p className="mt-3 max-w-2xl text-slate-600 dark:text-slate-300">
+            A companion is only as good as its replies, so quality is measured — not assumed.
+            Every behavioral requirement is checked automatically against these metrics.
+          </p>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {METRICS.map((m) => (
+              <div
+                key={m.title}
+                className="rounded-2xl border border-slate-200/80 bg-white/70 p-5 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-base font-semibold">{m.title}</h3>
+                  <span className="rounded-full bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-400">
+                    {m.how}
+                  </span>
+                </div>
+                <p className="mt-2 text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  {m.body}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* Principles */}
         <section className="mt-16">
-          <SectionTitle n="04" title="What makes it different" />
+          <SectionTitle n="05" title="What makes it different" />
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {PRINCIPLES.map((p) => (
               <div
@@ -171,20 +247,6 @@ export default function HowItWorksPage() {
             ))}
           </div>
         </section>
-
-        {/* CTA */}
-        <section className="mt-16 overflow-hidden rounded-3xl border border-slate-200/80 bg-gradient-to-br from-sky-500 to-cyan-500 p-8 text-center text-white shadow-xl shadow-sky-600/20 sm:p-10 dark:border-slate-800">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">Ready to just talk?</h2>
-          <p className="mx-auto mt-2 max-w-md text-white/90">
-            Sign in and start a conversation — your companion remembers you from the first hello.
-          </p>
-          <a
-            href="/login"
-            className="mt-6 inline-flex items-center justify-center gap-2 rounded-2xl bg-white px-6 py-3.5 text-base font-semibold text-sky-700 shadow-lg transition-transform hover:scale-[1.02] active:scale-[0.99]"
-          >
-            Start talking
-          </a>
-        </section>
       </main>
     </div>
   );
@@ -196,24 +258,6 @@ function SectionTitle({ n, title }: { n: string; title: string }) {
       <span className="text-sm font-bold tabular-nums text-sky-500/80 dark:text-sky-400/80">{n}</span>
       <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
       <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-    </div>
-  );
-}
-
-function LayerCard({ tint, label, items }: { tint: string; label: string; items: string[] }) {
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white/70 p-5 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-900/50">
-      <div className={`mb-4 inline-flex rounded-lg bg-gradient-to-br ${tint} px-3 py-1 text-sm font-semibold text-white shadow-sm`}>
-        {label}
-      </div>
-      <ul className="space-y-2">
-        {items.map((it) => (
-          <li key={it} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-400" />
-            <span>{it}</span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

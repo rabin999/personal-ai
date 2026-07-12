@@ -117,6 +117,16 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
               ))}
             </ul>
           </div>
+
+          {/* Connector to the architecture explainer */}
+          <a
+            href="/how-it-works"
+            className="group mt-8 inline-flex items-center gap-2 rounded-full border border-slate-200/80 bg-white/70 px-4 py-2.5 text-sm font-semibold text-slate-600 backdrop-blur-sm transition-all hover:border-sky-300 hover:text-sky-600 dark:border-slate-800 dark:bg-slate-900/50 dark:text-slate-300 dark:hover:border-sky-500/50 dark:hover:text-sky-400"
+          >
+            Curious how it works?
+            <span className="text-sky-500 dark:text-sky-400">See the architecture</span>
+            <span aria-hidden className="transition-transform group-hover:translate-x-0.5">→</span>
+          </a>
         </div>
       </section>
 
