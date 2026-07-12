@@ -330,6 +330,21 @@ quotes, no preamble.
 """.strip()
 
 
+# Grok Voice performs two KINDS of inline effect; using both (sparingly, where they fit) is
+# what makes a spoken reply sound alive instead of flat. Shared by every spoken path so the
+# fillers' answer, the plain reply, and the searched answer all get the same natural delivery.
+_DELIVERY_TAGS_GUIDE = (
+    "PERFORM it with the voice's delivery effects so it doesn't sound flat — sparingly, only "
+    "where they genuinely fit. There are two kinds:\n"
+    "• INSTANT effects fire at a single point: [laugh] [chuckle] [sigh] [gasp] [breath] "
+    "<pause> — one well-placed beat of real feeling.\n"
+    "• WRAPPING effects shape a SPAN and must be OPENED and CLOSED around the exact words: "
+    "<emphasis>really</emphasis>, <slow>take your time</slow>, <whisper>between us</whisper>.\n"
+    "Tone markers set the register: [warm] [gentle] [soft]. One or two effects per reply is "
+    "plenty; none is fine on a flat turn; ALWAYS close a wrapping tag; never a laugh on a sad turn."
+)
+
+
 def _clamp_unit(value: Any) -> float:
     """Models sometimes emit 1.2 or "0.8"; clamp instead of rejecting the turn."""
     try:
@@ -930,8 +945,14 @@ class ResponseGenerator:
         # that leans on prior context ("the new government after the Gen Z protest — how's it
         # hitting the share market?") loses the country we'd been discussing (Nepal) and the
         # model asks "which country?" instead of just answering (user report).
+        system = _REPAIR_INSTRUCTIONS + combined
+        if speak is not None:
+            # This searched answer is SPOKEN — give it the same delivery guidance the plain
+            # reply path gets (register + instant/wrapping effects) so it doesn't come out flat.
+            _register, directive = prosody_directive(prompt.emotion)
+            system += f"\n\nDelivery register for THIS turn: {directive}\n{_DELIVERY_TAGS_GUIDE}"
         messages = [
-            {"role": "system", "content": _REPAIR_INSTRUCTIONS + combined},
+            {"role": "system", "content": system},
             *prompt.messages,
         ]
         if speak is not None:
@@ -1473,6 +1494,7 @@ class ResponseGenerator:
         # stressed→calm) instead of a flat or mismatched tone.
         _register, directive = prosody_directive(prompt.emotion)
         instructions += f"\nDelivery register for THIS turn: {directive}"
+        instructions += f"\n{_DELIVERY_TAGS_GUIDE}"  # instant + wrapping effects, used properly
         if prompt.emotion:
             instructions += f"\n(Raw emotion signal: {json.dumps(prompt.emotion)})"
         messages = [
@@ -1984,6 +2006,7 @@ class ResponseGenerator:
         # U8: explicit per-turn delivery register from the emotional read.
         _register, directive = prosody_directive(prompt.emotion)
         instructions += f"\nDelivery register for THIS turn: {directive}"
+        instructions += f"\n{_DELIVERY_TAGS_GUIDE}"  # instant + wrapping effects, used properly
         if prompt.emotion:
             instructions += f"\n(Raw emotion signal: {json.dumps(prompt.emotion)})"
         if dispatcher is not None and context is not None:

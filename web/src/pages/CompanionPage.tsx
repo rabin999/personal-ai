@@ -31,7 +31,7 @@ const CONN_LABEL: Record<ConnState, string> = {
   error: "Error",
 };
 
-const DEFAULT_VOICE = "orion"; // natural, less-warm default (26 available, fetched live)
+const DEFAULT_VOICE = "carina"; // the app's companion voice (26 available, fetched live)
 
 // Live caption is a single-line ticker: only the last N words (yours or the
 // reply's) are shown at once, so it never wraps or grows into a paragraph.
@@ -540,7 +540,7 @@ export default function CompanionPage() {
                   disabled={active}
                   className={FIELD}
                 >
-                  {(voices.length ? voices : [{ voice_id: DEFAULT_VOICE, name: "Orion", gender: "" }]).map((v) => (
+                  {(voices.length ? voices : [{ voice_id: DEFAULT_VOICE, name: "Carina", gender: "female" }]).map((v) => (
                     <option key={v.voice_id} value={v.voice_id}>
                       {v.name}{v.gender ? ` (${v.gender})` : ""}
                     </option>

@@ -37,11 +37,9 @@ VOICES = (
     "orion", "perseus", "rex", "rigel", "sal", "sirius", "ursa", "zagan", "zenith",
 )  # fmt: skip
 _VOICES = set(VOICES)
-# Default voice: a natural, grounded, HUMAN voice that's less warm/smooth than the
-# original "eve" (which reads as soft/warm). "orion" is a flagship multilingual voice
-# — natural and human-friendly without the syrupy warmth. Users pick any of the 26 in
-# the UI; the exact tonal preference is best confirmed by ear (marked in TEST_REPORT).
-DEFAULT_VOICE = "orion"
+# Default voice: "carina" — the chosen companion voice for the app. Users can pick any of
+# the 26 in the UI; the exact tonal preference is best confirmed by ear (marked in TEST_REPORT).
+DEFAULT_VOICE = "carina"
 
 
 _VOICE_GENDER = {v: "female" for v in ("ara", "carina", "celeste", "eve", "iris", "luna", "ursa")}
