@@ -122,6 +122,22 @@ _FALLBACK_MODEL_SETTINGS: dict[str, dict[str, Any]] = {
     "openai/gpt-oss-120b:free": {"reasoning": {"effort": "low"}, "min_tokens": 512},
 }
 
+# Circuit-breaker: how long a hard-failed model is skipped, and which errors count as "hard"
+# (won't recover in seconds — out of credits, auth, model gone). Transient errors (timeout, 5xx,
+# 429 rate-limit) are NOT hard: they may recover, so we keep trying them.
+_CIRCUIT_COOLDOWN_S = 90.0
+_HARD_FAIL_MARKERS = (
+    "402",
+    "401",
+    "403",
+    "404",
+    "requires more credits",
+    "insufficient",
+    "invalid_api_key",
+    "not a valid model",
+    "no endpoints",
+)
+
 
 class OpenRouterLLM:
     def __init__(
@@ -136,6 +152,11 @@ class OpenRouterLLM:
         self._logs = logs
         self._tiers = {**DEFAULT_TIERS, **dict(tiers or {})}
         self._catalog: list[str] = []  # live OpenRouter model ids (cached at startup)
+        # Circuit breaker: a model that just HARD-failed (out of credits / auth / gone) is
+        # skipped for a cooldown so we don't re-pay its dead round-trip on every LLM call — a
+        # turn makes 2-4 calls, and each was re-trying all the down paid models before the free
+        # one. Transient failures (timeout/5xx/429) do NOT trip it; they may recover.
+        self._open_until: dict[str, float] = {}
         self._client = AsyncOpenAI(
             api_key=settings.open_router_api_key,
             base_url=settings.open_router_base_url,
@@ -146,6 +167,19 @@ class OpenRouterLLM:
     @cached_property
     def _embedder(self) -> TextEmbedding:
         return TextEmbedding(self._settings.embedding_model)
+
+    def _healthy_chain(self, chain: list[str]) -> list[str]:
+        """Drop models whose circuit is open (recently hard-failed). If EVERY model is cooling
+        down, return the full chain rather than nothing — better a slow try than no reply."""
+        now = time.monotonic()
+        active = [m for m in chain if self._open_until.get(m, 0.0) <= now]
+        return active or chain
+
+    def _note_failure(self, model: str, exc: Exception) -> None:
+        """Trip the breaker only for errors a retry-in-seconds won't fix (credits/auth/gone)."""
+        msg = str(exc).lower()
+        if any(marker in msg for marker in _HARD_FAIL_MARKERS):
+            self._open_until[model] = time.monotonic() + _CIRCUIT_COOLDOWN_S
 
     def route(self, complexity: Tier) -> str:
         return self._tiers[complexity][0]
@@ -233,6 +267,7 @@ class OpenRouterLLM:
         # the fallback. Any REAL catalog model is honored (not just configured tiers).
         if model and self.is_selectable_model(model):
             chain = [model, *[m for m in chain if m != model]]
+        chain = self._healthy_chain(chain)  # skip models cooling down after a hard failure
         for attempt, model_id in enumerate(chain):
             wall_start = time.time()
             started = time.perf_counter()
@@ -248,6 +283,7 @@ class OpenRouterLLM:
                     seed,
                 )
             except Exception as exc:
+                self._note_failure(model_id, exc)
                 errors.append(f"{model_id}: {type(exc).__name__}: {exc}")
                 logger.warning("LLM call failed on %s, trying fallback: %s", model_id, exc)
                 # Flag + trace the fallback so a primary-model failure is VISIBLE in the
@@ -307,7 +343,7 @@ class OpenRouterLLM:
         chain = list(self._tiers[tier])
         if model and self.is_selectable_model(model):
             chain = [model, *[m for m in chain if m != model]]
-        model_id = chain[0]
+        model_id = self._healthy_chain(chain)[0]  # skip a model cooling down after a hard failure
         wall_start = time.time()
         started = time.perf_counter()
         extra_body: dict[str, Any] = {"usage": {"include": True}}
@@ -332,6 +368,7 @@ class OpenRouterLLM:
         try:
             stream = await self._client.chat.completions.create(**kwargs)
         except Exception as exc:
+            self._note_failure(model_id, exc)
             raise LLMUnavailable(f"stream failed to start on {model_id}: {exc}") from exc
 
         parts: list[str] = []

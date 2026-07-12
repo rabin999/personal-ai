@@ -175,3 +175,39 @@ async def test_non_mandatory_model_keeps_reasoning_and_max_tokens() -> None:
     call = fake.calls[0]
     assert call["extra_body"]["reasoning"] == {"enabled": False}
     assert call["max_tokens"] == 48
+
+
+class _HardFailCompletions:
+    """Fails the named models with a hard (402-style) error; records every call."""
+
+    def __init__(self, failing: set[str]) -> None:
+        self.failing = failing
+        self.calls: list[str] = []
+
+    async def create(self, **kwargs: Any) -> SimpleNamespace:
+        model = kwargs["model"]
+        self.calls.append(model)
+        if model in self.failing:
+            raise RuntimeError("Error code: 402 - requires more credits")
+        return _response(model)
+
+
+async def test_circuit_breaker_skips_hard_failed_models_on_the_next_call() -> None:
+    """A model that hard-fails (out of credits) is skipped on subsequent calls for a cooldown,
+    so a multi-call turn stops re-paying the dead paid models' round-trips before the free one."""
+    router = OpenRouterLLM(
+        Settings(_env_file=None, open_router_api_key="k"),
+        tiers={"simple": ["paid/a", "paid/b", "free/c"], "moderate": ["m"], "complex": ["s"]},
+    )
+    fake = _HardFailCompletions(failing={"paid/a", "paid/b"})
+    router._client = SimpleNamespace(chat=SimpleNamespace(completions=fake))  # type: ignore[assignment]
+
+    r1 = await router.complete("u", MESSAGES, "simple")
+    assert r1.model == "free/c"
+    assert fake.calls == ["paid/a", "paid/b", "free/c"]  # first call walks the whole chain
+
+    fake.calls.clear()
+    r2 = await router.complete("u", MESSAGES, "simple")
+    assert r2.model == "free/c"
+    # the two dead paid models are cooling down → skipped entirely, straight to the free one
+    assert fake.calls == ["free/c"]
