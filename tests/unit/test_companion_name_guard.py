@@ -2,11 +2,9 @@
 user actually said (fix for the hallucinated "Norsylinder" companion name). Verifies
 the utterance-matching guard used by the tool handler."""
 
-from datetime import UTC, datetime
-
 import pytest
 
-from core.tools.builtin.core_tools import _name_came_from_user, _strip_unrequested_stale_year
+from core.tools.builtin.core_tools import _name_came_from_user, _strip_unrequested_date
 
 
 @pytest.mark.parametrize(
@@ -31,18 +29,27 @@ def test_name_must_come_from_user(name: str, utterance: str, accepted: bool) -> 
     assert _name_came_from_user(name, utterance) is accepted
 
 
-def test_strips_model_invented_stale_year_but_keeps_user_requested_one() -> None:
-    """A live-search query must not carry a stale year the model appended (its cutoff
-    anchoring) — that pins the search to old data and returns nothing usable. A year the
-    USER asked about, or the current year, is preserved."""
-    this_year = datetime.now(UTC).year
-    # model bolted "2024" onto a "current" question the user never dated
+def test_strips_model_appended_date_but_keeps_user_requested_one() -> None:
+    """A live-search query must not carry a date the model appended that the user never asked
+    for — a stale year ('2024') pins it to old data, and even the CURRENT month ('July 2026')
+    is narrower/worse than letting 'current/latest' carry the recency. A date the user named
+    is kept."""
+    # model bolted a stale year onto a "current" question the user never dated
     assert (
-        _strip_unrequested_stale_year("current PM of Nepal 2024", "who is the current PM of Nepal?")
+        _strip_unrequested_date("current PM of Nepal 2024", "who is the current PM of Nepal?")
         == "current PM of Nepal"
     )
-    # user explicitly asked about a past year → keep it
-    assert _strip_unrequested_stale_year("who won in 2019", "who won in 2019?") == "who won in 2019"
-    # the current year is not stale → keep it
-    q = f"latest results {this_year}"
-    assert _strip_unrequested_stale_year(q, "latest results") == q
+    # the user's actual complaint: the CURRENT month/year appended → dropped, rely on "current"
+    assert (
+        _strip_unrequested_date(
+            "current prime minister of Nepal July 2026", "who is the PM of Nepal?"
+        )
+        == "current prime minister of Nepal"
+    )
+    # a bare current year the model tacked on → dropped
+    assert (
+        _strip_unrequested_date("latest NEPSE index 2026", "latest NEPSE index")
+        == "latest NEPSE index"
+    )
+    # user explicitly asked about a specific year → keep it
+    assert _strip_unrequested_date("who won in 2019", "who won in 2019?") == "who won in 2019"

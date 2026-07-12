@@ -146,11 +146,11 @@ async def test_verify_models_flags_missing_and_no_fallback() -> None:
     assert "simple" not in result["no_fallback"]
 
 
-async def test_reasoning_mandatory_model_strips_disable_and_floors_max_tokens() -> None:
-    """A free gpt-oss endpoint REJECTS a disabled-reasoning request and needs token headroom
-    (its mandatory reasoning tokens would otherwise starve the reply). The adapter must NOT
-    forward reasoning:{enabled:false} to it, and must floor max_tokens — so the credit-outage
-    fallback to the free model actually returns words, not a 400 / empty."""
+async def test_reasoning_mandatory_model_forces_low_effort_and_floors_max_tokens() -> None:
+    """A free gpt-oss endpoint REJECTS a disabled-reasoning request and, left at its default,
+    thinks ~17s per call. The adapter must force the LOWEST reasoning effort (fast, ~7s) —
+    never the caller's disable — and floor max_tokens so the reply survives the thinking.
+    This is what makes the credit-outage fallback usable rather than painfully slow."""
     router = OpenRouterLLM(
         Settings(_env_file=None, open_router_api_key="test-key"),
         tiers={"simple": ["openai/gpt-oss-20b:free"], "moderate": ["mid/model"], "complex": ["s"]},
@@ -161,7 +161,9 @@ async def test_reasoning_mandatory_model_strips_disable_and_floors_max_tokens() 
     await router.complete("u", MESSAGES, "simple", reasoning={"enabled": False}, max_tokens=48)
 
     call = fake.calls[0]
-    assert "reasoning" not in call["extra_body"], "forwarded a disable gpt-oss rejects"
+    assert call["extra_body"]["reasoning"] == {"effort": "low"}, (
+        "did not force low reasoning effort"
+    )
     assert call["max_tokens"] == 512, f"did not floor the token budget: {call['max_tokens']}"
 
 

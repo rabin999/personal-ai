@@ -15,7 +15,6 @@ import logging
 import re
 import unicodedata
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any
 
 from core.memory.episodic import EpisodicMemory
@@ -37,24 +36,27 @@ def _norm_tokens(text: str) -> set[str]:
     return {t for t in re.findall(r"[a-z0-9]+", folded.lower()) if len(t) >= 2}
 
 
-def _strip_unrequested_stale_year(query: str, utterance: str) -> str:
-    """Remove a PAST year the model bolted onto a live-search query that the user never
-    said. Models anchor to their training cutoff and append e.g. '...2024' to a 'current'
-    question, which pins the search to a stale year and returns nothing usable (the
-    honest-fail we saw on 'who is the current PM of Nepal?'). We only strip a year that
-    is (a) not in the user's own words and (b) before this year — a year the user asked
-    about ('who won in 2019') stays untouched. Design doc §15 / RETRIEVAL_POLICY.md."""
-    this_year = datetime.now(UTC).year
-    said = set(re.findall(r"\d{4}", utterance))
+_MONTH_NAME = (
+    "january|february|march|april|may|june|july|august|september|october|november|december|"
+    "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec"
+)
+_APPENDED_DATE = re.compile(rf"\b(?:(?:{_MONTH_NAME})\s+)?((?:19|20)\d\d)\b", re.IGNORECASE)
+
+
+def _strip_unrequested_date(query: str, utterance: str) -> str:
+    """Remove a specific DATE (a bare year, or 'Month YYYY') the model bolted onto a live
+    query that the user never asked for. Models pin a 'current/latest' question to a concrete
+    date — a stale year ('...2024') that returns nothing, OR the literal current month
+    ('...July 2026'), which is narrower and less robust than just letting 'current/latest'
+    carry the recency (user: "why is it sending July 2026 instead of recent?"). A date the
+    user themselves named ('who won in 2019') is kept. Design doc §15 / RETRIEVAL_POLICY.md."""
+    said_years = set(re.findall(r"\b(?:19|20)\d\d\b", utterance))
 
     def _drop(m: re.Match[str]) -> str:
-        year = m.group(0)
-        if year in said or int(year) >= this_year:
-            return year
-        return ""
+        return m.group(0) if m.group(1) in said_years else ""
 
-    cleaned = re.sub(r"\b\d{4}\b", _drop, query)
-    return re.sub(r"\s{2,}", " ", cleaned).strip()
+    cleaned = _APPENDED_DATE.sub(_drop, query)
+    return re.sub(r"\s{2,}", " ", cleaned).strip(" -,")
 
 
 def _name_came_from_user(name: str, utterance: str) -> bool:
@@ -118,7 +120,7 @@ def register_core_tools(
     )
 
     async def web_search_tool(args: dict[str, Any], ctx: ToolContext) -> dict[str, Any]:
-        query = _strip_unrequested_stale_year(str(args.get("query", "")), ctx.utterance)
+        query = _strip_unrequested_date(str(args.get("query", "")), ctx.utterance)
         # §15 verified retrieval: read the pages + cross-check rather than trust a snippet.
         # Degrade to the snippet search on a crawler/dependency failure so live info never
         # regresses to nothing; our OWN bugs (VerifiedRetrievalError) still fail loud (D-9).
@@ -152,8 +154,10 @@ def register_core_tools(
                 "prices, events, 'what's happening'. Write a SELF-CONTAINED, specific "
                 "query with enough context to get the RIGHT result: include the concrete "
                 "subject + any key entities/place from the conversation (resolve pronouns "
-                "into the concrete subject from the conversation), and add "
-                "'latest' or 'today' for unfolding events. Don't send a vague fragment. "
+                "into the concrete subject from the conversation), and add the word "
+                "'current' or 'latest' for recency — do NOT append a specific month or year "
+                "(e.g. 'July 2026') unless the user asked about that date; a pinned date is "
+                "narrower and often misses the answer. Don't send a vague fragment. "
                 "For a MULTI-PART question (an event PLUS its cause PLUS a related rule/number), "
                 "do ONE focused search per distinct fact and call this again for each — then "
                 "answer once you have enough; don't cram several facets into one vague query. "

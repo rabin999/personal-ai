@@ -110,15 +110,17 @@ DEFAULT_TIERS: dict[str, list[str]] = {
     "complex": ["anthropic/claude-sonnet-4.5", "openai/gpt-4.1-mini", "openai/gpt-oss-20b:free"],
 }
 
-# Endpoints that REJECT a disabled-reasoning request ("Reasoning is mandatory for this
-# endpoint") — the free gpt-oss models. For these we must (a) never forward reasoning:
-# {enabled: false} (our fast paths send that), and (b) give the reply enough token headroom
-# that the mandatory reasoning tokens don't starve the actual answer (measured: ~2s of
-# reasoning before the first content token). See the free-model fallback evaluation.
-_REASONING_MANDATORY: frozenset[str] = frozenset(
-    {"openai/gpt-oss-20b:free", "openai/gpt-oss-120b:free"}
-)
-_REASONING_MIN_TOKENS = 512
+# Per-model SETTINGS for the fallback endpoints — kept SEPARATE from the normal (paid) tier
+# models so a fallback can be tuned independently (its own reasoning effort, token floor, …).
+# The free gpt-oss models are reasoning-mandatory: they 400 on a disabled-reasoning request
+# (our fast paths send that) and, left at the default, think ~17s per call. So for them we
+# FORCE the lowest reasoning effort (~7s, measured) — overriding whatever the caller passed —
+# and floor the token budget so the mandatory reasoning tokens don't starve the reply. Add a
+# new fallback model here with its own dict; the primary models are untouched by this.
+_FALLBACK_MODEL_SETTINGS: dict[str, dict[str, Any]] = {
+    "openai/gpt-oss-20b:free": {"reasoning": {"effort": "low"}, "min_tokens": 512},
+    "openai/gpt-oss-120b:free": {"reasoning": {"effort": "low"}, "min_tokens": 512},
+}
 
 
 class OpenRouterLLM:
@@ -309,11 +311,12 @@ class OpenRouterLLM:
         wall_start = time.time()
         started = time.perf_counter()
         extra_body: dict[str, Any] = {"usage": {"include": True}}
-        # P4: thinking-budget control — but never force-disable reasoning on an endpoint that
-        # rejects it (gpt-oss:free), same as the non-streamed path.
-        if reasoning is not None and not (
-            model_id in _REASONING_MANDATORY and not dict(reasoning).get("enabled", True)
-        ):
+        # P4: a fallback model uses its OWN reasoning setting (see _FALLBACK_MODEL_SETTINGS);
+        # normal models keep the caller's directive.
+        _stream_overrides = _FALLBACK_MODEL_SETTINGS.get(model_id)
+        if _stream_overrides and "reasoning" in _stream_overrides:
+            extra_body["reasoning"] = dict(_stream_overrides["reasoning"])
+        elif reasoning is not None:
             extra_body["reasoning"] = dict(reasoning)
         kwargs: dict[str, Any] = {
             "model": model_id,
@@ -399,13 +402,14 @@ class OpenRouterLLM:
         reasoning: Mapping[str, Any] | None = None,
         seed: int | None = None,
     ) -> CompletionResult:
-        mandatory_reasoning = model in _REASONING_MANDATORY
+        overrides = _FALLBACK_MODEL_SETTINGS.get(model)
         extra_body: dict[str, Any] = {"usage": {"include": True}}
-        # P4: control the model's thinking budget per call — but NEVER send a disabled-
-        # reasoning directive to an endpoint that rejects it (gpt-oss:free 400s otherwise).
-        if reasoning is not None and not (
-            mandatory_reasoning and not dict(reasoning).get("enabled", True)
-        ):
+        # P4: a fallback model uses ITS OWN reasoning setting (overriding the caller's — a
+        # reasoning-mandatory endpoint 400s on the disable our fast paths send); a normal
+        # model keeps exactly the caller's directive.
+        if overrides and "reasoning" in overrides:
+            extra_body["reasoning"] = dict(overrides["reasoning"])
+        elif reasoning is not None:
             extra_body["reasoning"] = dict(reasoning)
         kwargs: dict[str, Any] = {
             "model": model,
@@ -416,12 +420,11 @@ class OpenRouterLLM:
         if response_format is not None:
             kwargs["response_format"] = response_format
         if max_tokens is not None:
-            # A reasoning-mandatory model spends tokens THINKING before it writes a word; a
-            # tight fast-path budget (an ack's ~60, a query's ~48) would be consumed by
-            # reasoning and return empty. Give it a floor so the actual reply survives.
-            kwargs["max_tokens"] = (
-                max(max_tokens, _REASONING_MIN_TOKENS) if mandatory_reasoning else max_tokens
-            )
+            # A fallback that must reason spends tokens THINKING before it writes a word; a
+            # tight fast-path budget (an ack's ~60, a query's ~48) would be consumed by the
+            # reasoning and return empty. Its own min_tokens floor keeps the reply alive.
+            floor = overrides.get("min_tokens", 0) if overrides else 0
+            kwargs["max_tokens"] = max(max_tokens, floor)
         if temperature is not None:
             kwargs["temperature"] = temperature
         if seed is not None:  # P5: reproducible TEST runs only (never set in prod)
