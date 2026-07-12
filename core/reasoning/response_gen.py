@@ -197,6 +197,16 @@ _ACK_THINKING = (
     "Good question — give me a beat.",
     "Let me sit with that a sec.",
 )
+# Recall turns ("what did we talk about last time") — the beat is spent reading back
+# through the stored conversations, so the filler nods to THAT, not a web lookup.
+_ACK_RECALL = (
+    "Let me look back through our chats.",
+    "One sec, let me remember what we talked about.",
+    "Hmm, let me think back.",
+    "Give me a sec to dig through our conversation.",
+    "Let me pull up what we discussed.",
+    "One moment — checking back over our chats.",
+)
 
 # Confirmation resolution (§8.3): cheap lexical yes/no on a pending action.
 _AFFIRMATIVE = (
@@ -490,6 +500,16 @@ def _wants_substance(question: str) -> bool:
     """True when the user asked a genuine informational/explanatory question that
     deserves a clear, complete answer — so the brevity clamp should not compress it."""
     return bool(_WANTS_SUBSTANCE.search(question))
+
+
+def _wants_quick_ack(prompt: "AssembledPrompt") -> bool:
+    """True when a plain (streamable) turn is likely to make the user WAIT — a recall turn
+    reads back through stored conversations, and a substantive/explanatory question takes a
+    beat to compose — so a quick fact-free interjection should fill the silence first. A
+    trivial/social turn ("hi", "yeah") returns False: an interjection there is annoying."""
+    if prompt.recall_source in ("past", "current"):
+        return True
+    return _wants_substance(prompt.utterance) or _is_multipart_question(prompt.utterance)
 
 
 def _reads_verbose(text: str, question: str = "") -> bool:
@@ -1162,8 +1182,23 @@ class ResponseGenerator:
         streamable = not (
             can_use_tools and prompt.session_id in self._pending
         ) and not _requires_live_lookup(prompt)
+        already_acked = False  # so a fall-through to the tool branch doesn't ack twice
         if streamable:
             try:
+                # Fill the beat on a slow-ish plain turn (recall / substantive question) with a
+                # quick fact-free interjection BEFORE the answer, flushed so its audio plays now
+                # — otherwise the user waited in silence (report: recall got no "let me look back
+                # through our chats", and quick chunks weren't firing often enough).
+                if _wants_quick_ack(prompt):
+                    try:
+                        await self._dynamic_ack(prompt, speak, is_lookup=False)
+                        already_acked = True
+                        if flush is not None:
+                            await flush()
+                    except PROGRAMMING_ERRORS:
+                        raise
+                    except Exception:  # the filler is optional — the answer is not
+                        logger.warning("quick ack failed; continuing to the answer", exc_info=True)
                 streamed = await self._stream_reply(prompt, speak, temperature=temperature)
                 if streamed is not None:
                     return streamed
@@ -1213,11 +1248,12 @@ class ResponseGenerator:
             # tic" risk is gone because it's a varied, no-fact one-liner, not an LLM ramble.
             gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             try:
-                await self._dynamic_ack(prompt, speak, is_lookup=False)
-                # Flush the reaction as its own utterance so its audio plays now, while the
-                # real generation runs — not batched behind the whole reply at turn-end.
-                if flush is not None:
-                    await flush()
+                if not already_acked:  # don't ack twice if the streamable path already did
+                    await self._dynamic_ack(prompt, speak, is_lookup=False)
+                    # Flush the reaction as its own utterance so its audio plays now, while the
+                    # real generation runs — not batched behind the whole reply at turn-end.
+                    if flush is not None:
+                        await flush()
             except PROGRAMMING_ERRORS:
                 gen_task.cancel()
                 raise
@@ -1249,6 +1285,8 @@ class ResponseGenerator:
         pool: tuple[str, ...]
         if register in ("down", "stressed"):
             pool = _ACK_EMPATHY
+        elif prompt.recall_source in ("past", "current"):
+            pool = _ACK_RECALL  # the wait is reading back our conversations, not a web lookup
         elif is_lookup:
             pool = _ACK_LOOKUP
         else:
