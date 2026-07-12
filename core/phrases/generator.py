@@ -32,6 +32,10 @@ _SYSTEM = (
     "help you?', 'What's on your mind?', 'Is there anything else', 'I'm here to help'; and "
     "frat-boy slang like 'dude', 'bro', 'bruh'. These lines are said BEFORE the real answer is "
     "known, so they must state NO facts, numbers, names, or results — only the vibe of the beat. "
+    "Each line must be a COMPLETE, natural spoken sentence a real person would actually say out "
+    "loud — short but WHOLE, never a clipped fragment or two stubs jammed together (NOT 'Still "
+    "digging, hang tight' or 'Hold on, searching' — say 'Still digging, hang tight — almost "
+    "there.' or 'Hold on, let me look that up.'). "
     "Return STRICT JSON: an object mapping each requested pool name to an array of distinct "
     "lines. No commentary, no markdown."
 )

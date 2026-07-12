@@ -54,6 +54,19 @@ ACK_THINKING = (
     "Good question — give me a beat.",
     "Let me sit with that a sec.",
 )
+# Short, warm BACKCHANNELS said the instant the user finishes a STATEMENT (not a question) —
+# the natural "I'm listening, go on" beat a friend gives while they take in what you said, so the
+# reply never lands on dead silence. A "let me think" would sound wrong here; these just receive it.
+ACK_BACKCHANNEL = (
+    "Mm, gotcha.",
+    "Yeah, I hear you.",
+    "Oh, okay.",
+    "Right, I'm with you.",
+    "Mm, makes sense.",
+    "Ah, I see.",
+    "Yeah, for sure.",
+    "Okay, go on.",
+)
 ACK_RECALL = (
     "Let me look back through our chats.",
     "One sec, let me remember what we talked about.",
@@ -113,42 +126,50 @@ POOL_SPECS: tuple[PoolSpec, ...] = (
         "ack_lookup",
         "instant one-liners said the moment the companion starts looking something up for the "
         "user (a web/live lookup) — brisk, warm, casual; commit to NO facts",
-        max_words=8,
+        max_words=11,
         min_lines=4,
     ),
     PoolSpec(
         "ack_thinking",
         "instant one-liners when the companion needs a beat to think about a non-lookup "
         "question — casual, unhurried; commit to NO facts",
-        max_words=8,
+        max_words=11,
         min_lines=4,
+    ),
+    PoolSpec(
+        "ack_backchannel",
+        "short, warm backchannels said the instant the user finishes a STATEMENT (not a "
+        "question) — the natural 'I'm listening, go on' beat a friend gives, receiving what they "
+        "said; NOT 'let me think'; commit to NO facts",
+        max_words=6,
+        min_lines=5,
     ),
     PoolSpec(
         "ack_recall",
         "instant one-liners when the beat is spent recalling PAST conversations with the user "
         "(not a web lookup) — nods to remembering/looking back through your chats",
-        max_words=10,
+        max_words=12,
         min_lines=4,
     ),
     PoolSpec(
         "progress_lookup",
         "brief progress nudges said while a slow search is STILL running, after the first "
         "interjection — reassure it's still happening; commit to NO facts",
-        max_words=9,
+        max_words=12,
         min_lines=3,
     ),
     PoolSpec(
         "progress_thinking",
         "brief progress nudges while STILL thinking on a slow non-lookup turn — reassure "
         "you're still on it; commit to NO facts",
-        max_words=9,
+        max_words=12,
         min_lines=3,
     ),
     PoolSpec(
         "progress_apology",
         "gentle apologies when the wait has really dragged on — sorry it's taking longer than "
         "expected, still trying your best; warm, humble, brief",
-        max_words=14,
+        max_words=16,
         min_lines=3,
     ),
     PoolSpec(
@@ -165,6 +186,7 @@ DEFAULT_POOLS: dict[str, tuple[str, ...]] = {
     "ack_empathy": ACK_EMPATHY,
     "ack_lookup": ACK_LOOKUP,
     "ack_thinking": ACK_THINKING,
+    "ack_backchannel": ACK_BACKCHANNEL,
     "ack_recall": ACK_RECALL,
     "progress_lookup": PROGRESS_LOOKUP,
     "progress_thinking": PROGRESS_THINKING,

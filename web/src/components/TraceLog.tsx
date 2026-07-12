@@ -96,7 +96,7 @@ export function TraceLog({
       )}
 
       <aside
-        className={`fixed inset-y-0 right-0 z-30 flex w-full max-w-md flex-col border-l border-slate-200 bg-slate-50 shadow-2xl transition-transform duration-300 lg:static lg:z-auto lg:w-[35%] lg:min-w-[22rem] lg:max-w-[34rem] lg:translate-x-0 lg:bg-slate-100/60 lg:shadow-none dark:border-slate-800 dark:bg-slate-950 lg:dark:bg-slate-950/60 ${
+        className={`fixed inset-y-0 right-0 z-30 flex w-full max-w-md flex-col border-l border-slate-200 bg-slate-50 shadow-2xl transition-transform duration-300 lg:static lg:z-auto lg:w-[35%] lg:min-w-[24rem] lg:max-w-none lg:translate-x-0 lg:bg-slate-100/60 lg:shadow-none dark:border-slate-800 dark:bg-slate-950 lg:dark:bg-slate-950/60 ${
           mobileOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >

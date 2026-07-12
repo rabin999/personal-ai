@@ -14,7 +14,29 @@ with the U/I/E markers in the Tests column (e.g. `U✅ I✅ E🟨`).
 **Last updated:** 2026-07-12
 **Current module:** _(All 26 modules ✅ + assembly ✅ + demo UI ✅ + F1–F21 ✅ + companion-depth U0–U12 ✅ + latency/params/UX pass ✅)_
 
-> ## 2026-07-12 (latest) — Live-use fixes: filler cascade, grave-subject empathy, tags, STT tail, chat UX. ✅ (NOT deployed)
+> ## 2026-07-12 (latest+1) — Engagement, complete fillers, quick-ack coverage, 65/35 layout. ✅
+> Follow-ups from live use after the pass below:
+> - **"Almost every reply is a dead-end."** Root cause (prod trace): the self-reflection SCRUBBER
+>   deleted the engaging tail. Draft was *"Doing well, thanks for asking! Sounds like you're in a
+>   good place — what's on your mind?"*; the scrubber flagged the stock *"what's on your mind?"* and
+>   **dropped the whole sentence**, leaving the flat *"Doing well, thanks for asking!"*. Fix: when a
+>   reply's ONLY flaw is a stock filler QUESTION (`_ENGAGEMENT_FILLER_LABELS`), `_repair_flat_filler`
+>   **replaces** it with a genuine/reciprocal question instead of deleting → the turn keeps going.
+>   Plus a reciprocity clause in the reply standard. Real-call proof (`scripts/engagement_probe.py`):
+>   *"I'm great, how are you?"* → *"…how's YOUR day treating you?"*; every conversational turn now
+>   ends on a real hook.
+> - **Fillers felt clipped** ("Still digging, hang tight"). The generator now requires COMPLETE
+>   spoken sentences (not jammed stubs) and the word caps were raised (ack 8→11, progress 9→12); the
+>   stale clipped lines in Redis (`{ns}:phrases:catalog`) are cleared on deploy so the complete
+>   defaults take over immediately.
+> - **Quick interjections rarely fired.** The streamable path buffers the whole reply before any
+>   audio, so a narrow gate left ordinary turns silent up front. `_wants_quick_ack` now fires on any
+>   non-trivial turn (still suppressed on short pleasantries), and a new **`ack_backchannel`** pool
+>   ("mm, gotcha") is used for STATEMENTS so it isn't "let me think" in front of everything.
+> - **Layout**: live transcript is a true **35%** (removed the `max-w` cap) / animation **65%**.
+> 3 new unit test files (engagement repair, quick-ack gate) + full unit suite (488) green.
+
+> ## 2026-07-12 (latest) — Live-use fixes: filler cascade, grave-subject empathy, tags, STT tail, chat UX. ✅ (deployed)
 > Six reported issues, root-caused against **production traces** (Mongo `turn_traces`):
 > 1. **Filler cascade on a "thank you"** — was actually the **silence-lull check-in** (a proactive
 >    one-liner) running the full user-turn machinery: its bracketed directive tripped the

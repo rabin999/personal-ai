@@ -321,6 +321,10 @@ stock filler question — 'what's on your mind?', 'what's up?', 'what's going on
 ALIVE: a real friend stays curious and follows the thread. React with something SPECIFIC to
 what they actually said — pick up the interesting detail, offer a genuine thought or reaction,
 and when it fits, ask ONE real question that moves the topic forward (never a generic prompt).
+If THEY ask YOU something back ('how are you?', 'what about you?', 'you doing okay?'), always
+answer it AND turn it back with real interest ('doing good, thanks — how's YOUR day treating
+you?'), never a flat 'thanks for asking' that leaves them hanging. Almost never end a turn on a
+dead stop — give them something to respond to; just make it specific, not a canned prompt.
 Don't just acknowledge and stop dead, and don't interrogate — carry it like a real back-and-
 forth. Be easy and grounded, not gushing or overly warm — match their energy,
 save real tenderness for when they're actually going through something. Use their NAME
@@ -451,6 +455,23 @@ _REWRITE_INSTRUCTIONS = (
     "Reply with ONLY the rewritten line, no quotes, no preamble.\n\nLine: "
 )
 
+# Labels that mean "the ONLY problem is a STOCK filler question" — the reply was trying to
+# engage, it just reached for a canned phrase ('what's on your mind?'). Deleting that sentence
+# (scrub_forbidden) leaves a dead-end reply that abandons the user (reported: "I'm great, how
+# are you?" → "Doing well, thanks for asking!" and nothing more). For these we REPLACE the
+# stock question with a genuine one instead of dropping it — see `_repair_flat_filler`.
+_ENGAGEMENT_FILLER_LABELS = frozenset({"flat filler opener", "flat filler reply"})
+
+_ENGAGEMENT_REWRITE_INSTRUCTIONS = (
+    "This spoken reply is warm but it ends on a STOCK filler question ('what's on your mind?', "
+    "'what's up?', 'what's going on?', 'anything on your mind?'). Keep the reply and its feeling, "
+    "but REPLACE that stock question with a REAL, specific one that keeps the conversation going: "
+    "reciprocate if they asked you something ('...how about you?', 'and how's YOUR day been?'), or "
+    "pick up the concrete thread of what they said and ask about THAT. Do NOT just delete the "
+    "question and stop flat — a friend always gives them something to respond to. One or two "
+    "spoken sentences, keep any inline [tags]/<tags>. Reply with ONLY the rewritten line.\n\nLine: "
+)
+
 # Warm-disclosure rewrite (§1.2 rule 4): a nature question ("do you actually
 # care?") is emotionally vulnerable, and weaker models often answer it COLDLY
 # ("caring isn't really my thing", "I'm just here to crunch the numbers"). When a
@@ -525,14 +546,52 @@ def _recent_convo(prompt: "AssembledPrompt", n: int = 6) -> str:
     return "\n".join(lines)
 
 
+# Short social pleasantries / acks that get an INSTANT reply — a "let me think" interjection in
+# front of these is annoying and wrong-toned. Mirrors the orchestrator's `_TRIVIAL_SOCIAL`; kept
+# here so the core quick-ack gate needs no adapter import (ports boundary, §17.3).
+_TRIVIAL_TURN = re.compile(
+    r"^\s*(?:hi+|hey+|hello+|yo|sup|hiya|howdy|heya|"
+    r"good\s+(?:morning|afternoon|evening|day)|mornin[g']?|evenin[g']?|"
+    r"how(?:'s| is| are| r)?\s+(?:it going|you(?:\s+doing)?|u|things|life)|"
+    r"what'?s\s+up|wh?a[sz]+up|"
+    r"thank\s*(?:you|s)?(?:\s+(?:so much|a lot))?|thanks|ty|cheers|"
+    r"ok(?:ay)?|kk|cool|nice|sweet|awesome|great|got it|gotcha|sounds good|alright|right|"
+    r"lol|haha+|hmm+|yeah|yep|yup|nope|nah|"
+    r"(?:good\s*)?(?:bye+|night|nite)|see\s+(?:ya|you)(?:\s+later)?|later|take care|"
+    r"i'?m\s+(?:good|fine|okay|ok|alright|great)"
+    r")(?:\s+(?:there|you|man|buddy|friend|mate|everyone|all))?[\s,!.?…—-]*$",
+    re.IGNORECASE,
+)
+
+
 def _wants_quick_ack(prompt: "AssembledPrompt") -> bool:
-    """True when a plain (streamable) turn is likely to make the user WAIT — a recall turn
-    reads back through stored conversations, and a substantive/explanatory question takes a
-    beat to compose — so a quick fact-free interjection should fill the silence first. A
-    trivial/social turn ("hi", "yeah") returns False: an interjection there is annoying."""
+    """True when a plain (streamable) turn is likely to make the user WAIT, so a quick fact-free
+    interjection should fill the silence first.
+
+    Why this fires broadly: the streamable path BUFFERS the whole reply (for self-reflection +
+    the §12 gates, C1) before speaking a single word, so on any turn that isn't near-instant the
+    user hears dead air until the full generation lands. A recall turn reads back stored
+    conversations; a substantive/multi-part question takes a beat; and honestly so does any real
+    conversational turn. So the gate is now "fire UNLESS it's a short throwaway pleasantry" — the
+    prior recall/substance/multipart-only gate left most ordinary turns silent up front (reported:
+    "quick sentences not often triggering"). A trivial/social line ("hi", "yeah", "how are you?",
+    "thanks") still returns False: it gets an instant reply and a "let me think" there is annoying.
+    """
     if prompt.recall_source in ("past", "current"):
         return True
-    return _wants_substance(prompt.utterance) or _is_multipart_question(prompt.utterance)
+    utt = (prompt.utterance or "").strip()
+    if _is_trivial_turn(utt):
+        return False
+    if _wants_substance(utt) or _is_multipart_question(utt):
+        return True
+    # Any remaining non-trivial turn of real length takes a beat to answer well — fill it.
+    return len(utt.split()) >= 5
+
+
+def _is_trivial_turn(utterance: str) -> bool:
+    """True for a whole-utterance greeting / social pleasantry / short ack that gets an instant
+    reply — so the quick interjection is suppressed there (it would only stall a fast turn)."""
+    return bool(_TRIVIAL_TURN.match((utterance or "").strip()))
 
 
 def _reads_verbose(text: str, question: str = "") -> bool:
@@ -1366,14 +1425,21 @@ class ResponseGenerator:
         it doesn't repeat the session's previous line back-to-back. Emitted on the trace as
         `purpose=ack` for inspectability."""
         register = read_register(prompt.emotion)
+        utt = (prompt.utterance or "").strip()
+        # A STATEMENT (not a question) gets a receiving backchannel ("mm, gotcha") rather than
+        # "let me think" — the gate now fires on ordinary conversational turns, and "let me think"
+        # in front of a reply to "I've been busy lately" sounds like the AI is puzzling over it.
+        is_question = utt.endswith("?") or _wants_substance(utt) or _is_multipart_question(utt)
         if register in ("down", "stressed"):
             name = "ack_empathy"
         elif prompt.recall_source in ("past", "current"):
             name = "ack_recall"  # the wait is reading back our conversations, not a web lookup
         elif is_lookup:
             name = "ack_lookup"
-        else:
+        elif is_question:
             name = "ack_thinking"
+        else:
+            name = "ack_backchannel"  # receiving a statement, not thinking over a question
         pool = self._phrases.get(name)  # current (regenerated) lines, else the defaults
         last = self._last_ack.get(prompt.session_id)
         choices = [c for c in pool if c != last] or list(pool)
@@ -1776,7 +1842,15 @@ class ResponseGenerator:
         flags_before = find_forbidden(text, allow_disclosure=allow_disc)
         revised = False
         scrubbed_used = False
-        if self._self_reflect and flags_before:
+        if self._self_reflect and flags_before and set(flags_before) <= _ENGAGEMENT_FILLER_LABELS:
+            # The reply's ONLY sin is a STOCK filler question — it was trying to engage. Deleting
+            # it dead-ends the turn and abandons the user (the reported "how are you?" → "Doing
+            # well, thanks for asking!" and nothing). Swap the stock question for a genuine/
+            # reciprocal one so the companion keeps the conversation alive from ITS side.
+            text = await self._repair_flat_filler(prompt, text, allow_disclosure=allow_disc)
+            revised = True
+            scrubbed_used = bool(find_forbidden(text, allow_disclosure=allow_disc))
+        elif self._self_reflect and flags_before:
             # Latency: try the DETERMINISTIC scrub FIRST (no LLM). If it drops the offending
             # assistant-speak while leaving a natural reply, use it and SKIP the ~1s LLM rewrite
             # — with a strong model we rarely need to regenerate, and the scrub is what enforces
@@ -1948,6 +2022,39 @@ class ResponseGenerator:
         candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
         if len(candidate.split()) < 2:  # never gut the reply to nothing
             return text
+        return candidate
+
+    async def _repair_flat_filler(
+        self, prompt: AssembledPrompt, text: str, *, allow_disclosure: bool
+    ) -> str:
+        """Swap a STOCK filler question for a genuine/reciprocal one, keeping the turn engaging.
+
+        The deterministic `scrub_forbidden` would DELETE the offending sentence — but here the
+        whole sentence WAS the engagement (the model just phrased the follow-up as 'what's on your
+        mind?'), so deleting it strands the user. We rewrite instead. Falls back to the scrub (a
+        flat-but-clean reply) only if the rewrite is empty or still carries the stock phrase, so
+        the response standard is never violated even when the rewrite is unhelpful."""
+
+        def _safe() -> str:  # clean, if flat, fallback — never worse than today
+            return scrub_forbidden(text, allow_disclosure=allow_disclosure) or text
+
+        try:
+            completion = await self._llm.complete(
+                prompt.user_id,
+                [{"role": "user", "content": _ENGAGEMENT_REWRITE_INSTRUCTIONS + text}],
+                "simple",
+                session_id=prompt.session_id,
+                purpose="engagement_rewrite",
+            )
+        except PROGRAMMING_ERRORS:
+            raise
+        except Exception:  # the rewrite is best-effort — never fail the turn on it
+            return _safe()
+        candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        if len(candidate.split()) < 3 or find_forbidden(
+            candidate, allow_disclosure=allow_disclosure
+        ):
+            return _safe()  # rewrite didn't clear the stock phrase → clean deterministic fallback
         return candidate
 
     async def _dispatch_tool(
