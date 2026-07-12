@@ -77,6 +77,15 @@ _PREROLL_FRAMES = 10
 # cancel the reply. ~8 frames ≈ 256ms — longer than an echo transient, shorter
 # than a real interruption — so the companion stops for the user, not for itself.
 _BARGE_IN_FRAMES = 8
+# Two regimes so a false barge-in on ambient noise/breathing (while the user thinks
+# silently) is filtered without losing a real interruption:
+#  - CLEAR gated speech: if the window has at least this many is_speech frames (VAD
+#    hysteresis cleared), a real interruption — commit at _BARGE_IN_FRAMES.
+#  - RAW-ONLY energy over the lowered barge bar but below the is_speech gate: this is
+#    EITHER AEC-attenuated double-talk speech OR noise — indistinguishable per-frame, so
+#    require a longer sustain before committing (short noise blips never reach it).
+_BARGE_IN_SPEECH_MIN = 4
+_BARGE_IN_FRAMES_RAW = 12
 # After this much unbroken silence — the user having ALREADY spoken this session, so
 # it continues the conversation rather than initiating one (§3.6.4) — the companion
 # gently checks in once ("still there? / lost in thought?"). Reset on the next speech.
@@ -269,6 +278,7 @@ class VoiceSession:
         preroll: deque[bytes] = deque(maxlen=_PREROLL_FRAMES)
         silence_ms = 0.0
         barge_frames = 0
+        barge_speech_frames = 0  # of the barge window, how many were GATED speech (not noise)
         idle_frames = 0
         lull_ms = 0.0  # unbroken idle silence, for the §3.6.4 lull check-in
         decided_incomplete = False
@@ -337,8 +347,21 @@ class VoiceSession:
                     # near-end signal over this threshold is the user — even when
                     # double-talk suppression has attenuated it below is_speech.
                     speaking_over = frame.confidence >= self._barge_threshold
-                    barge_frames = barge_frames + 1 if speaking_over else 0
-                    if self._barge_in and barge_frames >= _BARGE_IN_FRAMES:
+                    if speaking_over:
+                        barge_frames += 1
+                        barge_speech_frames += 1 if frame.is_speech else 0
+                    else:
+                        barge_frames = barge_speech_frames = 0
+                    # Commit on CLEAR speech quickly, but make raw-only energy (attenuated
+                    # speech OR noise) sustain longer — so breathing/room noise while the
+                    # user thinks silently no longer self-interrupts the reply, while genuine
+                    # attenuated double-talk speech still cuts in (user report: false barge-ins).
+                    clear_speech = barge_speech_frames >= _BARGE_IN_SPEECH_MIN
+                    if (
+                        self._barge_in
+                        and barge_frames >= _BARGE_IN_FRAMES
+                        and (clear_speech or barge_frames >= _BARGE_IN_FRAMES_RAW)
+                    ):
                         # C2: real interruption — stop the OUTGOING AUDIO, not just
                         # generation. Order: (1) tell the client to flush its playback
                         # buffer immediately (barge_in event → client mutes + drops
@@ -365,7 +388,8 @@ class VoiceSession:
                             flushed_chunks=flushed,
                         )
                         self._trace.begin_turn()
-                        capturing, buffer, silence_ms, barge_frames = True, [frame.pcm], 0.0, 0
+                        capturing, buffer, silence_ms = True, [frame.pcm], 0.0
+                        barge_frames = barge_speech_frames = 0
                     continue  # replying: ignore our own trailing silence
 
                 if frame.event == "speech_start":

@@ -422,6 +422,47 @@ async def test_short_echo_blip_does_not_falsely_interrupt() -> None:
 
 
 @pytest.mark.asyncio
+async def test_sustained_raw_only_noise_does_not_falsely_interrupt() -> None:
+    """Ambient noise/breathing while the user thinks silently: raw energy over the lowered
+    barge bar (0.5) but BELOW the is_speech gate (0.6), sustained past the 8-frame speech
+    guard yet short of the longer raw-only sustain. The OLD logic (8 raw frames) would have
+    self-interrupted the reply; now it must NOT (user report: false barge-ins)."""
+    stt = ScriptedSTT(["tell me a long story."])
+    tts = SlowTTS(chunks=30, gap_s=0.02)
+    gen = ScriptedGenerator()
+    working = WorkingMemory()
+    session = VoiceSession(
+        user_id="u_test_bargein",
+        session_id="s_bargein",
+        vad=AttenuationVAD(),  # type: ignore[arg-type]
+        config=PipelineConfig(),  # gate 0.6, barge-in bar 0.4
+        stt=stt,  # type: ignore[arg-type]
+        endpointer=SemanticEndpointer(short_pause_ms=100, long_pause_ms=400),
+        assembler=ScriptedAssembler(),  # type: ignore[arg-type]
+        generator=gen,  # type: ignore[arg-type]
+        tts=tts,  # type: ignore[arg-type]
+        working=working,
+        trace=RecordingTrace("s_bargein"),
+        barge_in=True,
+        greet_on_open=False,
+    )
+
+    frames: list[tuple[bytes, float]] = []
+    frames += [(SPEECH, 0.0)] * 6  # loud utterance opens the gate → turn 1
+    frames += [(SILENCE, 0.0)] * 8  # endpoint
+    frames += [(SILENCE, 0.05)]  # reply starts playing
+    frames += [(ATTENUATED, 0.005)] * 10  # raw-only noise: 10 frames, is_speech False
+    frames += [(SILENCE, 0.03)] * 25  # reply finishes uninterrupted
+
+    chunks = [c async for c in session.converse(_script(frames))]
+    stages = [e.stage for e in session._trace.recorded]  # type: ignore[attr-defined]
+
+    assert "barge_in" not in stages, f"sustained raw-only noise falsely interrupted: {stages}"
+    assert gen.interrupted == 0, "reply was cancelled by raw-only noise"
+    assert len(chunks) == 30, f"reply did not play in full: {len(chunks)} chunks"
+
+
+@pytest.mark.asyncio
 async def test_interrupt_then_continue_same_topic_keeps_context() -> None:
     """Interrupt, then the new utterance continues the SAME topic. The prior turn
     must still be in working memory so the companion has the thread."""
