@@ -196,6 +196,13 @@ input[type="range"].slider::-moz-range-thumb {
   50% { transform: scale(1.045); }
 }
 
+/* Typing-style dots wave for the "Thinking" status chip while the companion is
+   processing/searching (and between the interjection and the searched answer). */
+@keyframes asaathi-dot-wave {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.55; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
 /* ── Orb orbiting particles + aurora flow ───────────────────────────────────
    Small accent dots circle the orb at different radii/speeds; the internal
    aurora slowly rotates. Alive in every state, calm at idle, lively when active. */

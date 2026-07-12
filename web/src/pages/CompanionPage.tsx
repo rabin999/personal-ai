@@ -74,6 +74,10 @@ export default function CompanionPage() {
   // Turn indices whose reply streamed as progressive `reply_chunk` captions — so the
   // final `response` event doesn't re-reveal the whole reply on top of them.
   const chunkedTurnsRef = useRef<Set<number>>(new Set());
+  // False while a turn is still being processed (user stopped → generation/answer not
+  // done yet). Drives the "Thinking" indicator during the wait AND in the gap between an
+  // interjection chunk and the answer chunk, instead of falsely showing idle/speaking.
+  const turnDoneRef = useRef(true);
   // Voice runtime to A/B before starting: "native" (our asyncio loop) or
   // "pipecat" (framework VAD/endpointing/barge-in). Read at connect time.
   const [runtime, setRuntime] = useState<"native" | "pipecat">("native");
@@ -159,11 +163,22 @@ export default function CompanionPage() {
       }
     });
     if (e.stage === "vad") setTurn("listening");
-    if (["assembly", "router", "generation"].includes(e.stage)) setTurn("thinking");
-    if (e.stage === "tts") {
-      audioTurnRef.current = e.turn;
-      setTurn("speaking");
+    // The user stopped and the system is now working → "Thinking" (processing/searching).
+    // A turn is in flight until its generation completes; keep this true so the audio
+    // player returns to "Thinking" (not idle) in the gap between the interjection and the
+    // searched answer.
+    if (e.stage === "stt") {
+      turnDoneRef.current = false;
+      setTurn("thinking");
     }
+    if (["assembly", "router"].includes(e.stage)) setTurn("thinking");
+    // Turn's generation is done — allow idle once the last audio finishes playing.
+    if (e.stage === "generation") turnDoneRef.current = true;
+    // `tts` fires BEFORE the (possibly slow) search/generation, so it must NOT flip the
+    // UI to "Speaking" — that left it silently "Speaking" during the whole wait. Speaking
+    // begins when a real chunk is actually being spoken (below) / audio arrives.
+    if (e.stage === "tts") audioTurnRef.current = e.turn;
+    if (e.stage === "reply_chunk") setTurn("speaking");
   };
 
   const stopCaptionReveal = () => {
@@ -210,10 +225,12 @@ export default function CompanionPage() {
         if (turnStateRef.current === "speaking") setLevel(l);
       },
       () => {
-        // Reply finished playing → back to listening. Full-duplex: the mic never
-        // stopped streaming, so barge-in stays available throughout.
+        // Audio queue drained. If the turn is still being processed (e.g. the
+        // interjection just played and the searched answer is still on its way),
+        // show "Thinking" — the system is still working — NOT idle. Only go idle
+        // once the turn's generation is actually done.
         setLevel(0);
-        setTurn("idle");
+        setTurn(turnDoneRef.current ? "idle" : "thinking");
         // If the user said goodbye, end the conversation now that the companion's
         // farewell has finished playing → the button returns to "Start".
         if (pendingEndRef.current) {
@@ -234,6 +251,9 @@ export default function CompanionPage() {
       if (ev.data instanceof ArrayBuffer) {
         // Full-duplex: enqueue the reply audio but keep the mic streaming so the
         // user can talk over it. Browser echoCancellation handles the echo.
+        // Audio is actually arriving → "Speaking" (aligns the label with real sound,
+        // regardless of reply_chunk/audio event ordering in the merged stream).
+        if (turnStateRef.current !== "speaking") setTurn("speaking");
         playerRef.current?.enqueue(ev.data);
         const turn = audioTurnRef.current;
         upsertTurn(turn, (t) => (t.audio = [...t.audio, ev.data]));
@@ -631,14 +651,39 @@ const STATUS: Record<TurnState, { label: string; dot: string }> = {
   speaking: { label: "Speaking", dot: "#22d3ee" },
 };
 
+// A "typing"-style dots-wave shown while the companion is processing/searching (and in
+// the gap between the interjection and the searched answer) so the wait never looks dead.
+function ThinkingDots({ color }: { color: string }) {
+  return (
+    <span className="inline-flex items-end gap-[3px]" aria-label="thinking">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 rounded-full"
+          style={{
+            background: color,
+            boxShadow: `0 0 6px ${color}`,
+            animation: "asaathi-dot-wave 1.1s ease-in-out infinite",
+            animationDelay: `${i * 160}ms`,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 function StatusChip({ state }: { state: TurnState }) {
   const s = STATUS[state];
   return (
     <div className="pointer-events-none absolute right-4 top-4 z-10 flex items-center gap-2 rounded-full border border-slate-200/70 bg-white/70 px-3 py-1.5 text-sm font-medium text-slate-600 backdrop-blur-md sm:right-6 dark:border-slate-700/60 dark:bg-slate-900/50 dark:text-slate-200">
-      <span
-        className={`h-2 w-2 rounded-full ${state !== "idle" ? "animate-pulse" : ""}`}
-        style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}
-      />
+      {state === "thinking" ? (
+        <ThinkingDots color={s.dot} />
+      ) : (
+        <span
+          className={`h-2 w-2 rounded-full ${state !== "idle" ? "animate-pulse" : ""}`}
+          style={{ background: s.dot, boxShadow: `0 0 8px ${s.dot}` }}
+        />
+      )}
       {s.label}
     </div>
   );
