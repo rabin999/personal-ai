@@ -357,6 +357,8 @@ async def build_pipeline(settings: Settings) -> Pipeline:
         progress_filler_max=settings.progress_filler_max,
         progress_filler_apology_after=settings.progress_filler_apology_after,
         phrases=phrases,  # §8.12: interjection pools (regenerated in background)
+        contextual_ack_enabled=settings.contextual_ack_enabled,  # §10.2: react to the user's words
+        contextual_ack_timeout_s=settings.contextual_ack_timeout_s,
     )
     # A1/A1.5: the reasoning engine sits behind the Orchestrator port. LangGraph is
     # one adapter (imported only in adapters/), the native loop is the other —

@@ -26,77 +26,100 @@ class PoolSpec:
 
 # ── the spoken one-liners (interjections + progress nudges) ──────────────────────────────
 
+# Every spoken pool carries occasional DELIVERY TAGS (whitelisted in response_gen._ALLOWED_TAGS)
+# so the beat is PERFORMED, not read flat — a gentle tone on a hard moment, a warm one when
+# receiving, a small pause where a friend would actually breathe. Tags are chosen to fit each
+# pool's mood: never levity ([chuckle]) on empathy/apology; warmth/pauses everywhere.
+
 ACK_EMPATHY = (
-    "Oh no…",
-    "Ugh, that's a lot.",
-    "Oh, that's really rough.",
-    "Aw, I'm sorry.",
-    "Oh man…",
-    "That sounds heavy.",
-    "Oof, that's tough.",
-    "Hey — that's a lot to carry.",
+    "[gentle] Oh no… <pause> that's a lot.",
+    "[soft] Ugh, I'm really sorry you're dealing with that.",
+    "[gentle] Oh, that sounds genuinely rough.",
+    "[soft] Aw… <pause> hey, I'm right here.",
+    "[sigh] Oh man. That's a heavy one.",
+    "[gentle] That sounds like a lot to carry right now.",
+    "[soft] Oof… I hear you. That's tough.",
+    "[gentle] Hey — take a breath. I've got you.",
 )
 ACK_LOOKUP = (
-    "On it — let me check.",
-    "One sec, pulling that up.",
-    "Let me look that up.",
-    "Hang on, checking now.",
-    "Give me a sec to find that.",
-    "Let me dig into that.",
-    "Alright, let me see.",
-    "Checking on that right now.",
+    "[warm] On it — let me pull that up.",
+    "Alright, one sec while I check the latest on that.",
+    "[warm] Good one — let me look that up properly.",
+    "Hang on, I'm checking on that right now.",
+    "Let me dig into that <pause> give me a beat.",
+    "[warm] Okay, let me go find that out.",
+    "One moment — pulling the current details together.",
+    "Let me go check that so I get it right.",
 )
 ACK_THINKING = (
-    "Hmm, let me think.",
-    "Ooh, good one — one sec.",
-    "Let me chew on that.",
-    "Hang on, thinking it over.",
-    "Good question — give me a beat.",
-    "Let me sit with that a sec.",
+    "[warm] Hmm <pause> let me actually think on that.",
+    "Ooh, good question — give me a second here.",
+    "Let me chew on that one for a beat.",
+    "[warm] Hang on, I want to think this through with you.",
+    "That's a real one — <pause> let me sit with it.",
+    "Mm, let me turn that over for a sec.",
 )
-# Short, warm BACKCHANNELS said the instant the user finishes a STATEMENT (not a question) —
-# the natural "I'm listening, go on" beat a friend gives while they take in what you said, so the
-# reply never lands on dead silence. A "let me think" would sound wrong here; these just receive it.
+# Warm BACKCHANNELS the instant the user finishes a SHORT statement — the "I'm listening, go on"
+# beat a friend gives while taking in what you said, so the reply never lands on dead silence.
 ACK_BACKCHANNEL = (
-    "Mm, gotcha.",
+    "[warm] Mm, gotcha.",
     "Yeah, I hear you.",
-    "Oh, okay.",
-    "Right, I'm with you.",
-    "Mm, makes sense.",
-    "Ah, I see.",
+    "[warm] Oh, okay — I'm with you.",
+    "Right, I'm following.",
+    "Mm, that makes sense.",
+    "[warm] Ah, I see.",
     "Yeah, for sure.",
-    "Okay, go on.",
+    "Okay <pause> go on.",
+)
+# The companion leans IN on a meatier statement the user shares (not a question, not distress) —
+# genuinely curious, inviting them to keep going rather than just receiving it.
+ACK_INTEREST = (
+    "[warm] Oh, interesting — tell me more.",
+    "Ooh, okay — I'm listening.",
+    "[warm] Huh, that's got my attention. Go on.",
+    "Wait, really? Say more about that.",
+    "[warm] Mm, I want to hear the rest of this.",
+    "Okay, that's a good one — keep going.",
+)
+# Warm, gracious beats when the user thanks the companion — never a stiff "you're welcome".
+ACK_GRATITUDE = (
+    "[warm] Aw, of course — anytime.",
+    "[chuckle] Hey, that's what I'm here for.",
+    "[warm] Anytime, seriously.",
+    "Course — happy to.",
+    "[warm] You got it.",
+    "[chuckle] Don't mention it — really.",
 )
 ACK_RECALL = (
-    "Let me look back through our chats.",
-    "One sec, let me remember what we talked about.",
-    "Hmm, let me think back.",
-    "Give me a sec to dig through our conversation.",
-    "Let me pull up what we discussed.",
-    "One moment — checking back over our chats.",
+    "[warm] Let me look back through our chats a sec.",
+    "One moment — let me remember what we talked about.",
+    "[warm] Hmm <pause> let me think back on that.",
+    "Give me a beat to dig through our conversation.",
+    "Let me pull up what we went over before.",
+    "[warm] One sec — checking back over our chats.",
 )
 PROGRESS_LOOKUP = (
-    "Still on it — almost there.",
-    "Still digging, one more sec.",
-    "Still pulling it together — hang tight.",
-    "Nearly there, still gathering the details.",
-    "Still searching — won't be long.",
-    "Just checking a couple more sources.",
+    "[warm] Still on it — almost there.",
+    "Still digging <pause> one more second.",
+    "[warm] Still pulling it together, hang tight.",
+    "Nearly there — just gathering the last details.",
+    "Still searching — this won't be long.",
+    "Just double-checking a couple more sources.",
 )
 PROGRESS_THINKING = (
-    "Still thinking it through.",
+    "[warm] Still thinking it through.",
     "Almost got it — one more beat.",
-    "Still piecing it together.",
-    "Hang tight, nearly there.",
+    "Still piecing it together <pause> hang tight.",
+    "[warm] Nearly there, promise.",
     "Still working it out — won't be long.",
 )
 PROGRESS_APOLOGY = (
-    "Sorry, this is taking longer than I expected — still on it.",
-    "Apologies for the wait — I'm digging as fast as I can.",
-    "So sorry it's taking a while — I want to get this right.",
-    "Sorry to keep you waiting — almost there, I promise.",
-    "Sorry for the wait — I'm trying my best to pin this down.",
-    "Still going — sorry it's slow, I want to get it right for you.",
+    "[soft] Sorry, this is taking longer than I expected — still on it.",
+    "[gentle] Apologies for the wait — I'm digging as fast as I can.",
+    "[soft] So sorry it's taking a while <pause> I want to get this right.",
+    "[gentle] Sorry to keep you waiting — almost there, I promise.",
+    "[soft] Sorry for the wait — I'm really trying to pin this down.",
+    "[gentle] Still going — sorry it's slow, I want to get it right for you.",
 )
 
 # ── the greeting ANGLES (stage directions for the open-greeting LLM, not spoken verbatim) ──
@@ -118,58 +141,79 @@ POOL_SPECS: tuple[PoolSpec, ...] = (
     PoolSpec(
         "ack_empathy",
         "instant, gentle reactions the moment the user shares something hard or painful — "
-        "warm and brief, meeting the feeling, never fixing or advising",
-        max_words=8,
+        "warm and brief, meeting the feeling, never fixing or advising. Use a gentle/soft "
+        "delivery tag like [gentle] [soft] [sigh] or a <pause>; NEVER [laugh]/[chuckle]",
+        max_words=12,
         min_lines=4,
     ),
     PoolSpec(
         "ack_lookup",
         "instant one-liners said the moment the companion starts looking something up for the "
-        "user (a web/live lookup) — brisk, warm, casual; commit to NO facts",
-        max_words=11,
+        "user (a web/live lookup) — brisk, warm, casual; commit to NO facts. A [warm] tag or a "
+        "<pause> fits; no levity",
+        max_words=13,
         min_lines=4,
     ),
     PoolSpec(
         "ack_thinking",
         "instant one-liners when the companion needs a beat to think about a non-lookup "
-        "question — casual, unhurried; commit to NO facts",
-        max_words=11,
+        "question — casual, unhurried; commit to NO facts. A [warm] tag, a <slow>…</slow> or a "
+        "<pause> fits the thinking beat",
+        max_words=13,
         min_lines=4,
     ),
     PoolSpec(
         "ack_backchannel",
-        "short, warm backchannels said the instant the user finishes a STATEMENT (not a "
+        "short, warm backchannels the instant the user finishes a SHORT statement (not a "
         "question) — the natural 'I'm listening, go on' beat a friend gives, receiving what they "
-        "said; NOT 'let me think'; commit to NO facts",
-        max_words=6,
+        "said; NOT 'let me think'; commit to NO facts. A [warm] tag or a <pause> fits",
+        max_words=8,
         min_lines=5,
+    ),
+    PoolSpec(
+        "ack_interest",
+        "warm, genuinely curious beats when the user shares a MEATIER statement (not a question, "
+        "not distress) — lean in and invite them to keep going ('oh, interesting — tell me "
+        "more'); commit to NO facts. A [warm] tag fits",
+        max_words=10,
+        min_lines=4,
+    ),
+    PoolSpec(
+        "ack_gratitude",
+        "warm, gracious beats when the user THANKS the companion — never a stiff 'you're "
+        "welcome'; easy and close ('aw, of course — anytime'). A [warm] or [chuckle] tag fits",
+        max_words=8,
+        min_lines=4,
     ),
     PoolSpec(
         "ack_recall",
         "instant one-liners when the beat is spent recalling PAST conversations with the user "
-        "(not a web lookup) — nods to remembering/looking back through your chats",
-        max_words=12,
+        "(not a web lookup) — nods to remembering/looking back through your chats. A [warm] tag "
+        "or a <pause> fits",
+        max_words=14,
         min_lines=4,
     ),
     PoolSpec(
         "progress_lookup",
         "brief progress nudges said while a slow search is STILL running, after the first "
-        "interjection — reassure it's still happening; commit to NO facts",
-        max_words=12,
+        "interjection — reassure it's still happening; commit to NO facts. A [warm] tag or a "
+        "<pause> fits",
+        max_words=14,
         min_lines=3,
     ),
     PoolSpec(
         "progress_thinking",
         "brief progress nudges while STILL thinking on a slow non-lookup turn — reassure "
-        "you're still on it; commit to NO facts",
-        max_words=12,
+        "you're still on it; commit to NO facts. A [warm] tag or a <pause> fits",
+        max_words=14,
         min_lines=3,
     ),
     PoolSpec(
         "progress_apology",
         "gentle apologies when the wait has really dragged on — sorry it's taking longer than "
-        "expected, still trying your best; warm, humble, brief",
-        max_words=16,
+        "expected, still trying your best; warm, humble, brief. A [soft]/[gentle] tag or a "
+        "<pause> fits; NEVER levity",
+        max_words=18,
         min_lines=3,
     ),
     PoolSpec(
@@ -187,6 +231,8 @@ DEFAULT_POOLS: dict[str, tuple[str, ...]] = {
     "ack_lookup": ACK_LOOKUP,
     "ack_thinking": ACK_THINKING,
     "ack_backchannel": ACK_BACKCHANNEL,
+    "ack_interest": ACK_INTEREST,
+    "ack_gratitude": ACK_GRATITUDE,
     "ack_recall": ACK_RECALL,
     "progress_lookup": PROGRESS_LOOKUP,
     "progress_thinking": PROGRESS_THINKING,

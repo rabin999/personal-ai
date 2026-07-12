@@ -150,6 +150,15 @@ class Settings(BaseSettings):
     # apology ("so sorry it's taking longer than expected — I'm trying my best") — the way a
     # person eases up when they've kept you waiting longer than they promised.
     progress_filler_apology_after: int = 2
+    # Context-aware interjection (§10.2 delivery): on SLOW turns only (where the real work
+    # already overlaps the beat), the opening filler may REACT to what the user said instead of
+    # a generic pool line. Hard-guarded to be fact-free with the curated pool as fallback, so it
+    # is never worse than the template. False → always use the deterministic (tagged) pool.
+    contextual_ack_enabled: bool = True
+    # Time budget for that context-aware line; past it, fall back to the instant pool line so a
+    # slow model can't stall the beat. ~2.5s catches a cheap-tier one-liner (measured ~1-2s TTFT)
+    # while the SLOW real work (search/generation) overlaps it; the pool line covers a timeout.
+    contextual_ack_timeout_s: float = 2.5
 
     # Dynamic phrase catalog (§8.12 follow-up): the interjection/progress/greeting pools are
     # regenerated in the BACKGROUND so they don't feel static. The live turn never waits on

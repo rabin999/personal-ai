@@ -36,9 +36,23 @@ _SYSTEM = (
     "loud — short but WHOLE, never a clipped fragment or two stubs jammed together (NOT 'Still "
     "digging, hang tight' or 'Hold on, searching' — say 'Still digging, hang tight — almost "
     "there.' or 'Hold on, let me look that up.'). "
+    "PERFORM the line: weave in a delivery tag on MOST lines so the voice isn't flat — an "
+    "instant tag like [warm] [gentle] [soft] [sigh] [chuckle] or a beat like <pause> (a "
+    "[chuckle] only where genuinely light, NEVER on a sad/apology beat). Put the tag where a "
+    "real person would feel it, e.g. '[warm] Mm, gotcha.' or 'Still digging <pause> almost "
+    "there.' Match the pool's own tag guidance. "
     "Return STRICT JSON: an object mapping each requested pool name to an array of distinct "
     "lines. No commentary, no markdown."
 )
+
+# Bracket/angle delivery tags ([warm], <pause>, </slow>…). Stripped before the length + scrubber
+# checks so a PERFORMED line isn't rejected for its tags — the live `_sanitize_tags` is what
+# whitelists them at speak time; here we only judge the WORDS around them.
+_TAG_TOKEN = re.compile(r"\[[^\[\]]{1,24}\]|</?[^<>]{1,24}>")
+
+
+def _words_without_tags(line: str) -> str:
+    return re.sub(r"\s{2,}", " ", _TAG_TOKEN.sub(" ", line)).strip()
 
 
 class _Payload(BaseModel):
@@ -53,17 +67,20 @@ _SLANG_ANYWHERE = re.compile(r"\b(dude|bro|bruh|broski|fam|homie|homies|yo)\b", 
 
 def _acceptable_spoken(line: str, max_words: int) -> bool:
     """A generated spoken line is acceptable only if it survives the SAME scrubbers the live
-    reply runs, unchanged — no assistant-speak, no slang — and stays short. Stricter than the
-    live path on slang position, because a regenerated line has no author we trust."""
+    reply runs, unchanged — no assistant-speak, no slang — and stays short. Delivery tags are
+    allowed (the line is PERFORMED): they're stripped before the word-count and scrubber checks
+    so they neither eat the word budget nor read as a change. Stricter than the live path on
+    slang position, because a regenerated line has no author we trust."""
     s = line.strip()
-    if not s or len(s.split()) > max_words:
+    words = _words_without_tags(s)
+    if not words or len(words.split()) > max_words:
         return False
-    if find_forbidden(s):  # assistant-speak phrases
+    if find_forbidden(words):  # assistant-speak phrases (judged on the words, not the tags)
         return False
-    if _SLANG_ANYWHERE.search(s) or strip_slang(s) != s:  # frat-boy slang, anywhere
+    if _SLANG_ANYWHERE.search(words) or strip_slang(words) != words:  # frat-boy slang, anywhere
         return False
     # ...and nothing else the live scrubber would excise (assistant-speak clauses, etc.)
-    return scrub_forbidden(s).strip() == s
+    return scrub_forbidden(words).strip() == words
 
 
 def _dedupe_keep_order(lines: list[str]) -> list[str]:

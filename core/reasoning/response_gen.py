@@ -600,6 +600,43 @@ def _is_trivial_turn(utterance: str) -> bool:
     return bool(_TRIVIAL_TURN.match((utterance or "").strip()))
 
 
+_GRATITUDE = re.compile(
+    r"\b(thanks?|thank\s+you|thank\s+u|thx|ty|much\s+appreciated|appreciate\s+(?:it|you|that|"
+    r"this)|grateful|cheers)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_gratitude(utterance: str) -> bool:
+    """True when the user is thanking the companion, so the beat is gracious ('anytime')
+    rather than a puzzled 'let me think'."""
+    return bool(_GRATITUDE.search(utterance or ""))
+
+
+def utt_short(utterance: str | None, limit: int = 200) -> str:
+    """The user's utterance, trimmed for a filler prompt (a filler only needs the gist)."""
+    s = (utterance or "").strip()
+    return s if len(s) <= limit else s[:limit] + "…"
+
+
+def _is_safe_interjection(text: str) -> bool:
+    """Guard for a context-aware filler (`_contextual_line`): a beat said BEFORE the answer is
+    ready must state no fact/number/result and must not slip into assistant-speak or slang, or it
+    could pre-empt or contradict the real reply (the '27°C' regression). Judged on the words with
+    any delivery tags stripped, so a performed line isn't failed for its tags."""
+    s = (text or "").strip()
+    if not s:
+        return False
+    words = _strip_all_tags(s).strip()
+    if not words or len(words.split()) > 14:
+        return False
+    if re.search(r"\d", words):  # any number = a stated fact/result → reject
+        return False
+    if find_forbidden(words) or strip_slang(words) != words:
+        return False
+    return scrub_forbidden(words).strip() == words
+
+
 def _reads_verbose(text: str, question: str = "") -> bool:
     """True when a conversational reply is longer or more greeting-card than a friend
     would say. An informational/explanatory question is exempt from the plain length
@@ -714,6 +751,8 @@ class ResponseGenerator:
         progress_filler_max: int = 5,
         progress_filler_apology_after: int = 2,
         phrases: PhraseCatalog | None = None,
+        contextual_ack_enabled: bool = True,
+        contextual_ack_timeout_s: float = 2.5,
     ) -> None:
         self._llm = llm
         self._self_model = self_model
@@ -728,6 +767,12 @@ class ResponseGenerator:
         self._progress_gap_s = progress_filler_gap_s
         self._progress_max = progress_filler_max
         self._progress_apology_after = progress_filler_apology_after
+        # A short, context-aware interjection generated from the user's actual words (reacts to
+        # WHAT they said, not a generic pool line) — used ONLY on slow branches where the real
+        # work already overlaps it, hard-guarded to be fact-free, with the deterministic pool as
+        # the always-safe fallback. Off the fast streamable path (latency). See _contextual_ack.
+        self._contextual_ack = contextual_ack_enabled
+        self._contextual_ack_timeout_s = contextual_ack_timeout_s
         # The interjection pools, read on the hot path as a pure in-memory lookup. A background
         # refresher swaps in regenerated lines so they don't feel static; absent one, this holds
         # the defaults. Never None → the filler pick never has to guard for it.
@@ -1400,7 +1445,8 @@ class ResponseGenerator:
             and effect is None
         ):
             try:
-                await self._dynamic_ack(prompt, speak, is_lookup=True)  # chunk 1
+                # Slow branch (the search overlaps this beat) → allow a context-aware line.
+                await self._dynamic_ack(prompt, speak, is_lookup=True, contextual=True)  # chunk 1
                 # Flush the interjection as its OWN utterance so its audio plays in ~seconds
                 # while the (slow) search runs — otherwise the streaming TTS holds it until
                 # turn-end and the user hears the filler and the answer together (report).
@@ -1442,7 +1488,8 @@ class ResponseGenerator:
             gen_task = asyncio.create_task(self.generate(prompt, dispatcher, context))
             try:
                 if not already_acked:  # don't ack twice if the streamable path already did
-                    await self._dynamic_ack(prompt, speak, is_lookup=False)
+                    # Slow branch (generate() overlaps this beat) → allow a context-aware line.
+                    await self._dynamic_ack(prompt, speak, is_lookup=False, contextual=True)
                     # Flush the reaction as its own utterance so its audio plays now, while the
                     # real generation runs — not batched behind the whole reply at turn-end.
                     if flush is not None:
@@ -1470,46 +1517,122 @@ class ResponseGenerator:
         await speak(spoken_text)
         return result
 
+    def _ack_pool(
+        self, prompt: AssembledPrompt, register: str, *, is_lookup: bool, is_question: bool
+    ) -> str:
+        """Pick the interjection pool that FITS this turn, so the filler is context-aware
+        rather than a generic 'let me think' on every turn. Ordered by specificity."""
+        utt = (prompt.utterance or "").strip()
+        if register in ("down", "stressed"):
+            return "ack_empathy"
+        if _is_gratitude(utt):
+            return "ack_gratitude"  # they thanked us — be gracious, not "let me think"
+        if prompt.recall_source in ("past", "current"):
+            return "ack_recall"  # the wait is reading back our conversations, not a web lookup
+        if is_lookup:
+            return "ack_lookup"
+        if is_question:
+            return "ack_thinking"
+        # A statement: lean IN on a meaty one (invite more), just receive a short one.
+        if len(utt.split()) >= 8:
+            return "ack_interest"
+        return "ack_backchannel"
+
     async def _dynamic_ack(
         self,
         prompt: AssembledPrompt,
         speak: "Callable[[str], Awaitable[None]]",
         *,
         is_lookup: bool = True,
+        contextual: bool = False,
     ) -> None:
         """Speak a SHORT backchannel the instant a slow turn starts, to fill the beat before
-        the real answer lands. It is picked from a fixed, curated pool — NOT written by the
-        LLM — for two reasons proven in testing: (1) an LLM-written ack IGNORED "commit to no
-        facts" and hallucinated a temperature ('27°C') that then CONTRADICTED the real answer
-        ('22°C'); a template can't state a fact it doesn't have. (2) it adds ZERO latency (no
-        extra model call) on a path that is already slow. It adapts to the moment — empathy if
-        the person is hurting, 'on it' for a lookup, 'let me think' otherwise — and varies so
-        it doesn't repeat the session's previous line back-to-back. Emitted on the trace as
-        `purpose=ack` for inspectability."""
+        the real answer lands.
+
+        The SAFE default is a curated pool line — NOT written by the LLM — for two reasons proven
+        in testing: (1) an LLM-written ack IGNORED "commit to no facts" and hallucinated a
+        temperature ('27°C') that then CONTRADICTED the real answer ('22°C'); a template can't
+        state a fact it doesn't have. (2) it adds ZERO latency on a path that is already slow. The
+        pool is routed to the moment (empathy/gratitude/recall/lookup/thinking/interest) and now
+        carries delivery tags so the beat is PERFORMED, not flat.
+
+        When ``contextual`` is set (only the SLOW branches, where the real work already overlaps
+        the beat), it first tries a line that reacts to WHAT the user actually said — but that
+        candidate is HARD-guarded to be fact-free (no digits/results, no assistant-speak) and
+        time-boxed; on any failure it falls back to the pool line, so it is never worse than the
+        template path. Emitted on the trace as `purpose=ack`."""
         register = read_register(prompt.emotion)
         utt = (prompt.utterance or "").strip()
         # A STATEMENT (not a question) gets a receiving backchannel ("mm, gotcha") rather than
         # "let me think" — the gate now fires on ordinary conversational turns, and "let me think"
         # in front of a reply to "I've been busy lately" sounds like the AI is puzzling over it.
         is_question = utt.endswith("?") or _wants_substance(utt) or _is_multipart_question(utt)
-        if register in ("down", "stressed"):
-            name = "ack_empathy"
-        elif prompt.recall_source in ("past", "current"):
-            name = "ack_recall"  # the wait is reading back our conversations, not a web lookup
-        elif is_lookup:
-            name = "ack_lookup"
-        elif is_question:
-            name = "ack_thinking"
-        else:
-            name = "ack_backchannel"  # receiving a statement, not thinking over a question
+        # Route to the pool that FITS the moment, so the beat matches context instead of a
+        # one-size "let me think": distress → empathy, thanks → gracious, recall → looking-back,
+        # a lookup → checking, a question → thinking, a meaty statement → lean-in interest, a
+        # short statement → a brief receiving backchannel.
+        name = self._ack_pool(prompt, register, is_lookup=is_lookup, is_question=is_question)
         pool = self._phrases.get(name)  # current (regenerated) lines, else the defaults
         last = self._last_ack.get(prompt.session_id)
         choices = [c for c in pool if c != last] or list(pool)
         line = random.choice(choices)
+        deterministic = True
+        if contextual and self._contextual_ack:
+            spoken = await self._contextual_line(prompt, name, register, is_lookup=is_lookup)
+            if spoken:
+                line, deterministic = spoken, False
         self._last_ack[prompt.session_id] = line
-        self._phrases.record_use(name, line)  # in-memory tally → usage-driven refresh (off-path)
-        self._span("llm", purpose="ack", ack=line, deterministic=True)
+        if deterministic:
+            self._phrases.record_use(name, line)  # in-memory tally → usage-driven refresh
+        self._span("llm", purpose="ack", ack=line, deterministic=deterministic, pool=name)
         await self._speak_clean(line, speak)
+
+    async def _contextual_line(
+        self, prompt: AssembledPrompt, pool: str, register: str, *, is_lookup: bool
+    ) -> str | None:
+        """A short filler that REACTS to what the user just said (context-aware), or None to fall
+        back to the pool. Generated on a cheap tier, time-boxed so it can't stall the turn, and
+        HARD-guarded: a candidate that states any fact/number/result, slips into assistant-speak,
+        or runs long is rejected — the interjection must never pre-empt or contradict the answer
+        (the '27°C' regression). Runs only on slow branches where the real work overlaps it."""
+        want_tag = "[warm]" if register not in ("down", "stressed") else "[gentle]"
+        beat = {
+            "ack_empathy": "gently acknowledge the hard thing they shared — meet the feeling",
+            "ack_gratitude": "warmly wave off their thanks, like a close friend",
+            "ack_recall": "say you're thinking back over your past chats to find it",
+            "ack_lookup": "say you're going to look that up for them",
+            "ack_thinking": "say you need a beat to think about their question",
+            "ack_interest": "show you're genuinely interested and invite them to say more",
+            "ack_backchannel": "a brief, warm 'I'm listening' beat",
+        }.get(pool, "a brief, warm filler beat")
+        system = (
+            "You write ONE very short spoken filler line (≤12 words) for a warm AI companion, "
+            "said the instant BEFORE the real answer is ready. It must REACT to what the user "
+            "just said, in a close, casual friend's voice. It states NO facts, numbers, names, "
+            "or answers — it only buys a beat. No assistant-speak ('how can I help', 'what's on "
+            "your mind'), no slang ('dude','bro'). Perform it: include ONE delivery tag such as "
+            f"{want_tag} or a <pause> (never [laugh]/[chuckle] on a sad or apology beat). "
+            "Reply with ONLY the line — no quotes, no preamble."
+        )
+        user = f"The user just said: {utt_short(prompt.utterance)}\nThe beat: {beat}."
+        try:
+            completion = await asyncio.wait_for(
+                self._llm.complete(
+                    prompt.user_id,
+                    [{"role": "system", "content": system}, {"role": "user", "content": user}],
+                    "simple",
+                    temperature=0.8,
+                    purpose="contextual_ack",
+                ),
+                timeout=self._contextual_ack_timeout_s,
+            )
+        except (TimeoutError, LLMUnavailable):
+            return None
+        except Exception:  # never let a filler failure break the turn
+            logger.warning("contextual ack failed; using the pool line", exc_info=True)
+            return None
+        candidate = _sanitize_tags(_strip_fences(completion.text)).strip().strip('"')
+        return candidate if _is_safe_interjection(candidate) else None
 
     async def _emit_progress_ack(
         self,
