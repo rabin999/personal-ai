@@ -100,6 +100,11 @@ function useMeasure<T extends HTMLElement>() {
   return { ref, width };
 }
 
+// Default zoom applied after the initial fit: enough that a few nodes' labels read clearly
+// (labels hide below ~0.55 zoom). Only bumps UP from a crammed fit — small graphs that already
+// fit at a higher zoom are left alone. Users can still Zoom out / Fit-to-view from the controls.
+const DEFAULT_ZOOM = 1.15;
+
 export default function KnowledgeGraphPage() {
   const [nodes, setNodes] = useState<GraphNode[]>([]);
   const [edges, setEdges] = useState<GraphEdge[]>([]);
@@ -306,8 +311,29 @@ export default function KnowledgeGraphPage() {
     fit();
   }, [fit]);
 
-  // Fit once the first layout settles.
-  const onEngineStop = useCallback(() => fit(), [fit]);
+  // Default framing: whenever the visible set changes, re-arm so the fresh layout settles into
+  // the readable default zoom (not just the very first one).
+  const needsDefaultFraming = useRef(true);
+  useEffect(() => {
+    needsDefaultFraming.current = true;
+  }, [graphData]);
+
+  // Frame the graph ONCE each time a new layout settles: fit it, then zoom in a touch so a few
+  // nodes' labels are clearly legible by default. Plain `zoomToFit` crams the WHOLE graph in and
+  // the labels vanish below ~0.55 zoom (user report: "it tries to fit all in that area — zoom a
+  // bit so I can see a few words clearly"). We DON'T re-fit on later engine stops (e.g. after a
+  // drag), so interacting with the graph no longer yanks the whole view back.
+  const onEngineStop = useCallback(() => {
+    if (!needsDefaultFraming.current) return;
+    needsDefaultFraming.current = false;
+    const g = graphRef.current;
+    if (!g) return;
+    g.zoomToFit(400, 40);
+    window.setTimeout(() => {
+      const g2 = graphRef.current;
+      if (g2 && g2.zoom() < DEFAULT_ZOOM) g2.zoom(DEFAULT_ZOOM, 500);
+    }, 500);
+  }, []);
 
   return (
     <section>
