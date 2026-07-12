@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { AsaathiMark } from "./AuthPage";
 import { ThemeToggle } from "./ThemeToggle";
 import { useTheme } from "../lib/theme";
 import { getTools } from "../lib/api";
@@ -61,10 +62,7 @@ export function AppHeader({ right }: { right?: React.ReactNode }) {
           {/* Brand */}
           <NavLink to="/" className="flex shrink-0 items-center gap-2">
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-sm">
-              <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
-                <path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4M8 22h8" />
-              </svg>
+              <AsaathiMark className="h-[18px] w-[18px]" />
             </span>
             <span className="text-sm font-semibold">Asaathi</span>
           </NavLink>
