@@ -2636,12 +2636,6 @@ _ALLOWED_TAGS = frozenset(
         "sniff",
         "beat",
         "clears throat",
-        # Additional Grok wrapping tags (volume / vocal-style categories, docs.x.ai
-        # audio/text-to-speech) exposed by the voice-effects capability (§10.2).
-        "loud",
-        "loudly",
-        "sing",
-        "singing",
     }
 )
 _BRACKET_TOKEN = re.compile(r"\[([^\[\]]{1,24})\]|<([^<>]{1,24})>")

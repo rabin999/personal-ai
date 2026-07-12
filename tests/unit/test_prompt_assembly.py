@@ -120,7 +120,7 @@ async def test_understanding_ladder_and_correlation_in_prompt() -> None:
     # U7 world-knowledge + cross-turn correlation exemplar.
     assert "lassi" in sp and "connect it to" in sp
     # The prompt template version was bumped so the trace attributes this behavior.
-    assert result.prompt_version.startswith("pt5")
+    assert result.prompt_version.startswith("pt6")
 
 
 # U10/U11/U12: audio-awareness directives reach the prompt when settings are on, and
@@ -220,11 +220,12 @@ async def test_over_budget_trims_episodic_first_never_utterance_or_recent_turns(
     # trimmed (not all 6 survive), while the persona floor + the non-trimmable
     # capability/self blocks stay. The ceiling sits just above that floor and well
     # below floor + all 6 chunks (~11.9k), proving episodic was dropped to fit.
-    # Ceiling tracks the (non-trimmable) pinned floor — identity + capabilities +
-    # the U6/U7 understanding block + traits + user-local-time + the delivery rules
-    # (which now carry the recommendation + long-list-summary guidance, response
-    # standard §12) — and sits below floor + all 6 episodic chunks.
-    assert len(result.system_prompt) <= 10_000
+    # Ceiling tracks the (non-trimmable) pinned floor — identity (incl. the developer-
+    # attribution line) + capabilities + the U6/U7 understanding block + traits +
+    # user-local-time + the delivery rules (which now carry the recommendation +
+    # long-list-summary guidance, response standard §12) — and sits below floor + all 6
+    # episodic chunks (~11.9k), proving episodic was dropped to fit.
+    assert len(result.system_prompt) <= 10_400
     assert result.system_prompt.count("memory chunk") < 6
     # Traits (P1) survived the trim:
     assert "clarifying question" in result.system_prompt

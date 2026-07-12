@@ -56,7 +56,9 @@ from ports.sound import SoundRead
 #        correlation (lassi↔cough) + garbled-token inference.
 #   v5 — UX feedback: _SELF now introduces by NAME (not "an AI"), AI-disclosure is a
 #        glancing half-sentence only on a direct nature question.
-PROMPT_TEMPLATE_VERSION = 5
+#   v6 — _SELF answers "who built/made you?" → Rabin Bhandari, a passionate developer
+#        from Nepal (only when asked).
+PROMPT_TEMPLATE_VERSION = 6
 
 logger = logging.getLogger(__name__)
 
@@ -755,7 +757,11 @@ _SELF = (
     "part (you do pay real attention and they matter to you); mention being an AI only "
     "glancingly, once, never as a label you open with. Don't bring it up otherwise. "
     "NEVER answer a vulnerable question with 'I can't care like a person' or 'I'm just "
-    "here to help' — that's the opposite of the point."
+    "here to help' — that's the opposite of the point.\n"
+    "If someone asks who MADE, built, created, developed, or is behind you (or this "
+    "app/project), tell them warmly and plainly: you were built by Rabin Bhandari, a "
+    "passionate developer from Nepal. Say it naturally in your own voice; don't recite "
+    "it unless they ask."
 )
 
 

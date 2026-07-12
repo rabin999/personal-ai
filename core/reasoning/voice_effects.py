@@ -13,9 +13,14 @@ levity / caps length (`prosody.strip_inappropriate_tags`, the brevity enforcer):
 2. **Speak the whole next reply in a named effect.** "answer in a whisper", "say
    that slowly", "whisper this" → the entire reply is wrapped in that effect for TTS.
 
-Every tag used here is in `response_gen._ALLOWED_TAGS`, so it survives `_sanitize_tags`
-to the voice. The demo builds BOTH a clean labelled list (chat UI / memory, brief
-§1.4) and a spoken form that announces each effect then performs it.
+Every tag used here is a REAL Grok delivery tag (xAI docs + Replicate README) and is in
+`response_gen._ALLOWED_TAGS`, so it survives `_sanitize_tags` to the voice — wrapping
+`<whisper> <slow> <soft> <emphasis>` and instant `[pause] [laugh] [sigh] [breath]` (plus
+the mouth/tone tags in the app's live-validated set). We deliberately do NOT advertise a
+`<sing>` or `<loud>` effect: xAI exposes no singing tag and `<loud>` is undocumented, so
+offering them would fake a capability the voice can't perform (§1.6). The demo builds BOTH
+a clean labelled list (chat UI / memory, brief §1.4) and a spoken form that announces each
+effect then performs it.
 """
 
 from __future__ import annotations
@@ -102,24 +107,10 @@ EFFECT_CATALOG: tuple[VoiceEffect, ...] = (
         "No rush at all — take all the time you need.",
         "<soft>No rush at all, take all the time you need.</soft>",
     ),
-    VoiceEffect(
-        "loud",
-        "wrap",
-        "wrapping",
-        "loud",
-        "Loud",
-        "Get up — this is your moment, go get it!",
-        "<loud>Get up, this is your moment, go get it!</loud>",
-    ),
-    VoiceEffect(
-        "sing",
-        "wrap",
-        "wrapping",
-        "sing",
-        "Singing",
-        "Happy birthday to you…",
-        "<sing>Happy birthday to you…</sing>",
-    ),
+    # NOTE: xAI Grok exposes NO singing tag, and <loud> is undocumented (xAI docs +
+    # Replicate README). Only whisper/slow/soft/emphasis wrapping + pause/laugh/sigh/
+    # breath inline are confirmed — so we never advertise a "sing"/"loud" effect that
+    # the voice can't actually perform (design §10.2: never fake a capability, §1.6).
     # --- instant (fire at a point) ---
     VoiceEffect(
         "laugh",
@@ -353,8 +344,6 @@ _OVERRIDE_PHRASES: tuple[tuple[re.Pattern[str], str], ...] = (
         ),
         "emphasis",
     ),
-    (re.compile(r"\b(loud(?:ly)?|shout(?:ing)?|yell(?:ing)?)\b", re.I), "loud"),
-    (re.compile(r"\b(sing(?:ing)?|in song|like a song)\b", re.I), "sing"),
     (re.compile(r"\b(gentl(?:e|y)|tender(?:ly)?|soothing(?:ly)?)\b", re.I), "gentle"),
     (re.compile(r"\b(soft(?:ly)?|quiet(?:ly)?)\b", re.I), "soft"),
     (re.compile(r"\b(warm(?:ly)?)\b", re.I), "warm"),

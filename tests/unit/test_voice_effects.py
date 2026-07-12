@@ -136,11 +136,21 @@ def test_coverage_question_shows_all() -> None:
         assert req is not None and req.count == MAX_DEMO_COUNT
 
 
-@pytest.mark.parametrize("key", ["loud", "sing", "soft"])
-def test_new_wrapping_effects_apply(key: str) -> None:
+@pytest.mark.parametrize("key", ["soft", "slow", "whisper", "emphasis"])
+def test_wrapping_effects_apply(key: str) -> None:
     out = apply_effect_override("Here we go.", key)
     assert out == f"<{key}>Here we go.</{key}>"
     assert _sanitize_tags(out) == out
+
+
+def test_no_fabricated_tags_advertised() -> None:
+    """xAI Grok has no singing tag and <loud> is undocumented — we must never offer them
+    (design §1.6: never fake a capability the voice can't perform)."""
+    keys = {e.key for e in EFFECT_CATALOG}
+    assert "sing" not in keys and "loud" not in keys
+    from core.reasoning.response_gen import _ALLOWED_TAGS
+
+    assert "sing" not in _ALLOWED_TAGS and "loud" not in _ALLOWED_TAGS
 
 
 # --------------------------------------------------------------------------- override detection
