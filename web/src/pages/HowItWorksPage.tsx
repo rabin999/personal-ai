@@ -7,7 +7,7 @@ import { Mermaid } from "../components/Mermaid";
 // the per-turn loop, and how it's evaluated. Intentionally NOT linked from the app nav.
 
 // One comprehensive architecture diagram (Mermaid). Latest flowchart syntax.
-const ARCHITECTURE = `flowchart TB
+const ARCHITECTURE = `flowchart LR
   U([🎙️ You speak]):::io
 
   subgraph EDGE["API edge · FastAPI"]
@@ -87,14 +87,44 @@ const STORES: { name: string; tech: string; body: string }[] = [
   { name: "Documents", tech: "MongoDB", body: "Profiles, conversations, projects, and the cost ledger." },
 ];
 
-// How the app is evaluated — the metrics that decide whether a reply is good enough.
-const METRICS: { title: string; how: string; body: string }[] = [
-  { title: "Response quality", how: "LLM-as-judge", body: "A separate, pinned model scores every reply against the standard — warm, human, concise, a companion not an assistant." },
-  { title: "Hard rules", how: "Deterministic checks", body: "No assistant-speak, disclosure never volunteered, no duplicated content, no promise it can't keep, and self-reflection actually ran." },
-  { title: "Retrieval quality", how: "RAGAS", body: "Faithfulness and relevance of what memory and web search feed into the answer — is it grounded in real context?" },
-  { title: "Multi-tenant isolation", how: "Two-user tests", body: "One person's data must never appear in another's context — every read and write is user-scoped and verified." },
-  { title: "Latency", how: "Per-turn TTFT", body: "The first spoken chunk lands within ~3–5s; per-call latency and time-to-first-audio are traced on every turn." },
-  { title: "Cost & tracing", how: "Cost ledger + spans", body: "Every paid call is logged; each turn has a full trace — tokens, cost, latency, tools, and the reflection step as its own span." },
+// How the app is evaluated — the concrete metrics behind each check.
+const METRICS: { title: string; how: string; body: string; metrics: string[] }[] = [
+  {
+    title: "Response quality",
+    how: "LLM-as-judge",
+    body: "A separate, pinned model scores every reply against the response standard — a companion, not an assistant.",
+    metrics: ["Warmth (1–5)", "Human-ness (1–5)", "Brevity (1–5)", "Companion-fit (1–5)", "Overall (pass ≥ 4/5)"],
+  },
+  {
+    title: "Hard rules",
+    how: "Deterministic · pass/fail",
+    body: "Absolute rules a human can spot in one read, checked automatically on every reply.",
+    metrics: ["No assistant-speak", "Disclosure never proactive", "No duplicated content", "Self-reflection ran", "No unkeepable promise"],
+  },
+  {
+    title: "Retrieval quality",
+    how: "RAGAS",
+    body: "Whether the answer is grounded in the memory and search results it was given.",
+    metrics: ["Faithfulness", "Answer relevancy", "Context precision", "Context recall"],
+  },
+  {
+    title: "Multi-tenant isolation",
+    how: "Two-user tests",
+    body: "One person's data must never surface in another's context — verified, not assumed.",
+    metrics: ["Cross-user leakage = 0", "user_id-scoped reads", "user_id-scoped writes", "No double-write on recall"],
+  },
+  {
+    title: "Latency",
+    how: "Per-turn timing",
+    body: "Voice can't wait — the first spoken chunk must land fast, measured every turn.",
+    metrics: ["Time-to-first-audio ≤ ~5s", "First-chunk p50 / p95", "Per-LLM-call latency", "End-to-end turn time"],
+  },
+  {
+    title: "Cost & tracing",
+    how: "Cost ledger + spans",
+    body: "Every paid call is logged; each turn carries a complete, inspectable trace.",
+    metrics: ["Cost per turn (USD)", "Input / output tokens", "Cache-hit rate", "Per-turn span coverage"],
+  },
 ];
 
 const PRINCIPLES: { title: string; body: string }[] = [
@@ -113,14 +143,14 @@ export default function HowItWorksPage() {
       {/* Top bar */}
       <header className="sticky top-0 z-10 border-b border-slate-200/70 bg-slate-50/80 backdrop-blur-md dark:border-slate-800/70 dark:bg-slate-950/70">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4 sm:px-8">
-          <div className="flex items-center gap-2.5">
+          <a href="/login" className="flex items-center gap-2.5" aria-label="Back to Asaathi">
             <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-md shadow-sky-600/25">
               <AsaathiMark className="h-5 w-5" />
             </div>
             <span className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
               Asaathi
             </span>
-          </div>
+          </a>
           <ThemeToggle pref={pref} onChange={setPref} />
         </div>
       </header>
@@ -218,13 +248,23 @@ export default function HowItWorksPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-base font-semibold">{m.title}</h3>
-                  <span className="rounded-full bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-400">
+                  <span className="shrink-0 rounded-full bg-cyan-500/10 px-2.5 py-1 text-[11px] font-semibold text-cyan-600 dark:bg-cyan-400/10 dark:text-cyan-400">
                     {m.how}
                   </span>
                 </div>
                 <p className="mt-2 text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
                   {m.body}
                 </p>
+                <ul className="mt-3 flex flex-wrap gap-1.5">
+                  {m.metrics.map((name) => (
+                    <li
+                      key={name}
+                      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[12px] font-medium text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300"
+                    >
+                      {name}
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>

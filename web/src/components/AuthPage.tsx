@@ -60,35 +60,18 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
         <div className="pointer-events-none absolute bottom-0 left-1/3 h-80 w-80 rounded-full bg-cyan-300/15 blur-3xl dark:bg-cyan-500/10" />
 
         <div className="relative mx-auto w-full max-w-2xl lg:mx-0 lg:my-auto">
-          {/* Eyebrow: brand */}
-          <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/25">
-              <AsaathiMark className="h-6 w-6" />
-            </div>
-            <span className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
-              Asaathi
-            </span>
-          </div>
-
-          {/* Hero */}
-          <h1 className="mt-8 text-4xl font-bold leading-[1.08] tracking-tight sm:text-5xl xl:text-6xl">
-            A friend you can
-            <br className="hidden sm:block" />{" "}
-            just{" "}
-            <span className="bg-gradient-to-r from-sky-500 to-cyan-500 bg-clip-text text-transparent">
-              talk
-            </span>{" "}
-            to.
-          </h1>
-
-          <p className="mt-6 max-w-xl text-lg leading-relaxed text-slate-600 sm:text-xl dark:text-slate-300">
-            You speak, it listens — thinks before it answers, remembers you between
-            conversations, and replies warmly in a real human voice. A companion, not an
-            assistant.
-          </p>
-
           {/* What it can do */}
-          <div className="mt-10 grid gap-4 sm:grid-cols-2">
+          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            What{" "}
+            <span className="bg-gradient-to-r from-sky-500 to-cyan-500 bg-clip-text text-transparent">
+              Asaathi
+            </span>{" "}
+            can do
+          </h2>
+          <p className="mt-3 max-w-xl text-lg leading-relaxed text-slate-600 dark:text-slate-300">
+            More than a chatbot — it listens, thinks, remembers, and talks like a friend.
+          </p>
+          <div className="mt-8 grid gap-4 sm:grid-cols-2">
             {FEATURES.map((f) => (
               <div
                 key={f.title}
@@ -134,14 +117,26 @@ export function AuthPage({ themePref, onThemeChange, onGoogle }: Props) {
       <section className="relative order-1 flex items-center justify-center border-slate-200 bg-white px-5 py-12 lg:order-2 lg:h-screen lg:w-[26rem] lg:shrink-0 lg:border-l xl:w-[28rem] dark:border-slate-800 dark:bg-slate-900/60">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,rgba(14,165,233,0.10),transparent_70%)]" />
         <div className="relative w-full max-w-sm">
-          {/* Brand mark lives in the sign-in panel so the mobile-first (top) view is branded */}
+          {/* Brand + intro live WITH the sign-in (this side), so the auth panel carries the
+              logo, name and value prop — and the left side is purely what-it-can-do. */}
           <div className="mb-8 flex flex-col items-center text-center">
             <div className="mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-sky-500 to-cyan-500 text-white shadow-lg shadow-sky-600/25">
               <AsaathiMark className="h-8 w-8" />
             </div>
-            <h2 className="text-2xl font-semibold tracking-tight">Start talking</h2>
-            <p className="mt-2 text-base leading-relaxed text-slate-500 dark:text-slate-400">
-              Sign in to begin — your companion remembers you from here on.
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">
+              Asaathi
+            </span>
+            <h1 className="mt-2 text-2xl font-bold leading-tight tracking-tight sm:text-3xl">
+              A friend you can just{" "}
+              <span className="bg-gradient-to-r from-sky-500 to-cyan-500 bg-clip-text text-transparent">
+                talk
+              </span>{" "}
+              to.
+            </h1>
+            <p className="mt-3 text-[15px] leading-relaxed text-slate-500 dark:text-slate-400">
+              You speak, it listens — thinks before it answers, remembers you between
+              conversations, and replies warmly in a real human voice. A companion, not an
+              assistant.
             </p>
           </div>
 
